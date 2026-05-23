@@ -1,9 +1,13 @@
 // tests/test_indexing.cpp
 #include <gtest/gtest.h>
-#include <cmath>
 #include <vector>
-#include "insight/insight.h"
 #include "insight/ops/indexing.h"
+#include <cstdint>
+#include <insight/core/array.h>
+#include <insight/core/place.h>
+#include <insight/core/shape.h>
+#include <insight/init.h>
+#include <insight/ops/creation.h>
 
 using namespace ins;
 
@@ -196,7 +200,7 @@ TEST_F(IndexingTest, Where2Arg) {
     Array cond = to_array(std::vector<bool>{true, false, true, false});
     Array nz = where(cond);
     EXPECT_EQ(nz.numel(), 2);
-    const int64_t* data = nz.data<int64_t>();
+    const int64_t* data = nz.data<int64_t>(); // data为空指针
     EXPECT_EQ(data[0], 0);
     EXPECT_EQ(data[1], 2);
 }
@@ -207,7 +211,6 @@ TEST_F(IndexingTest, Nonzero) {
     std::vector<float> data = { 0, 1, 0, 2, 0, 3, 0, 4 };
     Array x = to_array(data).reshape(Shape({ 2, 4 }));
     Array nz = nonzero(x);
-
     EXPECT_EQ(nz.shape().dim(0), 2);
     EXPECT_EQ(nz.shape().dim(1), 4);
     const int64_t* nz_data = nz.data<int64_t>();

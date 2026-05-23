@@ -1,0 +1,170 @@
+﻿// backends/cpu/kernels/reduction/cumprod.cpp
+/**
+ * @file cumprod.cpp
+ * @brief CPU kernel for product operation.
+ * 
+ * Computes cumulative product along specified axis.
+ * 
+ * @param inputs  [0] = InsightArray* output (same shape as input)
+ *                [1] = InsightArray* input
+ *                [2] = int* axis
+ * @param outputs [0] = InsightArray* result (same as inputs[0])
+ * @return C_SUCCESS on success, C_FAILED on error
+ */
+
+#include "common.h"
+#include <vector>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+static void cumprod_float(
+    const float* src, float* dst,
+    int64_t n, int64_t axis_size, int64_t outer_stride, int64_t inner_stride) {
+    
+    _Pragma("omp parallel for")
+    for (int64_t outer = 0; outer < outer_stride; ++outer) {
+        for (int64_t inner = 0; inner < inner_stride; ++inner) {
+            float acc = 1;
+            for (int64_t k = 0; k < axis_size; ++k) {
+                int64_t idx = outer * axis_size * inner_stride + k * inner_stride + inner;
+                acc *= src[idx];
+                dst[idx] = acc;
+            }
+        }
+    }
+}
+
+static void cumprod_double(
+    const double* src, double* dst,
+    int64_t n, int64_t axis_size, int64_t outer_stride, int64_t inner_stride) {
+    
+    _Pragma("omp parallel for")
+    for (int64_t outer = 0; outer < outer_stride; ++outer) {
+        for (int64_t inner = 0; inner < inner_stride; ++inner) {
+            double acc = 1;
+            for (int64_t k = 0; k < axis_size; ++k) {
+                int64_t idx = outer * axis_size * inner_stride + k * inner_stride + inner;
+                acc *= src[idx];
+                dst[idx] = acc;
+            }
+        }
+    }
+}
+
+static void cumprod_int32(
+    const int32_t* src, int32_t* dst,
+    int64_t n, int64_t axis_size, int64_t outer_stride, int64_t inner_stride) {
+    
+    _Pragma("omp parallel for")
+    for (int64_t outer = 0; outer < outer_stride; ++outer) {
+        for (int64_t inner = 0; inner < inner_stride; ++inner) {
+            int32_t acc = 1;
+            for (int64_t k = 0; k < axis_size; ++k) {
+                int64_t idx = outer * axis_size * inner_stride + k * inner_stride + inner;
+                acc *= src[idx];
+                dst[idx] = acc;
+            }
+        }
+    }
+}
+
+static void cumprod_int64(
+    const int64_t* src, int64_t* dst,
+    int64_t n, int64_t axis_size, int64_t outer_stride, int64_t inner_stride) {
+    
+    _Pragma("omp parallel for")
+    for (int64_t outer = 0; outer < outer_stride; ++outer) {
+        for (int64_t inner = 0; inner < inner_stride; ++inner) {
+            int64_t acc = 1;
+            for (int64_t k = 0; k < axis_size; ++k) {
+                int64_t idx = outer * axis_size * inner_stride + k * inner_stride + inner;
+                acc *= src[idx];
+                dst[idx] = acc;
+            }
+        }
+    }
+}
+
+static void compute_strides(int64_t ndim, const int64_t* dims, int axis,
+                            int64_t* outer_stride, int64_t* inner_stride) {
+    *outer_stride = 1;
+    for (int i = 0; i < axis; ++i) {
+        *outer_stride *= dims[i];
+    }
+    *inner_stride = 1;
+    for (int i = axis + 1; i < ndim; ++i) {
+        *inner_stride *= dims[i];
+    }
+}
+
+C_Status cumprod_kernel_cpu(void** inputs, void** outputs) {
+    InsightArray* out = (InsightArray*)outputs[0];
+    InsightArray* x = (InsightArray*)inputs[1];
+    
+    if (!out || !x) {
+        cpu_set_last_error("cumprod: null array pointer");
+        return C_FAILED;
+    }
+    
+    if (!inputs[2]) {
+        cpu_set_last_error("cumprod: axis is null");
+        return C_FAILED;
+    }
+    
+    int axis = *(int*)inputs[2];
+    int64_t ndim = x->ndim;
+    
+    if (axis < 0) axis += ndim;
+    if (axis < 0 || axis >= ndim) {
+        cpu_set_last_error("cumprod: axis out of range");
+        return C_FAILED;
+    }
+    
+    int64_t dims[INSIGHT_MAX_NDIM];
+    for (int i = 0; i < ndim; ++i) {
+        dims[i] = x->dims[i];
+    }
+    
+    int64_t axis_size = dims[axis];
+    int64_t outer_stride, inner_stride;
+    compute_strides(ndim, dims, axis, &outer_stride, &inner_stride);
+    
+    int64_t n = outer_stride * axis_size * inner_stride;
+    
+    // Ensure contiguous (should be by frontend)
+    if (!insight_array_is_contiguous(x)) {
+        cpu_set_last_error("cumprod: input must be contiguous");
+        return C_FAILED;
+    }
+    
+    switch (x->dtype) {
+        case INSIGHT_DTYPE_F32:
+            cumprod_float((const float*)x->data, (float*)out->data, n, axis_size, outer_stride, inner_stride);
+            break;
+        case INSIGHT_DTYPE_F64:
+            cumprod_double((const double*)x->data, (double*)out->data, n, axis_size, outer_stride, inner_stride);
+            break;
+        case INSIGHT_DTYPE_I32:
+            cumprod_int32((const int32_t*)x->data, (int32_t*)out->data, n, axis_size, outer_stride, inner_stride);
+            break;
+        case INSIGHT_DTYPE_I64:
+            cumprod_int64((const int64_t*)x->data, (int64_t*)out->data, n, axis_size, outer_stride, inner_stride);
+            break;
+        default:
+            cpu_set_last_error("cumprod: unsupported dtype");
+            return C_FAILED;
+    }
+    
+    return C_SUCCESS;
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_F32, cumprod_kernel_cpu);
+REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_F64, cumprod_kernel_cpu);
+REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_I32, cumprod_kernel_cpu);
+REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_I64, cumprod_kernel_cpu);

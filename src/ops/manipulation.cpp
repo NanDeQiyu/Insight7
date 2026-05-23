@@ -1,7 +1,17 @@
 // src/ops/manipulation.cpp
+/**
+ * @file manipulation.cpp
+ * @brief Array manipulation operations.
+ *
+ * Provides shape manipulation, transposition, joining, splitting,
+ * tiling, padding, rolling, and other array transformation operations.
+ */
+
 #include "insight/ops/manipulation.h"
 #include "insight/ops/elementwise.h"
-#include "insight/plugin/op_registry.h"
+#include "insight/ops/creation.h"
+#include "insight/core/op_registry.h"
+#include "insight/core/exception.h"
 
 namespace ins {
 
@@ -9,7 +19,51 @@ namespace ins {
         return place.is_cpu() ? DeviceKind::CPU : DeviceKind::GPU;
     }
 
-    // ========== Shape manipulation ==========
+    // ============================================================================
+    // Helper: launch manipulation kernel
+    // ============================================================================
+
+    template<typename T>
+    static void add_kernel_arg(std::vector<void*>& inputs, const T& arg) {
+        if constexpr (std::is_pointer_v<std::decay_t<T>>) {
+            inputs.push_back(const_cast<void*>(static_cast<const void*>(arg)));
+        }
+        else if constexpr (std::is_same_v<std::decay_t<T>, std::nullptr_t>) {
+            inputs.push_back(nullptr);
+        }
+        else {
+            inputs.push_back(const_cast<void*>(static_cast<const void*>(&arg)));
+        }
+    }
+
+    /**
+     * @brief Launch a manipulation kernel with common parameter pattern.
+     *
+     * @tparam Args Parameter pack types
+     * @param kernel_name Kernel name to launch
+     * @param x Input array
+     * @param result Output array (pre-allocated)
+     * @param extra_args Additional kernel arguments
+     */
+    template<typename... Args>
+    static void launch_manipulation_kernel(const char* kernel_name,
+        const Array& x,
+        Array& result,
+        Args&&... extra_args) {
+        std::vector<void*> inputs;
+        inputs.push_back(result.layout_ptr());
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(x.layout_ptr())));
+
+        (add_kernel_arg(inputs, extra_args), ...);
+
+        ops().launch(kernel_name, x.place(), x.dtype(),
+            inputs,
+            { result.layout_ptr() });
+    }
+
+    // ============================================================================
+    // Shape manipulation (view operations, no kernel needed)
+    // ============================================================================
 
     Array reshape(const Array& x, const Shape& new_shape) {
         return x.reshape(new_shape);
@@ -20,7 +74,6 @@ namespace ins {
     }
 
     Array ravel(const Array& x) {
-        // If contiguous, return view; otherwise copy
         if (x.is_contiguous()) {
             return flatten(x);
         }
@@ -34,24 +87,16 @@ namespace ins {
     }
 
     Array squeeze(const Array& x, int axis) {
-        Shape shape = x.shape();
-        int ndim = shape.ndim();
-        if (axis < 0) axis += ndim;
-        INS_CHECK(axis >= 0 && axis < ndim, "squeeze: axis out of range");
-        INS_CHECK(shape.dim(axis) == 1, "squeeze: axis dimension must be 1");
-
-        std::vector<int64_t> new_dims;
-        for (int i = 0; i < ndim; ++i) {
-            if (i != axis) new_dims.push_back(shape.dim(i));
-        }
-        return x.reshape(Shape(new_dims));
+        return x.squeeze(axis);
     }
 
     Array unsqueeze(const Array& x, int axis) {
         return x.unsqueeze(axis);
     }
 
-    // ========== Transpose ==========
+    // ============================================================================
+    // Transpose (view operations, no kernel needed)
+    // ============================================================================
 
     Array transpose(const Array& x) {
         return x.transpose();
@@ -69,7 +114,6 @@ namespace ins {
         INS_CHECK(axis1 >= 0 && axis1 < ndim, "swapaxes: axis1 out of range");
         INS_CHECK(axis2 >= 0 && axis2 < ndim, "swapaxes: axis2 out of range");
 
-        // 构造 permutation
         std::vector<int> perm(ndim);
         for (int i = 0; i < ndim; ++i) perm[i] = i;
         std::swap(perm[axis1], perm[axis2]);
@@ -94,7 +138,9 @@ namespace ins {
         return x.transpose(perm);
     }
 
-    // ========== Flipping and rotating ==========
+    // ============================================================================
+    // Flipping and rotating
+    // ============================================================================
 
     Array flip(const Array& x, std::optional<int> axis) {
         if (!axis.has_value()) {
@@ -105,12 +151,19 @@ namespace ins {
             }
             return result;
         }
+
         int ax = axis.value();
-        if (ax < 0) ax += x.shape().ndim();
-        OpArgs args = { x, ax };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs result = ops()["flip"][dev][x.dtype()](args);
-        return std::any_cast<Array>(result[0]);
+        int ndim = x.shape().ndim();
+        if (ax < 0) ax += ndim;
+        INS_CHECK(ax >= 0 && ax < ndim, "flip: axis out of range");
+
+        Array result(x.shape(), x.dtype(), x.place());
+
+        ops().launch("flip", x.place(), x.dtype(),
+            { (void*)result.layout_ptr(), (void*)x.layout_ptr(), &ax },
+            { (void*)result.layout_ptr() });
+
+        return result;
     }
 
     Array rot90(const Array& x, int k, const std::vector<int>& axes) {
@@ -137,19 +190,18 @@ namespace ins {
         perm[axis2] = axis1;
 
         Array result = x;
-
         for (int i = 0; i < k_mod; ++i) {
-            // One 90-degree counter-clockwise rotation:
-            // 1. Transpose (swap axis1 and axis2)
+            // One 90-degree counter-clockwise rotation: transpose then flip
             result = result.transpose(perm);
-            // 2. Flip along axis2 (the original axis2, now at position axis1)
             result = flip(result, axis1);  // axis1 is the new position of axis2
         }
 
         return result;
     }
 
-    // ========== Joining ==========
+    // ============================================================================
+    // Joining
+    // ============================================================================
 
     Array concat(const std::vector<Array>& tensors, int axis) {
         if (tensors.empty()) INS_THROW("concat: no tensors provided");
@@ -157,10 +209,11 @@ namespace ins {
 
         const Shape& first_shape = tensors[0].shape();
         int ndim = first_shape.ndim();
-        if (axis < 0) axis += ndim;
-        INS_CHECK(axis >= 0 && axis < ndim, "concat: axis out of range");
+        int ax = axis;
+        if (ax < 0) ax += ndim;
+        INS_CHECK(ax >= 0 && ax < ndim, "concat: axis out of range");
 
-        // Check compatibility
+        // Check compatibility and compute output shape
         DType dtype = tensors[0].dtype();
         Place place = tensors[0].place();
         std::vector<int64_t> out_dims = first_shape.dims();
@@ -171,21 +224,34 @@ namespace ins {
             INS_CHECK(t.place() == place, "concat: device mismatch");
             INS_CHECK(t.shape().ndim() == ndim, "concat: dimension mismatch");
             for (int i = 0; i < ndim; ++i) {
-                if (i != axis) {
+                if (i != ax) {
                     INS_CHECK(t.shape().dim(i) == out_dims[i],
                         "concat: shape mismatch at dimension ", i);
                 }
             }
-            concat_size += t.shape().dim(axis);
+            concat_size += t.shape().dim(ax);
         }
-        out_dims[axis] = concat_size;
+        out_dims[ax] = concat_size;
         Shape out_shape(out_dims);
 
-        OpArgs args = { tensors, axis, out_shape };
-        DeviceKind dev = get_device_kind(place);
-        OpArgs result = ops()["concat"][dev][dtype](args);
+        Array result(out_shape, dtype, place);
 
-        return std::any_cast<Array>(result[0]);
+        // Prepare inputs: [output, num_inputs, tensor0, tensor1, ..., tensorN, axis]
+        std::vector<void*> inputs;
+        inputs.push_back(result.layout_ptr());           // output (unused, kernel uses outputs[0])
+
+        int num_tensors = static_cast<int>(tensors.size());
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&num_tensors)));
+
+        for (const auto& t : tensors) {
+            inputs.push_back(const_cast<void*>(static_cast<const void*>(t.layout_ptr())));
+        }
+
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&ax)));
+
+        ops().launch("concat", place, dtype, inputs, { result.layout_ptr() });
+
+        return result;
     }
 
     Array stack(const std::vector<Array>& tensors, int axis) {
@@ -193,33 +259,40 @@ namespace ins {
 
         const Shape& first_shape = tensors[0].shape();
         int ndim = first_shape.ndim();
-        if (axis < 0) axis += ndim + 1;
-        INS_CHECK(axis >= 0 && axis <= ndim, "stack: axis out of range");
+        int ax = axis;
+        if (ax < 0) ax += ndim + 1;
+        INS_CHECK(ax >= 0 && ax <= ndim, "stack: axis out of range");
 
-        // Check all tensors have same shape
+        // Check all tensors have same shape and dtype
+        DType dtype = tensors[0].dtype();
+        Place place = tensors[0].place();
         for (const auto& t : tensors) {
             INS_CHECK(t.shape() == first_shape, "stack: shape mismatch");
-            INS_CHECK(t.dtype() == tensors[0].dtype(), "stack: dtype mismatch");
-            INS_CHECK(t.place() == tensors[0].place(), "stack: device mismatch");
+            INS_CHECK(t.dtype() == dtype, "stack: dtype mismatch");
+            INS_CHECK(t.place() == place, "stack: device mismatch");
         }
 
         // First unsqueeze each tensor, then concat
         std::vector<Array> expanded;
+        expanded.reserve(tensors.size());
         for (const auto& t : tensors) {
-            expanded.push_back(unsqueeze(t, axis));
+            expanded.push_back(unsqueeze(t, ax));
         }
-        return concat(expanded, axis);
+        return concat(expanded, ax);
     }
 
-    // ========== Splitting ==========
+    // ============================================================================
+    // Splitting (view operations, no kernel needed)
+    // ============================================================================
 
     std::vector<Array> split(const Array& x, int indices_or_sections, int axis) {
         Shape shape = x.shape();
         int ndim = shape.ndim();
-        if (axis < 0) axis += ndim;
-        INS_CHECK(axis >= 0 && axis < ndim, "split: axis out of range");
+        int ax = axis;
+        if (ax < 0) ax += ndim;
+        INS_CHECK(ax >= 0 && ax < ndim, "split: axis out of range");
 
-        int64_t dim_size = shape.dim(axis);
+        int64_t dim_size = shape.dim(ax);
         if (dim_size % indices_or_sections != 0) {
             INS_THROW("split: axis dimension must be divisible by number of splits");
         }
@@ -229,96 +302,164 @@ namespace ins {
         for (int64_t i = split_size; i < dim_size; i += split_size) {
             indices.push_back(i);
         }
-        return split(x, indices, axis);
+        return split(x, indices, ax);
     }
 
     std::vector<Array> split(const Array& x, const std::vector<int64_t>& indices, int axis) {
         Shape shape = x.shape();
         int ndim = shape.ndim();
-        if (axis < 0) axis += ndim;
-        INS_CHECK(axis >= 0 && axis < ndim, "split: axis out of range");
+        int ax = axis;
+        if (ax < 0) ax += ndim;
+        INS_CHECK(ax >= 0 && ax < ndim, "split: axis out of range");
 
         std::vector<Array> result;
         int64_t start = 0;
         for (size_t i = 0; i < indices.size(); ++i) {
             int64_t end = indices[i];
-
             std::vector<Slice> slices(ndim, Slice::all());
-            slices[axis] = Slice(start, end);
-            Array part = x.slice(slices);
-            result.push_back(part);
+            slices[ax] = Slice(start, end);
+            result.push_back(x.slice(slices));
             start = end;
         }
 
-        // Last part
         std::vector<Slice> slices(ndim, Slice::all());
-        slices[axis] = Slice(start, shape.dim(axis));
-        Array last_part = x.slice(slices);
-        result.push_back(last_part);
+        slices[ax] = Slice(start, shape.dim(ax));
+        result.push_back(x.slice(slices));
 
         return result;
     }
 
-    // ========== Tiling and Repeating ==========
+    // ============================================================================
+    // Tiling and Repeating
+    // ============================================================================
 
     Array repeat(const Array& x, int repeats, std::optional<int> axis) {
         if (!axis.has_value()) {
-            // Flatten then repeat
             Array flat = ravel(x);
             return repeat(flat, repeats, 0);
         }
+
         int ax = axis.value();
-        if (ax < 0) ax += x.shape().ndim();
+        int ndim = x.shape().ndim();
+        if (ax < 0) ax += ndim;
+        INS_CHECK(ax >= 0 && ax < ndim, "repeat: axis out of range");
+        INS_CHECK(repeats >= 0, "repeat: repeats must be non-negative");
 
-        OpArgs args = { x, repeats, ax };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs result = ops()["repeat"][dev][x.dtype()](args);
-        return std::any_cast<Array>(result[0]);
-    }
+        // Compute output shape
+        std::vector<int64_t> out_dims = x.shape().dims();
+        out_dims[ax] *= repeats;
+        Shape out_shape(out_dims);
 
-    Array repeat(const Array& x, const std::vector<int>& repeats, int axis) {
-        // For simplicity, only support scalar repeats for now
-        INS_THROW("repeat with vector repeats not yet implemented");
+        Array result(out_shape, x.dtype(), x.place());
+
+        std::vector<void*> inputs;
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(x.layout_ptr())));
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&repeats)));
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&ax)));
+
+        ops().launch("repeat", x.place(), x.dtype(),
+            { (void*)result.layout_ptr(), (void*)x.layout_ptr(), &repeats, &ax },
+            { (void*)result.layout_ptr() });
+
+        return result;
     }
 
     Array tile(const Array& x, const Shape& reps) {
-        OpArgs args = { x, reps };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs result = ops()["tile"][dev][x.dtype()](args);
-        return std::any_cast<Array>(result[0]);
+        // Compute output shape
+        Shape in_shape = x.shape();
+        int in_ndim = in_shape.ndim();
+        int out_ndim = std::max(in_ndim, reps.ndim());
+
+        std::vector<int64_t> out_dims(out_ndim, 1);
+        for (int i = 0; i < out_ndim; ++i) {
+            int in_idx = i - (out_ndim - in_ndim);
+            int64_t in_dim = (in_idx >= 0) ? in_shape.dim(in_idx) : 1;
+            int64_t rep = (i < reps.ndim()) ? reps.dim(i) : 1;
+            out_dims[i] = in_dim * rep;
+        }
+        Shape out_shape(out_dims);
+
+        Array result(out_shape, x.dtype(), x.place());
+
+        launch_manipulation_kernel("tile", x, result, reps);
+
+        return result;
     }
 
-    // ========== Padding ==========
+    // ============================================================================
+    // Padding
+    // ============================================================================
 
     Array pad(const Array& x, const std::vector<int64_t>& pad_width, double constant_value) {
-        OpArgs args = { x, pad_width, constant_value };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs result = ops()["pad"][dev][x.dtype()](args);
-        return std::any_cast<Array>(result[0]);
+        Shape in_shape = x.shape();
+        int ndim = in_shape.ndim();
+        INS_CHECK(pad_width.size() == static_cast<size_t>(2 * ndim),
+            "pad: pad_width size mismatch");
+
+        // Compute output shape
+        std::vector<int64_t> out_dims(ndim);
+        for (int i = 0; i < ndim; ++i) {
+            out_dims[i] = in_shape.dim(i) + pad_width[2 * i] + pad_width[2 * i + 1];
+        }
+        Shape out_shape(out_dims);
+
+        Array result(out_shape, x.dtype(), x.place());
+
+        int64_t* pad_width_ptr = const_cast<int64_t*>(pad_width.data());
+        launch_manipulation_kernel("pad", x, result, pad_width_ptr, constant_value);
+
+        return result;
     }
 
-    // ========== Rolling ==========
+    // ============================================================================
+    // Rolling
+    // ============================================================================
 
     Array roll(const Array& x, int shift, std::optional<int> axis) {
-        OpArgs args = { x, shift };
-        if (axis.has_value()) {
-            args.emplace_back(axis.value());
-        }
-        else {
-            args.emplace_back(-1);  // -1 means flatten
-        }
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs result = ops()["roll"][dev][x.dtype()](args);
-        return std::any_cast<Array>(result[0]);
+        int ax = axis.has_value() ? axis.value() : -1;
+        Array result(x.shape(), x.dtype(), x.place());
+
+        launch_manipulation_kernel("roll", x, result, shift, ax);
+
+        return result;
     }
 
-    // ========== Diagonal ==========
+    // ============================================================================
+    // Diagonal
+    // ============================================================================
 
     Array diag(const Array& x, int k) {
-        OpArgs args = { x, k };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs result = ops()["diag"][dev][x.dtype()](args);
-        return std::any_cast<Array>(result[0]);
+        const Shape& shape = x.shape();
+        Array result;
+
+        if (shape.ndim() == 1) {
+            // Construct diagonal matrix from 1D array
+            int64_t n = x.numel();
+            int64_t size = n + std::abs(k);
+            Shape out_shape({ size, size });
+            result = Array(out_shape, x.dtype(), x.place());
+        }
+        else if (shape.ndim() == 2) {
+            // Extract diagonal from 2D array
+            int64_t rows = shape.dim(0);
+            int64_t cols = shape.dim(1);
+            int64_t diag_len;
+            if (k >= 0) {
+                diag_len = std::min(rows, cols - k);
+            }
+            else {
+                diag_len = std::min(rows + k, cols);
+            }
+            Shape out_shape({ diag_len });
+            result = Array(out_shape, x.dtype(), x.place());
+        }
+        else {
+            INS_THROW("diag: input must be 1D or 2D");
+        }
+
+        launch_manipulation_kernel("diag", x, result, k);
+
+        return result;
     }
 
     Array diagonal(const Array& x, int offset, int axis1, int axis2) {
@@ -326,37 +467,38 @@ namespace ins {
         return diag(x, offset);
     }
 
-    // ========== Triangular ==========
+    // ============================================================================
+    // Triangular
+    // ============================================================================
 
     Array tril(const Array& x, int k) {
-        OpArgs args = { x, k };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs result = ops()["tril"][dev][x.dtype()](args);
-        return std::any_cast<Array>(result[0]);
+        Array result(x.shape(), x.dtype(), x.place());
+        launch_manipulation_kernel("tril", x, result, k);
+        return result;
     }
 
     Array triu(const Array& x, int k) {
-        OpArgs args = { x, k };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs result = ops()["triu"][dev][x.dtype()](args);
-        return std::any_cast<Array>(result[0]);
+        Array result(x.shape(), x.dtype(), x.place());
+        launch_manipulation_kernel("triu", x, result, k);
+        return result;
     }
 
-    // ========== Slicing (Views) ==========
+    // ============================================================================
+    // Slicing (Views) - Direct Array methods
+    // ============================================================================
 
-    /// Slice a single dimension
-    Array slice(Array& x, int dim, int64_t start, int64_t stop, int64_t step)
-    {
+    Array slice(Array& x, int dim, int64_t start, int64_t stop, int64_t step) {
         return x.slice(dim, start, stop, step);
     }
 
-    /// Multi-dimensional slice with Slice objects
-    Array slice(Array& x, const std::vector<Slice>& slices)
-    {
+    Array slice(Array& x, const std::vector<Slice>& slices) {
         return x.slice(slices);
     }
 
-    // ========== diff ==========
+    // ============================================================================
+    // diff
+    // ============================================================================
+
     Array diff(const Array& x, int n, int axis) {
         INS_CHECK(x.defined(), "diff: input is undefined");
         INS_CHECK(n >= 0, "diff: n must be non-negative");
@@ -375,8 +517,6 @@ namespace ins {
             int64_t axis_size = result.shape().dim(ax);
             INS_CHECK(axis_size > 1, "diff: axis size must be at least 2");
 
-            // front = result[..., 0:-1, ...]
-            // back  = result[..., 1:, ...]
             std::vector<Slice> slices_front(ndim, Slice::all());
             std::vector<Slice> slices_back(ndim, Slice::all());
             slices_front[ax] = Slice(0, axis_size - 1);
@@ -387,6 +527,22 @@ namespace ins {
 
             result = sub(back, front);
         }
+
+        return result;
+    }
+
+    // ============================================================================
+    // contiguous
+    // ============================================================================
+
+    Array contiguous(const Array& x) {
+        if (x.is_contiguous()) return x;
+
+        Array result(x.shape(), x.dtype(), x.place());
+
+        ops().launch("contiguous_copy", x.place(), x.dtype(),
+            { (void*)x.layout_ptr() },
+            { result.layout_ptr() });
 
         return result;
     }

@@ -2,6 +2,7 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+#include <ios>
 
 namespace ins {
 
@@ -48,5 +49,7 @@ namespace ins {
     private:
         std::vector<int64_t> strides_;
     };
+
+    std::ostream& operator<<(std::ostream& os, const Strides& s);
 
 } // namespace ins

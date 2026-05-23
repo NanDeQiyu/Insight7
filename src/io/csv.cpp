@@ -1,6 +1,6 @@
 // src/io/csv.cpp
 #include "insight/io/csv.h"
-#include "insight/plugin/op_registry.h"
+#include "insight/core/op_registry.h"
 #include "insight/core/dtype.h"
 #include <fstream>
 #include <vector>
@@ -24,11 +24,21 @@ namespace ins {
 
     // List of operators to export (all registered operators)
     static std::vector<std::string> get_all_operators() {
-        return ops().get_operator_names();
+        std::vector<std::string> names;
+        int count = insight_get_operator_count();
+        char buffer[256];
+        for (int i = 0; i < count; ++i) {
+            if (insight_get_operator_name(i, buffer, sizeof(buffer)) == C_SUCCESS) {
+                names.push_back(buffer);
+            }
+        }
+        return names;
     }
 
     static bool is_kernel_registered(const std::string& op_name, DeviceKind device, DType dtype) {
-        return ops().has_kernel(op_name, device, dtype);
+        return insight_has_kernel(op_name.c_str(),
+            static_cast<int32_t>(device),
+            static_cast<int32_t>(dtype));
     }
 
     void export_support_csv(const std::string& filename, DeviceKind device) {

@@ -4,10 +4,9 @@
 #include <vector>
 #include <initializer_list>
 #include <ostream>
+#include "insight/c_api/array.h" // for INSIGHT_MAX_NDIM
 
 namespace ins {
-
-    constexpr int INSIGHT_MAX_NDIM = 10;  // Paddle-compatible max dimensions
 
     /**
      * @brief Multi-dimensional shape descriptor.

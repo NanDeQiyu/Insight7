@@ -1,11 +1,23 @@
 // src/ops/reduction.cpp
+/**
+ * @file reduction.cpp
+ * @brief Reduction operations for array processing.
+ *
+ * Provides various reduction functions like sum, max, min, mean, etc.
+ * All reductions support axis specification, keepdim semantics, and
+ * proper handling of NaN values where applicable.
+ */
+
+
+#include <cmath>
+#include <vector>
+#include <optional>
 #include "insight/ops/reduction.h"
 #include "insight/ops/elementwise.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/manipulation.h"
-#include "insight/plugin/op_registry.h"
-#include "insight/utils/promotion.h"
-#include <cmath>
+#include "insight/core/op_registry.h"
+
 
 namespace ins {
 
@@ -13,19 +25,29 @@ namespace ins {
         return place.is_cpu() ? DeviceKind::CPU : DeviceKind::GPU;
     }
 
-    // ========== ReductionInfo: prepare reduction by moving axis to last ==========
+    // ============================================================================
+    // ReductionInfo: Prepare reduction by moving reduction axis to last dimension
+    // ============================================================================
 
     struct ReductionInfo {
-        bool flatten_all = false;
-        int64_t batch_size = 1;
-        int64_t reduce_size = 1;
-        Shape out_shape;
-        std::vector<int> perm;          // permutation to move reduction axis to last
-        std::vector<int> inv_perm;      // inverse permutation to restore original order
-        int reduced_axis = -1;          // original axis index
-        int ndim = 0;
+        bool flatten_all = false;           ///< Reduce over all dimensions
+        int64_t batch_size = 1;             ///< Product of non-reduced dimensions
+        int64_t reduce_size = 1;            ///< Size of the reduction dimension
+        Shape out_shape;                    ///< Shape of the output array
+        std::vector<int> perm;              ///< Permutation to move reduction axis to last
+        std::vector<int> inv_perm;          ///< Inverse permutation to restore order
+        int reduced_axis = -1;              ///< Original axis index being reduced
+        int ndim = 0;                       ///< Number of dimensions
     };
 
+    /**
+     * @brief Prepare reduction information for a given input shape and axis.
+     *
+     * @param in_shape Input shape
+     * @param axis Reduction axis (nullopt means reduce all)
+     * @param keepdim Whether to keep reduced dimensions as size 1
+     * @return ReductionInfo Prepared reduction information
+     */
     static ReductionInfo prepare_reduction(const Shape& in_shape, std::optional<int> axis, bool keepdim) {
         ReductionInfo info;
         info.ndim = in_shape.ndim();
@@ -83,6 +105,13 @@ namespace ins {
         return info;
     }
 
+    /**
+     * @brief Prepare input array for reduction by making it contiguous and rearranging axes.
+     *
+     * @param x Input array
+     * @param info Reduction information
+     * @return Prepared array (contiguous, batch_size × reduce_size layout)
+     */
     static Array prepare_input(const Array& x, const ReductionInfo& info) {
         if (info.flatten_all) {
             return x.reshape(Shape({ x.numel() }));
@@ -107,6 +136,13 @@ namespace ins {
         return transposed.contiguous();
     }
 
+    /**
+     * @brief Restore original axis order after reduction.
+     *
+     * @param result Reduced array
+     * @param info Reduction information
+     * @return Array with original axis order
+     */
     static Array transpose_output(const Array& result, const ReductionInfo& info) {
         if (info.flatten_all || info.perm.empty() || info.inv_perm.empty()) {
             return result;
@@ -133,7 +169,17 @@ namespace ins {
         return transposed.contiguous();
     }
 
-    static Array post_process_keepdim(const Array& result, const ReductionInfo& info, bool keepdim, std::optional<int> axis) {
+    /**
+     * @brief Apply keepdim semantics (squeeze reduced dimension if not keepdim).
+     *
+     * @param result Reduced array
+     * @param info Reduction information
+     * @param keepdim Whether to keep reduced dimensions
+     * @param axis Original reduction axis
+     * @return Array with proper shape
+     */
+    static Array post_process_keepdim(const Array& result, const ReductionInfo& info,
+        bool keepdim, std::optional<int> axis) {
         if (!keepdim && axis.has_value()) {
             int ax = info.reduced_axis;
             if (ax < result.shape().ndim() && result.shape().dim(ax) == 1) {
@@ -143,9 +189,29 @@ namespace ins {
         return result;
     }
 
-    // ========== sum ==========
-    Array sum(const Array& x, std::optional<int> axis, bool keepdim) {
-        ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
+    // ============================================================================
+    // Helper: Launch reduction kernel
+    // ============================================================================
+
+    /**
+     * @brief Launch a reduction kernel with common parameters.
+     *
+     * @tparam Args Parameter pack types
+     * @param kernel_name Kernel name to launch
+     * @param x Input array
+     * @param info Reduction information
+     * @param keepdim Whether to keep reduced dimensions
+     * @param axis Reduction axis
+     * @param dtype Output data type (for kernels that support type conversion)
+     * @param extra_args Additional kernel arguments
+     * @return Reduced array
+     */
+    template<typename... Args>
+    static Array launch_reduction(const char* kernel_name, const Array& x,
+        const ReductionInfo& info, bool keepdim,
+        std::optional<int> axis, DType dtype,
+        Args&&... extra_args) {
+
         Array prepared = prepare_input(x, info);
 
         Shape out_shape = info.out_shape;
@@ -153,53 +219,44 @@ namespace ins {
             out_shape = Shape({});
         }
 
-        Array result(out_shape, x.dtype(), x.place());
+        Array result(out_shape, dtype, x.place());
 
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["sum"][dev][x.dtype()](args);
+        std::vector<void*> inputs;
+        inputs.push_back(result.layout_ptr());
+        inputs.push_back(prepared.layout_ptr());
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&info.batch_size)));
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&info.reduce_size)));
+        (inputs.push_back(const_cast<void*>(static_cast<const void*>(&extra_args))), ...);
 
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
+        ops().launch(kernel_name, x.place(), x.dtype(), inputs, { result.layout_ptr() });
 
-        if (keepdim && axis.has_value() && !info.flatten_all) {
-            int ax = axis.value();
-            int ndim = x.shape().ndim();
-            if (ax < 0) ax += ndim;
-
-            if (res.shape().ndim() == ndim) {
-                std::vector<int> perm(ndim);
-                for (int i = 0; i < ndim; ++i) {
-                    if (i == ax) {
-                        perm[i] = ndim - 1;
-                    }
-                    else if (i < ax) {
-                        perm[i] = i;
-                    }
-                    else {
-                        perm[i] = i - 1;
-                    }
-                }
-                res = res.transpose(perm);
-            }
-        }
-
-        return res;
+        return result;
     }
 
-    // ========== mean ==========
+    // ============================================================================
+    // sum: Sum of array elements
+    // ============================================================================
+
+    Array sum(const Array& x, std::optional<int> axis, bool keepdim) {
+        ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
+        return launch_reduction("sum", x, info, keepdim, axis, x.dtype());
+    }
+
+    // ============================================================================
+    // mean: Arithmetic mean
+    // ============================================================================
+
     Array mean(const Array& x, std::optional<int> axis, bool keepdim) {
-        // 计算 sum
         Array s = sum(x, axis, true);
 
-        int64_t n = axis.has_value() ? x.shape().dim(axis.value()) : x.numel();
+        int64_t n = axis.has_value()
+            ? x.shape().dim(axis.value())
+            : x.numel();
         double inv_n = 1.0 / static_cast<double>(n);
 
         DType out_dtype = is_integer(x.dtype()) ? DType::F64 : x.dtype();
         Array s_cast = (s.dtype() != out_dtype) ? s.to(out_dtype) : s;
-
         Array divisor = full(s_cast.shape(), inv_n, out_dtype, s_cast.place());
-
         Array result = mul(s_cast, divisor);
 
         if (!keepdim && axis.has_value()) {
@@ -214,154 +271,82 @@ namespace ins {
         return result;
     }
 
-    // ========== max ==========
+    // ============================================================================
+    // max: Maximum value
+    // ============================================================================
+
     Array max(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
-
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, x.dtype(), x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["max"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
+        return launch_reduction("max", x, info, keepdim, axis, x.dtype());
     }
 
-    // ========== min ==========
+    // ============================================================================
+    // min: Minimum value
+    // ============================================================================
+
     Array min(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
-
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, x.dtype(), x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["min"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
+        return launch_reduction("min", x, info, keepdim, axis, x.dtype());
     }
 
-    // ========== prod ==========
+    // ============================================================================
+    // prod: Product of elements
+    // ============================================================================
+
     Array prod(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
-
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, x.dtype(), x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["prod"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
+        return launch_reduction("prod", x, info, keepdim, axis, x.dtype());
     }
 
-    // ========== any ==========
+    // ============================================================================
+    // any: Logical OR (True if any element is non-zero)
+    // ============================================================================
+
     Array any(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
-
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, DType::BOOL, x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["any"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
+        return launch_reduction("any", x, info, keepdim, axis, DType::BOOL);
     }
 
-    // ========== all ==========
+    // ============================================================================
+    // all: Logical AND (True if all elements are non-zero)
+    // ============================================================================
+
     Array all(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
-
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, DType::BOOL, x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["all"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
+        return launch_reduction("all", x, info, keepdim, axis, DType::BOOL);
     }
 
-    // ========== argmax ==========
+    // ============================================================================
+    // argmax: Index of maximum value
+    // ============================================================================
+
     Array argmax(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
-
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, DType::I64, x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["argmax"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
+        return launch_reduction("argmax", x, info, keepdim, axis, DType::I64);
     }
 
-    // ========== argmin ==========
+    // ============================================================================
+    // argmin: Index of minimum value
+    // ============================================================================
+
     Array argmin(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
-
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, DType::I64, x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["argmin"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
+        return launch_reduction("argmin", x, info, keepdim, axis, DType::I64);
     }
 
-    // ========== var ==========
+    // ============================================================================
+    // count_nonzero: Count of non-zero elements
+    // ============================================================================
+
+    Array count_nonzero(const Array& x, std::optional<int> axis, bool keepdim) {
+        ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
+        return launch_reduction("count_nonzero", x, info, keepdim, axis, DType::I64);
+    }
+
+    // ============================================================================
+    // var: Variance
+    // ============================================================================
+
     Array var(const Array& x, std::optional<int> axis, bool keepdim, int ddof) {
         if (!axis.has_value()) {
             Array flat = x.reshape(Shape({ x.numel() }));
@@ -370,20 +355,13 @@ namespace ins {
 
         int ax = axis.value();
         if (ax < 0) ax += x.shape().ndim();
-
         int64_t n = x.shape().dim(ax);
 
-        // mean with keepdim
         Array m = mean(x, ax, true);
-
-        // (x - mean)^2
         Array centered = sub(x, m);
         Array squared = square(centered);
-
-        // sum along axis
         Array sum_sq = sum(squared, ax, keepdim);
 
-        // divide by (n - ddof)
         double divisor = static_cast<double>(n - ddof);
         if (divisor <= 0.0) divisor = 1.0;
         Array div_arr = full(sum_sq.shape(), divisor, sum_sq.dtype(), sum_sq.place());
@@ -391,19 +369,28 @@ namespace ins {
         return div(sum_sq, div_arr);
     }
 
-    // ========== std ==========
+    // ============================================================================
+    // std: Standard deviation
+    // ============================================================================
+
     Array std(const Array& x, std::optional<int> axis, bool keepdim, int ddof) {
         Array v = var(x, axis, keepdim, ddof);
         return sqrt(v);
     }
 
-    // ========== sem ==========
+    // ============================================================================
+    // sem: Standard error of the mean
+    // ============================================================================
+
     Array sem(const Array& x, std::optional<int> axis, bool keepdim, int ddof) {
         Array s = std(x, axis, true, ddof);
-        int64_t n = axis.has_value() ? x.shape().dim(axis.value()) : x.numel();
+        int64_t n = axis.has_value()
+            ? x.shape().dim(axis.value())
+            : x.numel();
         double inv_sqrt_n = 1.0 / std::sqrt(static_cast<double>(n));
         Array factor = full(s.shape(), inv_sqrt_n, s.dtype(), s.place());
         Array result = mul(s, factor);
+
         if (!keepdim && axis.has_value()) {
             int ax = axis.value();
             int ndim = x.shape().ndim();
@@ -415,94 +402,93 @@ namespace ins {
         return result;
     }
 
-    // ========== count_nonzero ==========
-    Array count_nonzero(const Array& x, std::optional<int> axis, bool keepdim) {
-        ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
+    // ============================================================================
+    // cumsum: Cumulative sum
+    // ============================================================================
 
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, DType::I64, x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["count_nonzero"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
-    }
-
-    // ========== cumsum ==========
-
-    Array cumsum(const Array& x, int axis, DType dtype) {
+    Array cumsum(const Array& x, int axis) {
         int ndim = x.shape().ndim();
         int ax = axis;
         if (ax < 0) ax += ndim;
-        DType out_dtype = (dtype != DType::F64) ? dtype : promote_types(x.dtype(), DType::F64);
-        Array result(x.shape(), out_dtype, x.place());
-        OpArgs args = { result, x, ax };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["cumsum"][dev][x.dtype()](args);
-        return std::any_cast<Array>(output[0]);
+
+        Array result(x.shape(), x.dtype(), x.place());
+
+        ops().launch("cumsum", x.place(), x.dtype(),
+            { (void*)result.layout_ptr(), (void*)x.layout_ptr(), &ax },
+            { result.layout_ptr() });
+
+        return result;
     }
 
-    // ========== cumprod ==========
-    Array cumprod(const Array& x, int axis, DType dtype) {
+    // ============================================================================
+    // cumprod: Cumulative product
+    // ============================================================================
+
+    Array cumprod(const Array& x, int axis) {
         int ndim = x.shape().ndim();
         int ax = axis;
         if (ax < 0) ax += ndim;
-        DType out_dtype = (dtype != DType::F64) ? dtype : promote_types(x.dtype(), DType::F64);
-        Array result(x.shape(), out_dtype, x.place());
-        OpArgs args = { result, x, ax };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["cumprod"][dev][x.dtype()](args);
-        return std::any_cast<Array>(output[0]);
+
+        Array result(x.shape(), x.dtype(), x.place());
+
+        ops().launch("cumprod", x.place(), x.dtype(),
+            { (void*)result.layout_ptr(), (void*)x.layout_ptr(), &ax },
+            { result.layout_ptr() });
+
+        return result;
     }
 
-    // ========== cummax ==========
+    // ============================================================================
+    // cummax: Cumulative maximum
+    // ============================================================================
+
     Array cummax(const Array& x, int axis) {
         int ndim = x.shape().ndim();
         int ax = axis;
         if (ax < 0) ax += ndim;
-        Array prepared = x.contiguous();
-        Array result(prepared.shape(), prepared.dtype(), prepared.place());
-        OpArgs args = { result, prepared, ax };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["cummax"][dev][x.dtype()](args);
-        return std::any_cast<Array>(output[0]);
+
+        Array result(x.shape(), x.dtype(), x.place());
+
+        ops().launch("cummax", x.place(), x.dtype(),
+            { (void*)result.layout_ptr(), (void*)x.layout_ptr(), &ax },
+            { (void*)result.layout_ptr() });
+
+        return result;
     }
 
-    // ========== cummin ==========
+    // ============================================================================
+    // cummin: Cumulative minimum
+    // ============================================================================
+
     Array cummin(const Array& x, int axis) {
         int ndim = x.shape().ndim();
         int ax = axis;
         if (ax < 0) ax += ndim;
-        Array prepared = x.contiguous();
-        Array result(prepared.shape(), prepared.dtype(), prepared.place());
-        OpArgs args = { result, prepared, ax };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["cummin"][dev][x.dtype()](args);
-        return std::any_cast<Array>(output[0]);
+
+        Array result(x.shape(), x.dtype(), x.place());
+
+        ops().launch("cummin", x.place(), x.dtype(),
+            { (void*)result.layout_ptr(), (void*)x.layout_ptr(), &ax },
+            { (void*)result.layout_ptr() });
+
+        return result;
     }
 
-    // ========== median ==========
+    // ============================================================================
+    // median: Median (50th percentile)
+    // ============================================================================
+
     Array median(const Array& x, std::optional<int> axis, bool keepdim) {
         return quantile(x, 0.5, axis, keepdim);
     }
 
-    // ========== quantile (scalar) ==========
-    Array quantile(const Array& x, double q, std::optional<int> axis, bool keepdim) {
+    // ============================================================================
+    // quantile: Quantile (single value)
+    // ============================================================================
 
+    Array quantile(const Array& x, double q, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
         Array prepared = prepare_input(x, info);
-
-        if (!prepared.is_contiguous()) {
-            prepared = prepared.contiguous();
-        }
 
         Shape out_shape = info.out_shape;
         if (info.flatten_all && !keepdim) {
@@ -511,44 +497,43 @@ namespace ins {
 
         Array result(out_shape, DType::F64, x.place());
 
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size, q };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["quantile"][dev][x.dtype()](args);
+        ops().launch("quantile", x.place(), x.dtype(),
+            { result.layout_ptr(), prepared.layout_ptr(),
+              &info.batch_size, &info.reduce_size, &q },
+            { result.layout_ptr() });
 
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
+        Array res = transpose_output(result, info);
         return post_process_keepdim(res, info, keepdim, axis);
     }
 
-    // ========== quantile (array) ==========
+    // ============================================================================
+    // quantile: Quantile (array of quantiles)
+    // ============================================================================
+
     Array quantile(const Array& x, const Array& q, std::optional<int> axis, bool keepdim) {
         int64_t n_q = q.numel();
         if (n_q == 1) {
-            double q_val;
-            switch (q.dtype()) {
-            case DType::F32: q_val = q.item<float>(); break;
-            case DType::F64: q_val = q.item<double>(); break;
-            default: INS_THROW("quantile: q must be float32 or float64, got ", dtype_name(q.dtype()));
-            }
+            double q_val = (q.dtype() == DType::F32)
+                ? static_cast<double>(q.item<float>())
+                : q.item<double>();
             return quantile(x, q_val, axis, keepdim);
         }
 
-        // Multiple quantiles: compute each and stack
         std::vector<Array> results;
         for (int64_t i = 0; i < n_q; ++i) {
             Array q_i = q.slice(0, i, i + 1);
-            double q_val;
-            switch (q.dtype()) {
-            case DType::F32: q_val = q_i.item<float>(); break;
-            case DType::F64: q_val = q_i.item<double>(); break;
-            default: INS_THROW("quantile: q must be float32 or float64, got ", dtype_name(q.dtype()));
-            }
+            double q_val = (q.dtype() == DType::F32)
+                ? static_cast<double>(q_i.item<float>())
+                : q_i.item<double>();
             results.push_back(quantile(x, q_val, axis, keepdim));
         }
         return stack(results, 0);
     }
 
-    // ========== nansum ==========
+    // ============================================================================
+    // nansum: Sum ignoring NaN
+    // ============================================================================
+
     Array nansum(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
         Array prepared = prepare_input(x, info);
@@ -561,18 +546,27 @@ namespace ins {
         Array sum_out(out_shape, x.dtype(), x.place());
         Array count_out(out_shape, DType::I64, x.place());
 
-        OpArgs args = { sum_out, count_out, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["nansum"][dev][x.dtype()](args);
+        std::vector<void*> inputs;
+        inputs.push_back(sum_out.layout_ptr());
+        inputs.push_back(count_out.layout_ptr());
+        inputs.push_back(prepared.layout_ptr());
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&info.batch_size)));
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&info.reduce_size)));
 
-        Array sum_result = std::any_cast<Array>(output[0]);
-        Array count_result = std::any_cast<Array>(output[1]);
+        std::vector<void*> outputs;
+        outputs.push_back(sum_out.layout_ptr());
+        outputs.push_back(count_out.layout_ptr());
 
-        sum_result = transpose_output(sum_result, info);
-        return post_process_keepdim(sum_result, info, keepdim, axis);
+        ops().launch("nansum", x.place(), x.dtype(), inputs, outputs);
+
+        Array res = transpose_output(sum_out, info);
+        return post_process_keepdim(res, info, keepdim, axis);
     }
 
-    // ========== nanmean ==========
+    // ============================================================================
+    // nanmean: Mean ignoring NaN
+    // ============================================================================
+
     Array nanmean(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
         Array prepared = prepare_input(x, info);
@@ -581,64 +575,52 @@ namespace ins {
         if (info.flatten_all && !keepdim) {
             out_shape = Shape({});
         }
+
         Array sum_out(out_shape, x.dtype(), x.place());
         Array count_out(out_shape, DType::I64, x.place());
-        OpArgs args = { sum_out, count_out, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["nansum"][dev][x.dtype()](args);
-        Array sum_arr = std::any_cast<Array>(output[0]);
-        Array count_arr = std::any_cast<Array>(output[1]);
-        Array count_float = count_arr.to(x.dtype());
-        Array result = div(sum_arr, count_float);
-        result = transpose_output(result, info);
-        result = post_process_keepdim(result, info, keepdim, axis);
 
-        return result;
+        std::vector<void*> inputs;
+        inputs.push_back(sum_out.layout_ptr());
+        inputs.push_back(count_out.layout_ptr());
+        inputs.push_back(prepared.layout_ptr());
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&info.batch_size)));
+        inputs.push_back(const_cast<void*>(static_cast<const void*>(&info.reduce_size)));
+
+        std::vector<void*> outputs;
+        outputs.push_back(sum_out.layout_ptr());
+        outputs.push_back(count_out.layout_ptr());
+
+        ops().launch("nansum", x.place(), x.dtype(), inputs, outputs);
+
+        Array count_float = count_out.to(x.dtype());
+        Array result = div(sum_out, count_float);
+
+        result = transpose_output(result, info);
+        return post_process_keepdim(result, info, keepdim, axis);
     }
 
-    // ========== nanmax ==========
+    // ============================================================================
+    // nanmax: Maximum ignoring NaN
+    // ============================================================================
+
     Array nanmax(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
-
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, x.dtype(), x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["nanmax"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
+        return launch_reduction("nanmax", x, info, keepdim, axis, x.dtype());
     }
 
-    // ========== nanmin ==========
+    // ============================================================================
+    // nanmin: Minimum ignoring NaN
+    // ============================================================================
+
     Array nanmin(const Array& x, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
-        Array prepared = prepare_input(x, info);
-
-        Shape out_shape = info.out_shape;
-        if (info.flatten_all && !keepdim) {
-            out_shape = Shape({});
-        }
-
-        Array result(out_shape, x.dtype(), x.place());
-
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["nanmin"][dev][x.dtype()](args);
-
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
-        return post_process_keepdim(res, info, keepdim, axis);
+        return launch_reduction("nanmin", x, info, keepdim, axis, x.dtype());
     }
 
-    // ========== nanvar ==========
+    // ============================================================================
+    // nanvar: Variance ignoring NaN
+    // ============================================================================
+
     Array nanvar(const Array& x, std::optional<int> axis, bool keepdim, int ddof) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
         Array prepared = prepare_input(x, info);
@@ -650,27 +632,36 @@ namespace ins {
 
         Array result(out_shape, x.dtype(), x.place());
 
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size, ddof };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["nanvar"][dev][x.dtype()](args);
+        ops().launch("nanvar", x.place(), x.dtype(),
+            { result.layout_ptr(), prepared.layout_ptr(),
+              &info.batch_size, &info.reduce_size, &ddof },
+            { result.layout_ptr() });
 
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
+        Array res = transpose_output(result, info);
         return post_process_keepdim(res, info, keepdim, axis);
     }
 
-    // ========== nanstd ==========
+    // ============================================================================
+    // nanstd: Standard deviation ignoring NaN
+    // ============================================================================
+
     Array nanstd(const Array& x, std::optional<int> axis, bool keepdim, int ddof) {
         Array v = nanvar(x, axis, keepdim, ddof);
         return sqrt(v);
     }
 
-    // ========== nanmedian ==========
+    // ============================================================================
+    // nanmedian: Median ignoring NaN (50th percentile)
+    // ============================================================================
+
     Array nanmedian(const Array& x, std::optional<int> axis, bool keepdim) {
         return nanquantile(x, 0.5, axis, keepdim);
     }
 
-    // ========== nanquantile (scalar) ==========
+    // ============================================================================
+    // nanquantile: Quantile ignoring NaN (single value)
+    // ============================================================================
+
     Array nanquantile(const Array& x, double q, std::optional<int> axis, bool keepdim) {
         ReductionInfo info = prepare_reduction(x.shape(), axis, keepdim);
         Array prepared = prepare_input(x, info);
@@ -682,46 +673,98 @@ namespace ins {
 
         Array result(out_shape, x.dtype(), x.place());
 
-        OpArgs args = { result, prepared, info.batch_size, info.reduce_size, q };
-        DeviceKind dev = get_device_kind(x.place());
-        OpArgs output = ops()["nanquantile"][dev][x.dtype()](args);
+        ops().launch("nanquantile", x.place(), x.dtype(),
+            { result.layout_ptr(), prepared.layout_ptr(),
+              &info.batch_size, &info.reduce_size, &q },
+            { result.layout_ptr() });
 
-        Array res = std::any_cast<Array>(output[0]);
-        res = transpose_output(res, info);
+        Array res = transpose_output(result, info);
         return post_process_keepdim(res, info, keepdim, axis);
     }
 
-    // ========== nanquantile (array) ==========
+    // ============================================================================
+    // nanquantile: Quantile ignoring NaN (array of quantiles)
+    // ============================================================================
+
     Array nanquantile(const Array& x, const Array& q, std::optional<int> axis, bool keepdim) {
         int64_t n_q = q.numel();
         if (n_q == 1) {
-            double q_val;
-            switch (q.dtype()) {
-            case DType::F32: q_val = q.item<float>(); break;
-            case DType::F64: q_val = q.item<double>(); break;
-            default: INS_THROW("nanquantile: q must be float32 or float64, got ", dtype_name(q.dtype()));
-            }
+            double q_val = (q.dtype() == DType::F32)
+                ? static_cast<double>(q.item<float>())
+                : q.item<double>();
             return nanquantile(x, q_val, axis, keepdim);
         }
 
-        // Multiple quantiles: compute each and stack
         std::vector<Array> results;
         for (int64_t i = 0; i < n_q; ++i) {
             Array q_i = q.slice(0, i, i + 1);
-            double q_val;
-            switch (q.dtype()) {
-            case DType::F32: q_val = q_i.item<float>(); break;
-            case DType::F64: q_val = q_i.item<double>(); break;
-            default: INS_THROW("nanquantile: q must be float32 or float64, got ", dtype_name(q.dtype()));
-            }
+            double q_val = (q.dtype() == DType::F32)
+                ? static_cast<double>(q_i.item<float>())
+                : q_i.item<double>();
             results.push_back(nanquantile(x, q_val, axis, keepdim));
         }
         return stack(results, 0);
     }
 
-    // ========== percentile ==========
+    // ============================================================================
+    // percentile: Percentile (quantile * 100)
+    // ============================================================================
+
     Array percentile(const Array& x, double q, std::optional<int> axis, bool keepdim) {
         return quantile(x, q / 100.0, axis, keepdim);
+    }
+
+    // ============================================================================
+    // bincount: Count occurrences of each integer value
+    // ============================================================================
+
+    Array bincount(const Array& x, std::optional<Array> weights, int64_t minlength) {
+        INS_CHECK(x.shape().ndim() == 1, "bincount: x must be 1D, got shape ", x.shape());
+        INS_CHECK(x.dtype() == DType::I32 || x.dtype() == DType::I64,
+            "bincount: x must be int32 or int64, got ", dtype_name(x.dtype()));
+        INS_CHECK(minlength >= 0, "bincount: minlength must be >= 0, got ", minlength);
+
+        // Compute output length
+        int64_t max_val = 0;
+        if (x.numel() > 0) {
+            Array m = max(x);
+            max_val = (x.dtype() == DType::I32)
+                ? static_cast<int64_t>(m.item<int32_t>())
+                : m.item<int64_t>();
+        }
+        int64_t out_len = std::max(max_val + 1, minlength);
+
+        if (weights.has_value()) {
+            const Array& w = *weights;
+            INS_CHECK(w.numel() == x.numel(),
+                "bincount: weights length ", w.numel(), " must match x length ", x.numel());
+            INS_CHECK(w.shape().ndim() == x.shape().ndim(),
+                "bincount: weights must have same ndim as x");
+
+            DType out_dtype = w.dtype();
+            INS_CHECK(out_dtype == DType::F32 || out_dtype == DType::F64 ||
+                out_dtype == DType::I32 || out_dtype == DType::I64,
+                "bincount: weights must be int32, int64, float32, or float64, got ", dtype_name(out_dtype));
+
+            Array result(Shape({ out_len }), out_dtype, x.place());
+            result = zeros_like(result);
+
+            ops().launch("bincount_weighted", x.place(), x.dtype(),
+                { (void*)result.layout_ptr(), (void*)x.layout_ptr(), (void*)w.layout_ptr() },
+                { (void*)result.layout_ptr() });
+
+            return result;
+        }
+        else {
+            Array result(Shape({ out_len }), DType::I64, x.place());
+            result = zeros_like(result);
+
+            ops().launch("bincount", x.place(), x.dtype(),
+                { (void*)result.layout_ptr(), (void*)x.layout_ptr() },
+                { (void*)result.layout_ptr() });
+
+            return result;
+        }
     }
 
 } // namespace ins

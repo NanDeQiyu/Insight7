@@ -207,4 +207,17 @@ namespace ins {
      */
     Array diff(const Array& x, int n = 1, int axis = -1);
 
+	// ========== Contiguity (copy if needed) ==========
+
+    /**
+      * @brief Ensure the array is contiguous in memory.
+      *
+      * If the input array is already contiguous, returns a view (no copy).
+      * Otherwise, returns a new array with contiguous layout (copy).
+      *
+      * @param x Input array
+      * @return Contiguous array (view or copy)
+	  */
+    Array contiguous(const Array& x);
+
 } // namespace ins

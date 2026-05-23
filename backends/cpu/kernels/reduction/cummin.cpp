@@ -1,0 +1,242 @@
+﻿// backends/cpu/kernels/reduction/cummin.cpp
+/**
+ * @file cummin.cpp
+ * @brief CPU kernel for cumulative minimum operation.
+ *
+ * Computes cumulative minimum along specified axis.
+ * Supports non-contiguous arrays via stride-based addressing.
+ *
+ * @param inputs  [0] = InsightArray* output
+ *                [1] = InsightArray* input
+ *                [2] = int* axis
+ * @param outputs [0] = InsightArray* result
+ * @return C_SUCCESS on success, C_FAILED on error
+ */
+
+#include "common.h"
+
+ // ============================================================================
+ // Generic cummin implementation with stride support
+ // ============================================================================
+
+ /**
+  * @brief Compute cumulative minimum along an axis with stride support.
+  *
+  * @tparam T Data type (must support < operator)
+  * @param src Source data pointer
+  * @param dst Destination data pointer
+  * @param src_offset Source array offset (elements)
+  * @param dst_offset Destination array offset (elements)
+  * @param axis_size Size of the axis dimension
+  * @param outer_stride Number of outer elements (product of dims before axis)
+  * @param inner_stride Number of inner elements (product of dims after axis)
+  * @param src_stride_outer Physical stride for outer dimension (elements)
+  * @param dst_stride_outer Physical stride for outer dimension (elements)
+  * @param src_stride_axis Physical stride along the axis (elements)
+  * @param dst_stride_axis Physical stride along the axis (elements)
+  * @param src_stride_inner Physical stride for inner dimension (elements)
+  * @param dst_stride_inner Physical stride for inner dimension (elements)
+  */
+template<typename T>
+static void cummin_impl(
+    const T* src, T* dst,
+    int64_t src_offset, int64_t dst_offset,
+    int64_t axis_size,
+    int64_t outer_stride, int64_t inner_stride,
+    int64_t src_stride_outer, int64_t dst_stride_outer,
+    int64_t src_stride_axis, int64_t dst_stride_axis,
+    int64_t src_stride_inner, int64_t dst_stride_inner) {
+
+#pragma omp parallel for
+    for (int64_t outer = 0; outer < outer_stride; ++outer) {
+        int64_t src_outer_base = src_offset + outer * src_stride_outer;
+        int64_t dst_outer_base = dst_offset + outer * dst_stride_outer;
+
+        for (int64_t inner = 0; inner < inner_stride; ++inner) {
+            int64_t src_base = src_outer_base + inner * src_stride_inner;
+            int64_t dst_base = dst_outer_base + inner * dst_stride_inner;
+
+            // First element
+            T min_val = src[src_base];
+            dst[dst_base] = min_val;
+
+            // Remaining elements along axis
+            for (int64_t k = 1; k < axis_size; ++k) {
+                int64_t src_idx = src_base + k * src_stride_axis;
+                int64_t dst_idx = dst_base + k * dst_stride_axis;
+                if (src[src_idx] < min_val) {
+                    min_val = src[src_idx];
+                }
+                dst[dst_idx] = min_val;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Stride calculation helpers
+// ============================================================================
+
+/**
+ * @brief Compute outer and inner logical strides for a given axis.
+ */
+static void compute_logical_strides(int64_t ndim, const int64_t* dims, int axis,
+    int64_t* outer_stride, int64_t* inner_stride) {
+    *outer_stride = 1;
+    for (int i = 0; i < axis; ++i) {
+        *outer_stride *= dims[i];
+    }
+    *inner_stride = 1;
+    for (int i = axis + 1; i < ndim; ++i) {
+        *inner_stride *= dims[i];
+    }
+}
+
+/**
+ * @brief Compute physical stride for outer dimension.
+ */
+static int64_t compute_outer_stride(int64_t ndim, const int64_t* strides, int axis, int64_t inner_stride) {
+    if (axis == 0) {
+        return strides[0];
+    }
+    else {
+        return strides[0];
+    }
+}
+
+/**
+ * @brief Compute physical stride along axis.
+ */
+static int64_t compute_axis_stride(int64_t ndim, const int64_t* strides, int axis) {
+    return strides[axis];
+}
+
+/**
+ * @brief Compute physical stride for inner dimension.
+ */
+static int64_t compute_inner_stride(int64_t ndim, const int64_t* strides, int axis) {
+    if (axis + 1 >= ndim) {
+        return 1;
+    }
+    return strides[axis + 1];
+}
+
+// ============================================================================
+// Type dispatch macro
+// ============================================================================
+
+#define CUMMIN_CASE(DTYPE, CTYPE) \
+    case DTYPE: \
+        cummin_impl<CTYPE>( \
+            (const CTYPE*)x->data, (CTYPE*)out->data, \
+            x->offset, out->offset, \
+            axis_size, outer_stride, inner_stride, \
+            src_stride_outer, dst_stride_outer, \
+            src_stride_axis, dst_stride_axis, \
+            src_stride_inner, dst_stride_inner); \
+        break;
+
+// ============================================================================
+// Kernel entry point
+// ============================================================================
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+    C_Status cummin_kernel_cpu(void** inputs, void** outputs) {
+        InsightArray* out = (InsightArray*)outputs[0];
+        InsightArray* x = (InsightArray*)inputs[1];
+
+        if (!out || !x) {
+            cpu_set_last_error("cummin: null array pointer");
+            return C_FAILED;
+        }
+
+        if (!inputs[2]) {
+            cpu_set_last_error("cummin: axis is null");
+            return C_FAILED;
+        }
+
+        int axis = *(int*)inputs[2];
+        int64_t ndim = x->ndim;
+
+        if (axis < 0) axis += ndim;
+        if (axis < 0 || axis >= ndim) {
+            cpu_set_last_error("cummin: axis out of range");
+            return C_FAILED;
+        }
+
+        // Get dimension sizes
+        int64_t dims[INSIGHT_MAX_NDIM];
+        for (int i = 0; i < ndim; ++i) {
+            dims[i] = x->dims[i];
+        }
+
+        int64_t axis_size = dims[axis];
+        int64_t outer_stride, inner_stride;
+        compute_logical_strides(ndim, dims, axis, &outer_stride, &inner_stride);
+
+        // Get physical strides
+        int64_t src_stride_outer = compute_outer_stride(ndim, x->strides, axis, inner_stride);
+        int64_t dst_stride_outer = compute_outer_stride(ndim, out->strides, axis, inner_stride);
+        int64_t src_stride_axis = compute_axis_stride(ndim, x->strides, axis);
+        int64_t dst_stride_axis = compute_axis_stride(ndim, out->strides, axis);
+        int64_t src_stride_inner = compute_inner_stride(ndim, x->strides, axis);
+        int64_t dst_stride_inner = compute_inner_stride(ndim, out->strides, axis);
+
+        switch (x->dtype) {
+            // Boolean
+            CUMMIN_CASE(INSIGHT_DTYPE_BOOL, bool)
+
+                // Unsigned integers
+                CUMMIN_CASE(INSIGHT_DTYPE_U8, uint8_t)
+                CUMMIN_CASE(INSIGHT_DTYPE_U16, uint16_t)
+                CUMMIN_CASE(INSIGHT_DTYPE_U32, uint32_t)
+                CUMMIN_CASE(INSIGHT_DTYPE_U64, uint64_t)
+
+                // Signed integers
+                CUMMIN_CASE(INSIGHT_DTYPE_I8, int8_t)
+                CUMMIN_CASE(INSIGHT_DTYPE_I16, int16_t)
+                CUMMIN_CASE(INSIGHT_DTYPE_I32, int32_t)
+                CUMMIN_CASE(INSIGHT_DTYPE_I64, int64_t)
+
+                // Floating point
+                CUMMIN_CASE(INSIGHT_DTYPE_F16, uint16_t)
+                CUMMIN_CASE(INSIGHT_DTYPE_BF16, uint16_t)
+                CUMMIN_CASE(INSIGHT_DTYPE_F32, float)
+                CUMMIN_CASE(INSIGHT_DTYPE_F64, double)
+                CUMMIN_CASE(INSIGHT_DTYPE_F8_E4M3, uint8_t)
+                CUMMIN_CASE(INSIGHT_DTYPE_F8_E5M2, uint8_t)
+
+        default:
+            cpu_set_last_error("cummin: unsupported dtype");
+            return C_FAILED;
+        }
+
+        return C_SUCCESS;
+    }
+
+#ifdef __cplusplus
+}
+#endif
+
+// ============================================================================
+// Kernel registration for all supported types
+// ============================================================================
+
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_BOOL, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_U8, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_I8, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_U16, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_I16, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_U32, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_I32, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_U64, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_I64, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_F16, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_BF16, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_F32, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_F64, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_F8_E4M3, cummin_kernel_cpu);
+REGISTER_CPU_KERNEL(cummin, INSIGHT_DTYPE_F8_E5M2, cummin_kernel_cpu);

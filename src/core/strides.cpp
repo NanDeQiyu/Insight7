@@ -66,4 +66,13 @@ namespace ins {
         return !(*this == other);
     }
 
+    std::ostream& operator<<(std::ostream& os, const Strides& s) {
+        os << "[";
+        for (int i = 0; i < s.ndim(); ++i) {
+            os << s[i] << (i + 1 < s.ndim() ? ", " : "");
+        }
+        os << "]";
+        return os;
+    }
+
 } // namespace ins

@@ -154,22 +154,24 @@ namespace ins {
     /**
      * @brief Cumulative sum along specified axis.
      *
+     * Output dtype is the same as input dtype.
+     *
      * @param x Input array
      * @param axis Axis to accumulate (0 <= axis < ndim)
-     * @param dtype Output data type (default: float64 for integer inputs)
-     * @return Array with same shape as input
+     * @return Array with same shape and dtype as input
      */
-    Array cumsum(const Array& x, int axis, DType dtype = DType::F64);
+    Array cumsum(const Array& x, int axis);
 
     /**
      * @brief Cumulative product along specified axis.
      *
+     * Output dtype is the same as input dtype.
+     *
      * @param x Input array
      * @param axis Axis to accumulate (0 <= axis < ndim)
-     * @param dtype Output data type (default: float64 for integer inputs)
-     * @return Array with same shape as input
+     * @return Array with same shape and dtype as input
      */
-    Array cumprod(const Array& x, int axis, DType dtype = DType::F64);
+    Array cumprod(const Array& x, int axis);
 
     /**
      * @brief Cumulative maximum along specified axis.
@@ -329,5 +331,15 @@ namespace ins {
      * @return Array of shape (len(q),) + output_shape
      */
     Array nanquantile(const Array& x, const Array& q, std::optional<int> axis = std::nullopt, bool keepdim = false);
+
+    /**
+	* @brief Count occurrences of each integer value in the input array.
+    * 
+	* @param x Input array of non-negative integers
+	* @param weights Optional array of weights for each element in x (same shape as x)
+	* @param minlength Minimum length of the output array (output will have at least this many bins)
+	* @return Array of counts (dtype: int64) where output[i] is the count of occurrences of integer i in x, weighted by weights if provided
+    */
+    Array bincount(const Array& x, std::optional<Array> weights = std::nullopt, int64_t minlength = 0);
 
 } // namespace ins

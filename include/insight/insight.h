@@ -20,14 +20,15 @@
 #include "insight/ops/complex.h"
 #include "insight/ops/operator.h"
 #include "insight/ops/linalg.h"
+#include "insight/ops/indexing.h"
+#include "insight/ops/cast.h"
 
 // I/O utilities
 #include "insight/io/csv.h"
 #include "insight/io/print.h"
 
 // Plugin registry
-#include "insight/plugin/op_registry.h"
-#include "insight/plugin/device_ext.h"
+#include "insight/core/op_registry.h"
 
 // Utilities
 #include "insight/utils/features.h"

@@ -201,7 +201,7 @@ TEST_F(ReductionTest, CumSumCumProd2D) {
     Array x = arange_2d(2, 5, 1.0f, 1.0f);  // [1,2,3,4,5; 6,7,8,9,10]
 
     Array cs = cumsum(x, 1);
-    const double* cs_data = cs.data<double>();
+    const float* cs_data = cs.data<float>();
     EXPECT_NEAR(cs_data[0], 1.0, 1e-8);
     EXPECT_NEAR(cs_data[1], 3.0, 1e-8);
     EXPECT_NEAR(cs_data[2], 6.0, 1e-8);
@@ -213,7 +213,7 @@ TEST_F(ReductionTest, CumSumCumProd2D) {
     EXPECT_NEAR(cs_data[8], 30.0, 1e-8);
     EXPECT_NEAR(cs_data[9], 40.0, 1e-8);
 
-    Array cp = cumprod(x, 1, DType::F64);
+    Array cp = cumprod(x, 1).to(DType::F64);
     const double* cp_data = cp.data<double>();
     EXPECT_NEAR(cp_data[0], 1.0, 1e-8);
     EXPECT_NEAR(cp_data[1], 2.0, 1e-8);
@@ -379,7 +379,7 @@ TEST_F(ReductionTest, CumSum3D) {
     Array x = arange_3d(2, 2, 3);  // slice0: [0,1,2; 3,4,5]; slice1: [6,7,8; 9,10,11]
 
     Array cs = cumsum(x, 2);
-    const double* cs_data = cs.data<double>();
+    const float* cs_data = cs.data<float>();
 
     EXPECT_NEAR(cs_data[0], 0.0, 1e-8);
     EXPECT_NEAR(cs_data[1], 1.0, 1e-8);
@@ -426,4 +426,54 @@ TEST_F(ReductionTest, DtypeConsistency) {
     Array m = mean(x);
     EXPECT_EQ(m.dtype(), DType::F64);
     EXPECT_NEAR(m.item<double>(), 3.0, 1e-5);
+}
+
+
+// ========== bincount tests ==========
+
+TEST_F(ReductionTest, BincountBasic) {
+    Array x = to_array<int32_t>({ 1, 2, 1, 4, 5 });
+    Array result = bincount(x);
+
+    const int64_t* data = result.data<int64_t>();
+    EXPECT_EQ(result.numel(), 6);
+    EXPECT_EQ(data[0], 0);
+    EXPECT_EQ(data[1], 2);
+    EXPECT_EQ(data[2], 1);
+    EXPECT_EQ(data[3], 0);
+    EXPECT_EQ(data[4], 1);
+    EXPECT_EQ(data[5], 1);
+}
+
+TEST_F(ReductionTest, BincountWithWeights) {
+    Array x = to_array<int32_t>({ 1, 2, 1, 4, 5 });
+    Array w = to_array<float>({ 2.1f, 0.4f, 0.1f, 0.5f, 0.5f });
+    Array result = bincount(x, w);
+
+    const float* data = result.data<float>();
+    EXPECT_EQ(result.numel(), 6);
+    EXPECT_NEAR(data[0], 0.0f, 1e-5);
+    EXPECT_NEAR(data[1], 2.2f, 1e-5);
+    EXPECT_NEAR(data[2], 0.4f, 1e-5);
+    EXPECT_NEAR(data[3], 0.0f, 1e-5);
+    EXPECT_NEAR(data[4], 0.5f, 1e-5);
+    EXPECT_NEAR(data[5], 0.5f, 1e-5);
+}
+
+TEST_F(ReductionTest, BincountMinlength) {
+    Array x = to_array<int32_t>({ 1, 2, 1 });
+    Array result = bincount(x, std::nullopt, 5);
+
+    EXPECT_EQ(result.numel(), 5);
+    const int64_t* data = result.data<int64_t>();
+    EXPECT_EQ(data[0], 0);
+    EXPECT_EQ(data[1], 2);
+    EXPECT_EQ(data[2], 1);
+    EXPECT_EQ(data[3], 0);
+    EXPECT_EQ(data[4], 0);
+}
+
+TEST_F(ReductionTest, BincountEmpty) {
+    Array x;
+    EXPECT_THROW(bincount(x), Exception);
 }

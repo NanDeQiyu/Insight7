@@ -1,21 +1,52 @@
-# backends/cpu/CMakeLists.txt
+file(GLOB_RECURSE KERNEL_SOURCES "kernels/*.cpp")
+file(GLOB_RECURSE DEVICE_SOURCES "device/*.cpp")
+file(GLOB_RECURSE REGISTRY_SOURCES "registry/*.cpp")
 
-# 添加当前目录到包含路径
-set(CPU_BACKEND_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+if(INSIGHT_DYNAMIC_CPU_BACKEND)
+    add_library(insight_cpu_backend SHARED
+        ${KERNEL_SOURCES}
+        ${DEVICE_SOURCES}
+        ${REGISTRY_SOURCES}
+    )
+    target_compile_definitions(insight_cpu_backend PRIVATE INSIGHT_CPU_BACKEND_EXPORTS)
+    # DLL needs to link against insight_core for C API symbols
+    target_link_libraries(insight_cpu_backend PRIVATE insight_core)
+else()
+    add_library(insight_cpu_backend STATIC
+        ${KERNEL_SOURCES}
+        ${DEVICE_SOURCES}
+        ${REGISTRY_SOURCES}
+    )
+endif()
 
-# 自动收集所有 .cpp 文件
-file(GLOB CPU_KERNEL_SOURCES "*.cpp")
-
-add_library(insight_cpu_backend STATIC ${CPU_KERNEL_SOURCES})
-
-# 添加包含目录：让 insight_core 和 insight_tests 能包含 backends/cpu/init.h
 target_include_directories(insight_cpu_backend
-    PUBLIC
-        ${CPU_BACKEND_INCLUDE_DIR}  # 暴露给链接它的目标
-    PRIVATE
-        ${INSIGHT_INCLUDE_DIR}
+    PUBLIC ${CMAKE_SOURCE_DIR}/include
 )
 
-target_link_libraries(insight_cpu_backend
-    insight_core
-)
+if(INSIGHT_USE_FFTW3)
+    find_package(FFTW3)
+    if(FFTW3_FOUND)
+        target_link_libraries(insight_cpu_backend PRIVATE ${FFTW3_LIBRARIES})
+        target_compile_definitions(insight_cpu_backend PUBLIC INSIGHT_USE_FFTW3)
+        message(STATUS "FFTW3 found and enabled for CPU backend")
+    else()
+        message(WARNING "FFTW3 not found, disabling FFT support")
+        set(INSIGHT_USE_FFTW3 OFF)
+    endif()
+endif()
+
+# OpenBLAS (optional, for accelerated linear algebra)
+option(INSIGHT_USE_OPENBLAS "Use OpenBLAS for BLAS/LAPACK operations" ON)
+if(INSIGHT_USE_OPENBLAS)
+    find_package(OpenBLAS)
+    if(OpenBLAS_FOUND)
+        target_link_libraries(insight_cpu_backend PRIVATE ${OpenBLAS_LIBRARIES})
+        target_compile_definitions(insight_cpu_backend PUBLIC INSIGHT_USE_OPENBLAS)
+        message(STATUS "OpenBLAS found and enabled for CPU backend")
+    else()
+        message(WARNING "OpenBLAS not found, falling back to CLAPACK for linear algebra")
+        set(INSIGHT_USE_OPENBLAS OFF)
+    endif()
+else()
+    message(STATUS "OpenBLAS disabled by user option")
+endif()

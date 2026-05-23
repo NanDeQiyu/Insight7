@@ -63,10 +63,19 @@ namespace ins {
     }
 
     Place promote_places(const Place& a, const Place& b) {
-        if (a.is_gpu() || b.is_gpu()) {
-            return Place::GPU(0);
+        // Both CPU → stay on CPU
+        if (a.is_cpu() && b.is_cpu()) {
+            return a;
         }
-        return Place::CPU(0);
+
+        // Both GPU → align to a's device
+        if (a.is_gpu() && b.is_gpu()) {
+            return a;
+        }
+
+        // Mixed CPU/GPU → promote to GPU (use the GPU side's device)
+        if (a.is_gpu()) return a;
+        return b;
     }
 
 } // namespace ins

@@ -9,7 +9,6 @@ using namespace ins;
 namespace
 {
 
-
     // Helper: fill array with sequential values
     template<typename T>
     void fill_sequential(Array& arr) {
@@ -370,4 +369,222 @@ TEST(UnaryTest, ViewAbs) {
     EXPECT_FLOAT_EQ(data[5], 4.0f);
     EXPECT_FLOAT_EQ(data[6], 5.0f);
     EXPECT_FLOAT_EQ(data[7], 6.0f);
+}
+
+// tests/cpu/test_unary.cpp
+// 在现有测试后面添加以下测试用例
+
+// ============================================================================
+// IsNaN / IsInf / IsFinite tests
+// ============================================================================
+
+TEST(UnaryTest, IsNan) {
+    // Test with float32
+    Array a({ 2, 4 }, DType::F32);
+    float* a_data = a.data<float>();
+    a_data[0] = 1.0f;
+    a_data[1] = std::nanf("");
+    a_data[2] = 2.0f;
+    a_data[3] = std::nanf("");
+    a_data[4] = 3.0f;
+    a_data[5] = 4.0f;
+    a_data[6] = std::nanf("");
+    a_data[7] = 5.0f;
+
+    Array c = isnan(a);
+
+    std::vector<bool> expected = { false, true, false, true, false, false, true, false };
+    expect_bool_equal(c, expected);
+
+    // Test with float64
+    Array b({ 2, 4 }, DType::F64);
+    double* b_data = b.data<double>();
+    b_data[0] = 1.0;
+    b_data[1] = std::nan("");
+    b_data[2] = 2.0;
+    b_data[3] = std::nan("");
+    b_data[4] = 3.0;
+    b_data[5] = 4.0;
+    b_data[6] = std::nan("");
+    b_data[7] = 5.0;
+
+    Array d = isnan(b);
+
+    expect_bool_equal(d, expected);
+
+    // Test with integer (should always be false)
+    Array e({ 2, 4 }, DType::I32);
+    int32_t* e_data = e.data<int32_t>();
+    for (int64_t i = 0; i < 8; ++i) {
+        e_data[i] = static_cast<int32_t>(i);
+    }
+
+    Array f = isnan(e);
+    std::vector<bool> int_expected(8, false);
+    expect_bool_equal(f, int_expected);
+}
+
+TEST(UnaryTest, IsInf) {
+    // Test with float32
+    Array a({ 2, 4 }, DType::F32);
+    float* a_data = a.data<float>();
+    a_data[0] = 1.0f;
+    a_data[1] = std::numeric_limits<float>::infinity();
+    a_data[2] = 2.0f;
+    a_data[3] = -std::numeric_limits<float>::infinity();
+    a_data[4] = 3.0f;
+    a_data[5] = std::numeric_limits<float>::infinity();
+    a_data[6] = 4.0f;
+    a_data[7] = 5.0f;
+
+    Array c = isinf(a);
+
+    std::vector<bool> expected = { false, true, false, true, false, true, false, false };
+    expect_bool_equal(c, expected);
+
+    // Test with float64
+    Array b({ 2, 4 }, DType::F64);
+    double* b_data = b.data<double>();
+    b_data[0] = 1.0;
+    b_data[1] = std::numeric_limits<double>::infinity();
+    b_data[2] = 2.0;
+    b_data[3] = -std::numeric_limits<double>::infinity();
+    b_data[4] = 3.0;
+    b_data[5] = std::numeric_limits<double>::infinity();
+    b_data[6] = 4.0;
+    b_data[7] = 5.0;
+
+    Array d = isinf(b);
+
+    expect_bool_equal(d, expected);
+
+    // Test with integer (should always be false)
+    Array e({ 2, 4 }, DType::I32);
+    fill_sequential<int32_t>(e);
+
+    Array f = isinf(e);
+    std::vector<bool> int_expected(8, false);
+    expect_bool_equal(f, int_expected);
+}
+
+TEST(UnaryTest, IsFinite) {
+    // Test with float32
+    Array a({ 2, 5 }, DType::F32);
+    float* a_data = a.data<float>();
+    a_data[0] = 1.0f;
+    a_data[1] = std::nanf("");
+    a_data[2] = std::numeric_limits<float>::infinity();
+    a_data[3] = -std::numeric_limits<float>::infinity();
+    a_data[4] = 5.0f;
+    a_data[5] = 6.0f;
+    a_data[6] = std::nanf("");
+    a_data[7] = 7.0f;
+    a_data[8] = std::numeric_limits<float>::infinity();
+    a_data[9] = 8.0f;
+
+    Array c = isfinite(a);
+
+    std::vector<bool> expected = { true, false, false, false, true, true, false, true, false, true };
+    expect_bool_equal(c, expected);
+
+    // Test with float64
+    Array b({ 2, 5 }, DType::F64);
+    double* b_data = b.data<double>();
+    b_data[0] = 1.0;
+    b_data[1] = std::nan("");
+    b_data[2] = std::numeric_limits<double>::infinity();
+    b_data[3] = -std::numeric_limits<double>::infinity();
+    b_data[4] = 5.0;
+    b_data[5] = 6.0;
+    b_data[6] = std::nan("");
+    b_data[7] = 7.0;
+    b_data[8] = std::numeric_limits<double>::infinity();
+    b_data[9] = 8.0;
+
+    Array d = isfinite(b);
+
+    expect_bool_equal(d, expected);
+
+    // Test with integer (should always be true)
+    Array e({ 2, 5 }, DType::I32);
+    int32_t* e_data = e.data<int32_t>();
+    for (int64_t i = 0; i < 10; ++i) {
+        e_data[i] = static_cast<int32_t>(i - 5);
+    }
+
+    Array f = isfinite(e);
+    std::vector<bool> int_expected(10, true);
+    expect_bool_equal(f, int_expected);
+}
+
+// ============================================================================
+// IsNan with complex numbers
+// ============================================================================
+
+TEST(UnaryTest, IsNanComplex) {
+    // Test with complex64
+    Array a({ 2, 3 }, DType::C32);
+    std::complex<float>* a_data = a.data<std::complex<float>>();
+    a_data[0] = std::complex<float>(1.0f, 2.0f);
+    a_data[1] = std::complex<float>(std::nanf(""), 3.0f);
+    a_data[2] = std::complex<float>(4.0f, std::nanf(""));
+    a_data[3] = std::complex<float>(std::nanf(""), std::nanf(""));
+    a_data[4] = std::complex<float>(5.0f, 6.0f);
+    a_data[5] = std::complex<float>(7.0f, 8.0f);
+
+    Array c = isnan(a);
+
+    std::vector<bool> expected = { false, true, true, true, false, false };
+    expect_bool_equal(c, expected);
+
+    // Test with complex128
+    Array b({ 2, 3 }, DType::C64);
+    std::complex<double>* b_data = b.data<std::complex<double>>();
+    b_data[0] = std::complex<double>(1.0, 2.0);
+    b_data[1] = std::complex<double>(std::nan(""), 3.0);
+    b_data[2] = std::complex<double>(4.0, std::nan(""));
+    b_data[3] = std::complex<double>(std::nan(""), std::nan(""));
+    b_data[4] = std::complex<double>(5.0, 6.0);
+    b_data[5] = std::complex<double>(7.0, 8.0);
+
+    Array d = isnan(b);
+
+    expect_bool_equal(d, expected);
+}
+
+TEST(UnaryTest, IsInfComplex) {
+    // Test with complex64
+    Array a({ 2, 3 }, DType::C32);
+    std::complex<float>* a_data = a.data<std::complex<float>>();
+    a_data[0] = std::complex<float>(1.0f, 2.0f);
+    a_data[1] = std::complex<float>(std::numeric_limits<float>::infinity(), 3.0f);
+    a_data[2] = std::complex<float>(4.0f, std::numeric_limits<float>::infinity());
+    a_data[3] = std::complex<float>(std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity());
+    a_data[4] = std::complex<float>(5.0f, 6.0f);
+    a_data[5] = std::complex<float>(7.0f, 8.0f);
+
+    Array c = isinf(a);
+
+    std::vector<bool> expected = { false, true, true, true, false, false };
+    expect_bool_equal(c, expected);
+}
+
+TEST(UnaryTest, IsFiniteComplex) {
+    // Test with complex64
+    Array a({ 2, 4 }, DType::C32);
+    std::complex<float>* a_data = a.data<std::complex<float>>();
+    a_data[0] = std::complex<float>(1.0f, 2.0f);
+    a_data[1] = std::complex<float>(std::nanf(""), 3.0f);
+    a_data[2] = std::complex<float>(4.0f, std::numeric_limits<float>::infinity());
+    a_data[3] = std::complex<float>(5.0f, 6.0f);
+    a_data[4] = std::complex<float>(std::numeric_limits<float>::infinity(), 7.0f);
+    a_data[5] = std::complex<float>(8.0f, 9.0f);
+    a_data[6] = std::complex<float>(10.0f, std::nanf(""));
+    a_data[7] = std::complex<float>(11.0f, 12.0f);
+
+    Array c = isfinite(a);
+
+    // isfinite is true only if both real and imag are finite
+    std::vector<bool> expected = { true, false, false, true, false, true, false, true };
+    expect_bool_equal(c, expected);
 }

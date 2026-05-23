@@ -1,13 +1,8 @@
 // src/ops/creation.cpp
 #include "insight/ops/creation.h"
-#include "insight/plugin/op_registry.h"
-#include "insight/utils/promotion.h"
+#include "insight/core/op_registry.h"
 
 namespace ins {
-
-    static DeviceKind get_device_kind(const Place& place) {
-        return place.is_cpu() ? DeviceKind::CPU : DeviceKind::GPU;
-    }
 
     // ========== Basic Creation ==========
 
@@ -20,27 +15,21 @@ namespace ins {
     }
 
     Array full(const Shape& shape, double fill_value, DType dtype, const Place& place) {
-        // Create array
         Array result(shape, dtype, place);
-
-        // Call fill kernel
-        OpArgs args = { result, fill_value };
-        DeviceKind dev = get_device_kind(place);
-        OpArgs output = ops()["full"][dev][dtype](args);
-
-        return std::any_cast<Array>(output[0]);
+        ops().launch("full", place, dtype,
+            { result.layout_ptr(), &fill_value },
+            { result.layout_ptr() });
+        return result;
     }
 
     Array eye(int64_t n, int64_t m, int64_t k, DType dtype, const Place& place) {
         if (m < 0) m = n;
         Shape shape({ n, m });
         Array result(shape, dtype, place);
-
-        OpArgs args = { result, k };
-        DeviceKind dev = get_device_kind(place);
-        OpArgs output = ops()["eye"][dev][dtype](args);
-
-        return std::any_cast<Array>(output[0]);
+        ops().launch("eye", place, dtype,
+            { result.layout_ptr(), &k },
+            { result.layout_ptr() });
+        return result;
     }
 
     // ========== Range Creation ==========
@@ -50,35 +39,28 @@ namespace ins {
     }
 
     Array arange(double start, double end, double step, DType dtype, const Place& place) {
-        // Compute number of elements
         int64_t num = static_cast<int64_t>(std::ceil((end - start) / step));
         Array result(Shape({ num }), dtype, place);
-
-        OpArgs args = { result, start, step };
-        DeviceKind dev = get_device_kind(place);
-        OpArgs output = ops()["arange"][dev][dtype](args);
-
-        return std::any_cast<Array>(output[0]);
+        ops().launch("arange", place, dtype,
+            { result.layout_ptr(), &start, &step },
+            { result.layout_ptr() });
+        return result;
     }
 
     Array linspace(double start, double stop, int64_t num, DType dtype, const Place& place) {
         Array result(Shape({ num }), dtype, place);
-
-        OpArgs args = { result, start, stop };
-        DeviceKind dev = get_device_kind(place);
-        OpArgs output = ops()["linspace"][dev][dtype](args);
-
-        return std::any_cast<Array>(output[0]);
+        ops().launch("linspace", place, dtype,
+            { result.layout_ptr(), &start, &stop },
+            { result.layout_ptr() });
+        return result;
     }
 
     Array logspace(double start, double stop, int64_t num, double base, DType dtype, const Place& place) {
         Array result(Shape({ num }), dtype, place);
-
-        OpArgs args = { result, start, stop, base };
-        DeviceKind dev = get_device_kind(place);
-        OpArgs output = ops()["logspace"][dev][dtype](args);
-
-        return std::any_cast<Array>(output[0]);
+        ops().launch("logspace", place, dtype,
+            { result.layout_ptr(), &start, &stop, &base },
+            { result.layout_ptr() });
+        return result;
     }
 
     // ========== Like Creation ==========

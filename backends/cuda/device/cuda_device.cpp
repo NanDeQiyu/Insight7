@@ -1,529 +1,641 @@
-// ============================================================================
 // backends/cuda/device/cuda_device.cpp
-// ============================================================================
-#include "cuda_device.h"
-#include "cuda_stream.h"
-#include "cuda_event.h"
-#include "cuda_profiler.h"
-#include "insight/core/exception.h"
-#include <algorithm>
+#include <cuda_runtime.h>
+#include <cuda.h>
+#include <cstdlib>
 #include <cstring>
+#include <string>
 
-namespace ins {
-    namespace gpu {
+#include "insight/c_api/device_ext.h"
+#include "insight/c_api/dtype.h"
 
-        CUDADevice::CUDADevice() : current_device_(-1) {}
+#include "../registry/cuda_registry.h"
 
-        CUDADevice::~CUDADevice() { finalize(); }
+// ========================================================================
+// Thread-local error storage
+// ========================================================================
 
-        void CUDADevice::initialize() {}
+static thread_local std::string gpu_last_error_str;
 
-        void CUDADevice::finalize() {
-            initialized_devices_.clear();
-            current_device_ = -1;
+extern "C" void gpu_set_last_error(const char* msg) {
+    gpu_last_error_str = msg ? msg : "";
+}
+
+extern "C" const char* gpu_get_last_error(void) {
+    if (!gpu_last_error_str.empty()) {
+        return gpu_last_error_str.c_str();
+    }
+    // Fall back to CUDA runtime error
+    const char* cuda_err = cudaGetErrorString(cudaGetLastError());
+    return cuda_err ? cuda_err : "CUDA backend: no error";
+}
+
+// ========================================================================
+// Device Lifecycle (Optional)
+// ========================================================================
+
+static C_Status cuda_initialize(void) {
+    cudaError_t err = cudaFree(nullptr);  // Force CUDA context creation
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_finalize(void) {
+    cudaError_t err = cudaDeviceReset();
+    if (err != cudaSuccess && err != cudaErrorNoDevice) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_init_device(C_Device device) {
+    if (!device) return C_FAILED;
+    cudaError_t err = cudaSetDevice(device->id);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    err = cudaFree(nullptr);  // Force context init on this device
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_deinit_device(C_Device device) {
+    return C_SUCCESS;  // cudaDeviceReset() in finalize handles this
+}
+
+// ========================================================================
+// Device Management (Required)
+// ========================================================================
+
+static C_Status cuda_set_device(C_Device device) {
+    if (!device) return C_FAILED;
+    cudaError_t err = cudaSetDevice(device->id);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_get_device(C_Device device) {
+    if (!device) return C_FAILED;
+    int id;
+    cudaError_t err = cudaGetDevice(&id);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    device->id = id;
+    return C_SUCCESS;
+}
+
+static C_Status cuda_synchronize_device(C_Device device) {
+    cudaError_t err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_get_device_count(size_t* count) {
+    if (!count) return C_FAILED;
+    int c;
+    cudaError_t err = cudaGetDeviceCount(&c);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    *count = static_cast<size_t>(c);
+    return C_SUCCESS;
+}
+
+static C_Status cuda_get_device_list(size_t* devices) {
+    if (!devices) return C_FAILED;
+    size_t count;
+    C_Status s = cuda_get_device_count(&count);
+    if (s != C_SUCCESS) return s;
+    for (size_t i = 0; i < count; ++i) {
+        devices[i] = i;
+    }
+    return C_SUCCESS;
+}
+
+// ========================================================================
+// Memory Management (Required)
+// ========================================================================
+
+static C_Status cuda_device_memory_allocate(C_Device device, void** ptr, size_t size) {
+    if (!ptr) return C_FAILED;
+    if (size == 0) {
+        *ptr = nullptr;
+        return C_SUCCESS;
+    }
+    cudaError_t err = cudaMalloc(ptr, size);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_device_memory_deallocate(C_Device device, void* ptr, size_t size) {
+    if (!ptr) return C_SUCCESS;
+    cudaError_t err = cudaFree(ptr);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_host_memory_allocate(C_Device device, void** ptr, size_t size) {
+    if (!ptr) return C_FAILED;
+    if (size == 0) {
+        *ptr = nullptr;
+        return C_SUCCESS;
+    }
+    cudaError_t err = cudaMallocHost(ptr, size);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_host_memory_deallocate(C_Device device, void* ptr, size_t size) {
+    if (!ptr) return C_SUCCESS;
+    cudaError_t err = cudaFreeHost(ptr);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_memory_copy_h2d(C_Device device, void* dst, const void* src, size_t size) {
+    if (!dst || !src) return C_FAILED;
+    cudaError_t err = cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_memory_copy_d2h(C_Device device, void* dst, const void* src, size_t size) {
+    if (!dst || !src) return C_FAILED;
+    cudaError_t err = cudaMemcpy(dst, src, size, cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_memory_copy_d2d(C_Device device, void* dst, const void* src, size_t size) {
+    if (!dst || !src) return C_FAILED;
+    cudaError_t err = cudaMemcpy(dst, src, size, cudaMemcpyDeviceToDevice);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_memory_copy_p2p(C_Device dst_device, C_Device src_device,
+    void* dst, const void* src, size_t size) {
+    if (!dst || !src) return C_FAILED;
+    cudaError_t err = cudaMemcpyPeer(dst, dst_device->id, src, src_device->id, size);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_device_memory_set(C_Device device, void* ptr, unsigned char value, size_t size) {
+    if (!ptr || size == 0) return C_SUCCESS;
+    cudaError_t err = cudaMemset(ptr, value, size);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_device_memory_stats(C_Device device, size_t* total_memory, size_t* free_memory) {
+    if (!total_memory || !free_memory) return C_FAILED;
+    cudaError_t err = cudaMemGetInfo(free_memory, total_memory);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+// ========================================================================
+// Asynchronous Memory Operations (Optional)
+// ========================================================================
+
+static C_Status cuda_async_memory_copy_h2d(C_Device device, C_Stream stream,
+    void* dst, const void* src, size_t size) {
+    if (!dst || !src) return C_FAILED;
+    cudaError_t err = cudaMemcpyAsync(dst, src, size, cudaMemcpyHostToDevice,
+        reinterpret_cast<cudaStream_t>(stream));
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_async_memory_copy_d2h(C_Device device, C_Stream stream,
+    void* dst, const void* src, size_t size) {
+    if (!dst || !src) return C_FAILED;
+    cudaError_t err = cudaMemcpyAsync(dst, src, size, cudaMemcpyDeviceToHost,
+        reinterpret_cast<cudaStream_t>(stream));
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_async_memory_copy_d2d(C_Device device, C_Stream stream,
+    void* dst, const void* src, size_t size) {
+    if (!dst || !src) return C_FAILED;
+    cudaError_t err = cudaMemcpyAsync(dst, src, size, cudaMemcpyDeviceToDevice,
+        reinterpret_cast<cudaStream_t>(stream));
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_async_memory_copy_p2p(C_Device dst_device, C_Device src_device,
+    C_Stream stream, void* dst, const void* src, size_t size) {
+    if (!dst || !src) return C_FAILED;
+    cudaError_t err = cudaMemcpyPeerAsync(dst, dst_device->id, src, src_device->id, size,
+        reinterpret_cast<cudaStream_t>(stream));
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+// ========================================================================
+// Stream Management (Optional)
+// ========================================================================
+
+static C_Status cuda_create_stream(C_Device device, C_Stream* stream) {
+    if (!stream) return C_FAILED;
+    cudaStream_t s;
+    cudaError_t err = cudaStreamCreate(&s);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    *stream = reinterpret_cast<C_Stream>(s);
+    return C_SUCCESS;
+}
+
+static C_Status cuda_destroy_stream(C_Device device, C_Stream stream) {
+    cudaError_t err = cudaStreamDestroy(reinterpret_cast<cudaStream_t>(stream));
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_query_stream(C_Device device, C_Stream stream) {
+    cudaError_t err = cudaStreamQuery(reinterpret_cast<cudaStream_t>(stream));
+    if (err == cudaSuccess) return C_SUCCESS;
+    if (err == cudaErrorNotReady) return C_WARNING;
+    gpu_set_last_error(cudaGetErrorString(err));
+    return C_FAILED;
+}
+
+static C_Status cuda_synchronize_stream(C_Device device, C_Stream stream) {
+    cudaError_t err = cudaStreamSynchronize(reinterpret_cast<cudaStream_t>(stream));
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_stream_add_callback(C_Device device, C_Stream stream,
+    void (*callback)(C_Device, C_Stream, void*, C_Status*),
+    void* user_data) {
+    // Wrap C API callback for CUDA callback
+    cudaError_t err = cudaLaunchHostFunc(
+        reinterpret_cast<cudaStream_t>(stream),
+        [](void* data) {
+            // User callback
+        },
+        user_data
+        );
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_stream_wait_event(C_Device device, C_Stream stream, C_Event event) {
+    cudaError_t err = cudaStreamWaitEvent(
+        reinterpret_cast<cudaStream_t>(stream),
+        reinterpret_cast<cudaEvent_t>(event), 0
+    );
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+// ========================================================================
+// Event Management (Required)
+// ========================================================================
+
+static C_Status cuda_create_event(C_Device device, C_Event* event) {
+    if (!event) return C_FAILED;
+    cudaEvent_t e;
+    cudaError_t err = cudaEventCreate(&e);
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    *event = reinterpret_cast<C_Event>(e);
+    return C_SUCCESS;
+}
+
+static C_Status cuda_destroy_event(C_Device device, C_Event event) {
+    cudaError_t err = cudaEventDestroy(reinterpret_cast<cudaEvent_t>(event));
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_record_event(C_Device device, C_Stream stream, C_Event event) {
+    cudaError_t err = cudaEventRecord(
+        reinterpret_cast<cudaEvent_t>(event),
+        reinterpret_cast<cudaStream_t>(stream)
+    );
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_query_event(C_Device device, C_Event event) {
+    cudaError_t err = cudaEventQuery(reinterpret_cast<cudaEvent_t>(event));
+    if (err == cudaSuccess) return C_SUCCESS;
+    if (err == cudaErrorNotReady) return C_WARNING;
+    gpu_set_last_error(cudaGetErrorString(err));
+    return C_FAILED;
+}
+
+static C_Status cuda_synchronize_event(C_Device device, C_Event event) {
+    cudaError_t err = cudaEventSynchronize(reinterpret_cast<cudaEvent_t>(event));
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+static C_Status cuda_elapsed_time(C_Event start, C_Event end, float* ms) {
+    if (!ms) return C_FAILED;
+    cudaError_t err = cudaEventElapsedTime(ms, reinterpret_cast<cudaEvent_t>(start),
+        reinterpret_cast<cudaEvent_t>(end));
+    if (err != cudaSuccess) {
+        gpu_set_last_error(cudaGetErrorString(err));
+        return C_FAILED;
+    }
+    return C_SUCCESS;
+}
+
+// ========================================================================
+// Device Information (Required)
+// ========================================================================
+
+static C_Status cuda_get_compute_capability(C_Device device, size_t* capability) {
+    if (!capability || !device) return C_FAILED;
+    int major, minor;
+    cudaError_t err = cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device->id);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    err = cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device->id);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    *capability = static_cast<size_t>(major * 10 + minor);
+    return C_SUCCESS;
+}
+
+static C_Status cuda_get_runtime_version(C_Device device, size_t* version) {
+    if (!version) return C_FAILED;
+    int v;
+    cudaError_t err = cudaRuntimeGetVersion(&v);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    *version = static_cast<size_t>(v);
+    return C_SUCCESS;
+}
+
+static C_Status cuda_get_driver_version(C_Device device, size_t* version) {
+    if (!version) return C_FAILED;
+    int v;
+    cudaError_t err = cudaDriverGetVersion(&v);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    *version = static_cast<size_t>(v);
+    return C_SUCCESS;
+}
+
+static C_Status cuda_get_multi_process(C_Device device, size_t* multi_process) {
+    if (!multi_process || !device) return C_FAILED;
+    int mp;
+    cudaError_t err = cudaDeviceGetAttribute(&mp, cudaDevAttrMultiProcessorCount, device->id);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    *multi_process = static_cast<size_t>(mp);
+    return C_SUCCESS;
+}
+
+static C_Status cuda_get_max_threads_per_mp(C_Device device, size_t* threads) {
+    if (!threads || !device) return C_FAILED;
+    int t;
+    cudaError_t err = cudaDeviceGetAttribute(&t, cudaDevAttrMaxThreadsPerMultiProcessor, device->id);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    *threads = static_cast<size_t>(t);
+    return C_SUCCESS;
+}
+
+static C_Status cuda_get_max_threads_per_block(C_Device device, size_t* threads) {
+    if (!threads || !device) return C_FAILED;
+    int t;
+    cudaError_t err = cudaDeviceGetAttribute(&t, cudaDevAttrMaxThreadsPerBlock, device->id);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    *threads = static_cast<size_t>(t);
+    return C_SUCCESS;
+}
+
+static C_Status cuda_get_max_grid_dim_size(C_Device device, size_t dims[3]) {
+    if (!dims || !device) return C_FAILED;
+    int x, y, z;
+    cudaError_t err;
+    err = cudaDeviceGetAttribute(&x, cudaDevAttrMaxGridDimX, device->id);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    err = cudaDeviceGetAttribute(&y, cudaDevAttrMaxGridDimY, device->id);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    err = cudaDeviceGetAttribute(&z, cudaDevAttrMaxGridDimZ, device->id);
+    if (err != cudaSuccess) { gpu_set_last_error(cudaGetErrorString(err)); return C_FAILED; }
+    dims[0] = static_cast<size_t>(x);
+    dims[1] = static_cast<size_t>(y);
+    dims[2] = static_cast<size_t>(z);
+    return C_SUCCESS;
+}
+
+// ========================================================================
+// Profiler (Optional)
+// ========================================================================
+
+static C_Status cuda_profiler_create(C_Profiler* prof, const char* name, int device_id) {
+    if (prof) *prof = nullptr;  // CUDA profiler uses nvtx/cupti externally
+    return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_destroy(C_Profiler prof) {
+    return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_start(C_Profiler prof) {
+    return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_stop(C_Profiler prof) {
+    return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_reset(C_Profiler prof) {
+    return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_begin_event(C_Profiler prof, const char* name) {
+    return C_SUCCESS;  // Use nvtx for detailed profiling
+}
+
+static C_Status cuda_profiler_end_event(C_Profiler prof) {
+    return C_SUCCESS;
+}
+
+// ========================================================================
+// InitPluginGPU - GPU Backend Entry Point
+// ========================================================================
+
+extern "C"
+{
+    INSIGHT_GPU_API C_Status InitPluginGPU(CustomRuntimeParams* params) {
+        if (!params || !params->interface) {
+            return C_FAILED;
         }
 
-        void CUDADevice::init_device(int device_id) {
-            cudaError_t err = cudaSetDevice(device_id);
-            if (err != cudaSuccess) {
-                INS_THROW("Failed to set CUDA device for initialization: ", cudaGetErrorString(err));
-            }
-            initialized_devices_.push_back(device_id);
+        INSIGHT_CHECK_CUSTOM_DEVICE_VERSION(params);
+
+        C_DeviceInterface* iface = params->interface;
+        iface->size = sizeof(C_DeviceInterface);
+
+        // Device Lifecycle
+        iface->initialize = cuda_initialize;
+        iface->finalize = cuda_finalize;
+        iface->init_device = cuda_init_device;
+        iface->deinit_device = cuda_deinit_device;
+
+        // Device Management
+        iface->set_device = cuda_set_device;
+        iface->get_device = cuda_get_device;
+        iface->synchronize_device = cuda_synchronize_device;
+        iface->get_device_count = cuda_get_device_count;
+        iface->get_device_list = cuda_get_device_list;
+
+        // Memory Management
+        iface->device_memory_allocate = cuda_device_memory_allocate;
+        iface->device_memory_deallocate = cuda_device_memory_deallocate;
+        iface->host_memory_allocate = cuda_host_memory_allocate;
+        iface->host_memory_deallocate = cuda_host_memory_deallocate;
+        iface->memory_copy_h2d = cuda_memory_copy_h2d;
+        iface->memory_copy_d2h = cuda_memory_copy_d2h;
+        iface->memory_copy_d2d = cuda_memory_copy_d2d;
+        iface->memory_copy_p2p = cuda_memory_copy_p2p;
+        iface->device_memory_set = cuda_device_memory_set;
+        iface->device_memory_stats = cuda_device_memory_stats;
+
+        // Async Memory
+        iface->async_memory_copy_h2d = cuda_async_memory_copy_h2d;
+        iface->async_memory_copy_d2h = cuda_async_memory_copy_d2h;
+        iface->async_memory_copy_d2d = cuda_async_memory_copy_d2d;
+        iface->async_memory_copy_p2p = cuda_async_memory_copy_p2p;
+
+        // Streams
+        iface->create_stream = cuda_create_stream;
+        iface->destroy_stream = cuda_destroy_stream;
+        iface->query_stream = cuda_query_stream;
+        iface->synchronize_stream = cuda_synchronize_stream;
+        iface->stream_add_callback = cuda_stream_add_callback;
+        iface->stream_wait_event = cuda_stream_wait_event;
+
+        // Events
+        iface->create_event = cuda_create_event;
+        iface->destroy_event = cuda_destroy_event;
+        iface->record_event = cuda_record_event;
+        iface->query_event = cuda_query_event;
+        iface->synchronize_event = cuda_synchronize_event;
+        iface->elapsed_time = cuda_elapsed_time;
+
+        // Device Info
+        iface->get_compute_capability = cuda_get_compute_capability;
+        iface->get_runtime_version = cuda_get_runtime_version;
+        iface->get_driver_version = cuda_get_driver_version;
+        iface->get_multi_process = cuda_get_multi_process;
+        iface->get_max_threads_per_mp = cuda_get_max_threads_per_mp;
+        iface->get_max_threads_per_block = cuda_get_max_threads_per_block;
+        iface->get_max_grid_dim_size = cuda_get_max_grid_dim_size;
+
+        // Profiler
+        iface->profiler_create = cuda_profiler_create;
+        iface->profiler_destroy = cuda_profiler_destroy;
+        iface->profiler_start = cuda_profiler_start;
+        iface->profiler_stop = cuda_profiler_stop;
+        iface->profiler_reset = cuda_profiler_reset;
+        iface->profiler_begin_event = cuda_profiler_begin_event;
+        iface->profiler_end_event = cuda_profiler_end_event;
+
+        // Error
+        iface->get_last_error = gpu_get_last_error;
+
+        // Reserved
+        for (int i = 0; i < 8; ++i) {
+            iface->reserved[i] = nullptr;
         }
 
-        void CUDADevice::deinit_device(int device_id) {
-            auto it = std::find(initialized_devices_.begin(), initialized_devices_.end(), device_id);
-            if (it != initialized_devices_.end()) {
-                initialized_devices_.erase(it);
-            }
-            if (current_device_ == device_id) {
-                current_device_ = -1;
-            }
+        // Device identity
+        params->device_type = const_cast<char*>("cuda");
+        params->sub_device_type = const_cast<char*>("v1.0");
+
+        if (params->register_kernel) {
+            gpu_sync_kernels(params->register_kernel);
         }
 
-        void CUDADevice::set_device(int device_id) {
-            if (current_device_ == device_id) return;
-            cudaError_t err = cudaSetDevice(device_id);
-            if (err != cudaSuccess) {
-                INS_THROW("Failed to set CUDA device ", device_id, ": ", cudaGetErrorString(err));
-            }
-            current_device_ = device_id;
-        }
-
-        int CUDADevice::get_device() const {
-            int device;
-            cudaError_t err = cudaGetDevice(&device);
-            if (err != cudaSuccess) {
-                INS_THROW("Failed to get current CUDA device: ", cudaGetErrorString(err));
-            }
-            return device;
-        }
-
-        void CUDADevice::synchronize_device(int device_id) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaError_t err = cudaDeviceSynchronize();
-            if (err != cudaSuccess) {
-                INS_THROW("Failed to synchronize CUDA device ", device_id, ": ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        size_t CUDADevice::get_device_count() const {
-            int count;
-            cudaError_t err = cudaGetDeviceCount(&count);
-            if (err != cudaSuccess) {
-                return 0;
-            }
-            return static_cast<size_t>(count);
-        }
-
-        void CUDADevice::get_device_list(size_t* devices) const {
-            size_t count = get_device_count();
-            for (size_t i = 0; i < count; ++i) {
-                devices[i] = i;
-            }
-        }
-
-        void CUDADevice::device_memory_allocate(int device_id, void** ptr, size_t size) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaError_t err = cudaMalloc(ptr, size);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaMalloc failed for device ", device_id,
-                    " (size=", size, "): ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::device_memory_deallocate(int device_id, void* ptr, size_t size) {
-            (void)size;
-            int original_device = get_device();
-            set_device(device_id);
-            cudaError_t err = cudaFree(ptr);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaFree failed for device ", device_id, ": ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::host_memory_allocate(int device_id, void** ptr, size_t size) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaError_t err = cudaHostAlloc(ptr, size, cudaHostAllocDefault);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaHostAlloc failed for device ", device_id,
-                    " (size=", size, "): ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::host_memory_deallocate(int device_id, void* ptr, size_t size) {
-            (void)size;
-            int original_device = get_device();
-            set_device(device_id);
-            cudaError_t err = cudaFreeHost(ptr);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaFreeHost failed for device ", device_id, ": ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::memory_copy_h2d(int device_id, void* dst, const void* src, size_t size) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaError_t err = cudaMemcpy(dst, src, size, cudaMemcpyHostToDevice);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaMemcpy H2D failed for device ", device_id,
-                    " (size=", size, "): ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::memory_copy_d2h(int device_id, void* dst, const void* src, size_t size) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaError_t err = cudaMemcpy(dst, src, size, cudaMemcpyDeviceToHost);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaMemcpy D2H failed for device ", device_id,
-                    " (size=", size, "): ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::memory_copy_d2d(int device_id, void* dst, const void* src, size_t size) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaError_t err = cudaMemcpy(dst, src, size, cudaMemcpyDeviceToDevice);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaMemcpy D2D failed for device ", device_id,
-                    " (size=", size, "): ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::memory_copy_p2p(int dst_device, int src_device,
-            void* dst, const void* src, size_t size) {
-            int original_device = get_device();
-            int can_access = 0;
-            cudaError_t err = cudaDeviceCanAccessPeer(&can_access, dst_device, src_device);
-            if (err != cudaSuccess) {
-                INS_THROW("Failed to check peer access capability between device ",
-                    src_device, " and ", dst_device, ": ", cudaGetErrorString(err));
-            }
-            if (can_access) {
-                set_device(dst_device);
-                err = cudaDeviceEnablePeerAccess(src_device, 0);
-                if (err != cudaSuccess && err != cudaErrorPeerAccessAlreadyEnabled) {
-                    INS_THROW("Failed to enable peer access from device ",
-                        dst_device, " to ", src_device, ": ", cudaGetErrorString(err));
-                }
-                err = cudaMemcpyPeer(dst, dst_device, src, src_device, size);
-                if (err != cudaSuccess) {
-                    INS_THROW("cudaMemcpyPeer failed from device ", src_device,
-                        " to ", dst_device, " (size=", size, "): ", cudaGetErrorString(err));
-                }
-            }
-            else {
-                void* tmp = std::malloc(size);
-                memory_copy_d2h(src_device, tmp, src, size);
-                memory_copy_h2d(dst_device, dst, tmp, size);
-                std::free(tmp);
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::device_memory_set(int device_id, void* ptr, unsigned char value, size_t size) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaError_t err = cudaMemset(ptr, value, size);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaMemset failed for device ", device_id,
-                    " (size=", size, "): ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::device_memory_stats(int device_id, size_t* total, size_t* free) {
-            int original_device = get_device();
-            set_device(device_id);
-            size_t free_bytes, total_bytes;
-            cudaError_t err = cudaMemGetInfo(&free_bytes, &total_bytes);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaMemGetInfo failed for device ", device_id, ": ", cudaGetErrorString(err));
-            }
-            *total = total_bytes;
-            *free = free_bytes;
-            set_device(original_device);
-        }
-
-        void CUDADevice::async_memory_copy_h2d(int device_id, Stream* stream,
-            void* dst, const void* src, size_t size) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t cuda_stream = (stream) ? static_cast<CUDAStream*>(stream)->get() : nullptr;
-            cudaError_t err = cudaMemcpyAsync(dst, src, size, cudaMemcpyHostToDevice, cuda_stream);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaMemcpyAsync H2D failed for device ", device_id,
-                    " (size=", size, "): ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::async_memory_copy_d2h(int device_id, Stream* stream,
-            void* dst, const void* src, size_t size) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t cuda_stream = (stream) ? static_cast<CUDAStream*>(stream)->get() : nullptr;
-            cudaError_t err = cudaMemcpyAsync(dst, src, size, cudaMemcpyDeviceToHost, cuda_stream);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaMemcpyAsync D2H failed for device ", device_id,
-                    " (size=", size, "): ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::async_memory_copy_d2d(int device_id, Stream* stream,
-            void* dst, const void* src, size_t size) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t cuda_stream = (stream) ? static_cast<CUDAStream*>(stream)->get() : nullptr;
-            cudaError_t err = cudaMemcpyAsync(dst, src, size, cudaMemcpyDeviceToDevice, cuda_stream);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaMemcpyAsync D2D failed for device ", device_id,
-                    " (size=", size, "): ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::async_memory_copy_p2p(int dst_device, int src_device, Stream* stream,
-            void* dst, const void* src, size_t size) {
-            int original_device = get_device();
-            int can_access = 0;
-            cudaError_t err = cudaDeviceCanAccessPeer(&can_access, dst_device, src_device);
-            if (err != cudaSuccess) {
-                INS_THROW("Failed to check peer access capability between device ",
-                    src_device, " and ", dst_device, ": ", cudaGetErrorString(err));
-            }
-            if (can_access) {
-                set_device(dst_device);
-                err = cudaDeviceEnablePeerAccess(src_device, 0);
-                if (err != cudaSuccess && err != cudaErrorPeerAccessAlreadyEnabled) {
-                    INS_THROW("Failed to enable peer access from device ",
-                        dst_device, " to ", src_device, ": ", cudaGetErrorString(err));
-                }
-                cudaStream_t cuda_stream = (stream) ? static_cast<CUDAStream*>(stream)->get() : nullptr;
-                err = cudaMemcpyPeerAsync(dst, dst_device, src, src_device, size, cuda_stream);
-                if (err != cudaSuccess) {
-                    INS_THROW("cudaMemcpyPeerAsync failed from device ", src_device,
-                        " to ", dst_device, " (size=", size, "): ", cudaGetErrorString(err));
-                }
-            }
-            else {
-                void* tmp = std::malloc(size);
-                async_memory_copy_d2h(src_device, stream, tmp, src, size);
-                if (stream) {
-                    synchronize_stream(src_device, stream);
-                }
-                else {
-                    synchronize_device(src_device);
-                }
-                async_memory_copy_h2d(dst_device, stream, dst, tmp, size);
-                std::free(tmp);
-            }
-            set_device(original_device);
-        }
-
-        Stream* CUDADevice::create_stream(int device_id) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t stream;
-            cudaError_t err = cudaStreamCreate(&stream);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaStreamCreate failed for device ", device_id, ": ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-            return new CUDAStream(stream);
-        }
-
-        void CUDADevice::destroy_stream(int device_id, Stream* stream) {
-            if (!stream) return;
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t cuda_stream = static_cast<CUDAStream*>(stream)->get();
-            cudaError_t err = cudaStreamDestroy(cuda_stream);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaStreamDestroy failed for device ", device_id, ": ", cudaGetErrorString(err));
-            }
-            delete stream;
-            set_device(original_device);
-        }
-
-        bool CUDADevice::query_stream(int device_id, Stream* stream) {
-            if (!stream) return true;
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t cuda_stream = static_cast<CUDAStream*>(stream)->get();
-            cudaError_t err = cudaStreamQuery(cuda_stream);
-            set_device(original_device);
-            return (err == cudaSuccess);
-        }
-
-        void CUDADevice::synchronize_stream(int device_id, Stream* stream) {
-            if (!stream) {
-                synchronize_device(device_id);
-                return;
-            }
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t cuda_stream = static_cast<CUDAStream*>(stream)->get();
-            cudaError_t err = cudaStreamSynchronize(cuda_stream);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaStreamSynchronize failed for device ", device_id,
-                    ": ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::stream_add_callback(int device_id, Stream* stream,
-            void (*callback)(int, Stream*, void*, int*),
-            void* user_data) {
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t cuda_stream = (stream) ? static_cast<CUDAStream*>(stream)->get() : nullptr;
-            struct CallbackData {
-                int device_id;
-                Stream* stream;
-                void* user_data;
-                void (*callback)(int, Stream*, void*, int*);
-            };
-            auto* data = new CallbackData{ device_id, stream, user_data, callback };
-            cudaError_t err = cudaStreamAddCallback(
-                cuda_stream,
-                [](cudaStream_t, cudaError_t, void* data_ptr) {
-                    auto* cb_data = static_cast<CallbackData*>(data_ptr);
-                    int status = 0;
-                    cb_data->callback(cb_data->device_id, cb_data->stream,
-                        cb_data->user_data, &status);
-                    delete cb_data;
-                },
-                data, 0);
-            if (err != cudaSuccess) {
-                delete data;
-                INS_THROW("cudaStreamAddCallback failed for device ", device_id,
-                    ": ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        void CUDADevice::stream_wait_event(int device_id, Stream* stream, Event* event) {
-            if (!event) return;
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t cuda_stream = (stream) ? static_cast<CUDAStream*>(stream)->get() : nullptr;
-            cudaEvent_t cuda_event = static_cast<CUDAEvent*>(event)->get();
-            cudaError_t err = cudaStreamWaitEvent(cuda_stream, cuda_event, 0);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaStreamWaitEvent failed for device ", device_id,
-                    ": ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        Event* CUDADevice::create_event(int device_id) {
-            int original_device = get_device();
-            set_device(device_id);
-            auto* event = new CUDAEvent();
-            set_device(original_device);
-            return event;
-        }
-
-        void CUDADevice::destroy_event(int device_id, Event* event) {
-            if (!event) return;
-            int original_device = get_device();
-            set_device(device_id);
-            delete event;
-            set_device(original_device);
-        }
-
-        void CUDADevice::record_event(int device_id, Stream* stream, Event* event) {
-            if (!event) return;
-            int original_device = get_device();
-            set_device(device_id);
-            cudaStream_t cuda_stream = (stream) ? static_cast<CUDAStream*>(stream)->get() : nullptr;
-            cudaEvent_t cuda_event = static_cast<CUDAEvent*>(event)->get();
-            cudaError_t err = cudaEventRecord(cuda_event, cuda_stream);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaEventRecord failed for device ", device_id,
-                    ": ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        bool CUDADevice::query_event(int device_id, Event* event) {
-            if (!event) return true;
-            int original_device = get_device();
-            set_device(device_id);
-            cudaEvent_t cuda_event = static_cast<CUDAEvent*>(event)->get();
-            cudaError_t err = cudaEventQuery(cuda_event);
-            set_device(original_device);
-            return (err == cudaSuccess);
-        }
-
-        void CUDADevice::synchronize_event(int device_id, Event* event) {
-            if (!event) return;
-            int original_device = get_device();
-            set_device(device_id);
-            cudaEvent_t cuda_event = static_cast<CUDAEvent*>(event)->get();
-            cudaError_t err = cudaEventSynchronize(cuda_event);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaEventSynchronize failed for device ", device_id,
-                    ": ", cudaGetErrorString(err));
-            }
-            set_device(original_device);
-        }
-
-        float CUDADevice::elapsed_time(Event* start, Event* end) {
-            if (!start || !end) return 0.0f;
-            cudaEvent_t cuda_start = static_cast<CUDAEvent*>(start)->get();
-            cudaEvent_t cuda_end = static_cast<CUDAEvent*>(end)->get();
-            float ms;
-            cudaError_t err = cudaEventElapsedTime(&ms, cuda_start, cuda_end);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaEventElapsedTime failed: ", cudaGetErrorString(err));
-            }
-            return ms;
-        }
-
-        cudaDeviceProp CUDADevice::get_device_properties(int device_id) const {
-            int original_device = get_device();
-            const_cast<CUDADevice*>(this)->set_device(device_id);
-            cudaDeviceProp prop;
-            cudaError_t err = cudaGetDeviceProperties(&prop, device_id);
-            if (err != cudaSuccess) {
-                INS_THROW("cudaGetDeviceProperties failed for device ", device_id,
-                    ": ", cudaGetErrorString(err));
-            }
-            const_cast<CUDADevice*>(this)->set_device(original_device);
-            return prop;
-        }
-
-        size_t CUDADevice::get_compute_capability(int device_id) const {
-            auto prop = get_device_properties(device_id);
-            return static_cast<size_t>(prop.major * 10 + prop.minor);
-        }
-
-        size_t CUDADevice::get_runtime_version(int device_id) const {
-            (void)device_id;
-            int version;
-            cudaError_t err = cudaRuntimeGetVersion(&version);
-            if (err != cudaSuccess) return 0;
-            return static_cast<size_t>(version);
-        }
-
-        size_t CUDADevice::get_driver_version(int device_id) const {
-            (void)device_id;
-            int version;
-            cudaError_t err = cudaDriverGetVersion(&version);
-            if (err != cudaSuccess) return 0;
-            return static_cast<size_t>(version);
-        }
-
-        size_t CUDADevice::get_multi_process(int device_id) const {
-            auto prop = get_device_properties(device_id);
-            return static_cast<size_t>(prop.multiProcessorCount);
-        }
-
-        size_t CUDADevice::get_max_threads_per_mp(int device_id) const {
-            auto prop = get_device_properties(device_id);
-            return static_cast<size_t>(prop.maxThreadsPerMultiProcessor);
-        }
-
-        size_t CUDADevice::get_max_threads_per_block(int device_id) const {
-            auto prop = get_device_properties(device_id);
-            return static_cast<size_t>(prop.maxThreadsPerBlock);
-        }
-
-        std::array<size_t, 3> CUDADevice::get_max_grid_dim_size(int device_id) const {
-            auto prop = get_device_properties(device_id);
-            return {
-                static_cast<size_t>(prop.maxGridSize[0]),
-                static_cast<size_t>(prop.maxGridSize[1]),
-                static_cast<size_t>(prop.maxGridSize[2])
-            };
-        }
-
-        Profiler* CUDADevice::create_profiler(int device_id, const std::string& name) {
-            int original_device = get_device();
-            set_device(device_id);
-            auto* profiler = new CUDAProfiler(device_id, name);
-            set_device(original_device);
-            return profiler;
-        }
-
-        void CUDADevice::destroy_profiler(Profiler* profiler) {
-            delete profiler;
-        }
-
-    } // namespace gpu
-} // namespace ins
+        return C_SUCCESS;
+    }
+}

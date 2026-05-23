@@ -1,9 +1,8 @@
-// src/ops/math.cpp
+// src/ops/elementwise.cpp
 #include "insight/ops/elementwise.h"
-#include "insight/plugin/op_registry.h"
 #include "insight/ops/broadcast.h"
 #include "insight/utils/promotion.h"
-#include <iostream>
+#include "insight/core/op_registry.h"
 
 namespace ins {
 
@@ -11,198 +10,282 @@ namespace ins {
         return place.is_cpu() ? DeviceKind::CPU : DeviceKind::GPU;
     }
 
-    // Helper macro for binary operations
-    #define DEFINE_BINARY_OP(op_name) \
-    Array op_name(const Array& a, const Array& b) { \
-        DType out_dtype = promote_types(a.dtype(), b.dtype()); \
-        Array a1 = (a.dtype() == out_dtype) ? a : a.to(out_dtype); \
-        Array b1 = (b.dtype() == out_dtype) ? b : b.to(out_dtype); \
-        Place target_place = promote_places(a1.place(), b1.place()); \
-        if (a1.place() != target_place) a1 = a1.to(target_place); \
-        if (b1.place() != target_place) b1 = b1.to(target_place); \
-        if (a1.shape() != b1.shape()) { \
-            auto bc = broadcast_arrays({a1, b1}); \
-            a1 = bc[0]; \
-            b1 = bc[1]; \
-        } \
-        OpArgs args = {a1, b1}; \
-        DeviceKind dev = get_device_kind(target_place); \
-        \
-        /* Check if kernel exists before calling */ \
-        if (!ops().has_kernel(#op_name, dev, out_dtype)) { \
-            std::string err_msg = "Kernel not found: " #op_name " for device "; \
-            err_msg += (dev == DeviceKind::CPU ? "CPU" : "GPU"); \
-            err_msg += " with dtype "; \
-            err_msg += dtype_name(out_dtype); \
-            err_msg += ". Available kernels for " #op_name " on this device: "; \
-            auto available = ops().list_kernels(#op_name, dev); \
-            for (size_t i = 0; i < available.size(); ++i) { \
-                if (i > 0) err_msg += ", "; \
-                err_msg += dtype_name(available[i]); \
-            } \
-            INS_THROW(err_msg); \
-        } \
-        \
-        OpArgs result = ops()[#op_name][dev][out_dtype](args); \
-        return std::any_cast<Array>(result[0]); \
-    }
-
-// Arithmetic operations
-    DEFINE_BINARY_OP(add);
-    DEFINE_BINARY_OP(sub);
-    DEFINE_BINARY_OP(mul);
-    DEFINE_BINARY_OP(div);
-
-    // Power operation
-    Array pow(const Array& a, const Array& b) {
-        // pow requires float types, promote to float if needed
+    // ============================================================================
+    // 通用二元操作调度器（不强制连续化）
+    // ============================================================================
+    template<typename KernelName>
+    static Array binary_op(const Array& a, const Array& b, KernelName&& kernel_name) {
+        // 1. 类型提升
         DType out_dtype = promote_types(a.dtype(), b.dtype());
-        if (!is_floating_point(out_dtype) && !is_complex(out_dtype)) {
-            out_dtype = DType::F32;  // Promote integer to float32
-        }
+
+        // 2. 转换到统一类型
         Array a1 = (a.dtype() == out_dtype) ? a : a.to(out_dtype);
         Array b1 = (b.dtype() == out_dtype) ? b : b.to(out_dtype);
+
+        // 3. 统一设备
         Place target_place = promote_places(a1.place(), b1.place());
         if (a1.place() != target_place) a1 = a1.to(target_place);
         if (b1.place() != target_place) b1 = b1.to(target_place);
+
+        // 4. 广播（形状对齐）
         if (a1.shape() != b1.shape()) {
             auto bc = broadcast_arrays({ a1, b1 });
             a1 = bc[0];
             b1 = bc[1];
         }
-        if (!a1.is_contiguous()) a1 = a1.contiguous();
-        if (!b1.is_contiguous()) b1 = b1.contiguous();
-        OpArgs args = { a1, b1 };
-        DeviceKind dev = get_device_kind(target_place);
-        OpArgs result = ops()["pow"][dev][out_dtype](args);
-        return std::any_cast<Array>(result[0]);
+
+        // 5. 分配输出数组
+        Array out(a1.shape(), out_dtype, target_place);
+
+        // 6. 调用后端 kernel（不强制连续化，让后端处理 strides）
+        ops().launch(kernel_name, target_place, out_dtype,
+            { a1.layout_ptr(), b1.layout_ptr() },
+            { out.layout_ptr() });
+
+        return out;
     }
 
-    // Modulo operation
-    DEFINE_BINARY_OP(mod)
+    // ============================================================================
+    // 比较操作调度器（返回 bool）
+    // ============================================================================
+    template<typename KernelName>
+    static Array cmp_op(const Array& a, const Array& b, KernelName&& kernel_name) {
+        // 比较运算需要统一类型后再比较，但输出是 bool
+        DType common_dtype = promote_types(a.dtype(), b.dtype());
 
-        // Comparison operations (return bool)
-#define DEFINE_CMP_OP(op_name) \
-    Array op_name(const Array& a, const Array& b) { \
-        DType out_dtype = promote_types(a.dtype(), b.dtype()); \
-        Array a1 = (a.dtype() == out_dtype) ? a : a.to(out_dtype); \
-        Array b1 = (b.dtype() == out_dtype) ? b : b.to(out_dtype); \
-        Place target_place = promote_places(a1.place(), b1.place()); \
-        if (a1.place() != target_place) a1 = a1.to(target_place); \
-        if (b1.place() != target_place) b1 = b1.to(target_place); \
-        if (a1.shape() != b1.shape()) { \
-            auto bc = broadcast_arrays({a1, b1}); \
-            a1 = bc[0]; \
-            b1 = bc[1]; \
-        } \
-        if (!a1.is_contiguous()) a1 = a1.contiguous(); \
-        if (!b1.is_contiguous()) b1 = b1.contiguous(); \
-        OpArgs args = {a1, b1}; \
-        DeviceKind dev = get_device_kind(target_place); \
-        /* Comparison returns bool, but we use the same dtype for dispatch */ \
-        OpArgs result = ops()[#op_name][dev][out_dtype](args); \
-        return std::any_cast<Array>(result[0]); \
+        // 转换到统一类型
+        Array a1 = (a.dtype() == common_dtype) ? a : a.to(common_dtype);
+        Array b1 = (b.dtype() == common_dtype) ? b : b.to(common_dtype);
+
+        // 统一设备
+        Place target_place = promote_places(a1.place(), b1.place());
+        if (a1.place() != target_place) a1 = a1.to(target_place);
+        if (b1.place() != target_place) b1 = b1.to(target_place);
+
+        // 广播
+        if (a1.shape() != b1.shape()) {
+            auto bc = broadcast_arrays({ a1, b1 });
+            a1 = bc[0];
+            b1 = bc[1];
+        }
+
+        // 输出是 bool
+        Array out(a1.shape(), DType::BOOL, target_place);
+
+        // 用 common_dtype 分发 kernel（后端根据输入类型选择实现）
+        ops().launch(kernel_name, target_place, common_dtype,
+            { a1.layout_ptr(), b1.layout_ptr() },
+            { out.layout_ptr() });
+
+        return out;
     }
 
-        DEFINE_CMP_OP(equal)
-        DEFINE_CMP_OP(not_equal)
-        DEFINE_CMP_OP(greater)
-        DEFINE_CMP_OP(less)
-        DEFINE_CMP_OP(greater_equal)
-        DEFINE_CMP_OP(less_equal)
+    // ============================================================================
+    // 算术运算
+    // ============================================================================
+    Array add(const Array& a, const Array& b) {
+        return binary_op(a, b, "add");
+    }
 
-        Array greater_than(const Array& a, const Array& b) { return greater(a, b); }
-        Array less_than(const Array& a, const Array& b) { return less(a, b); }
+    Array sub(const Array& a, const Array& b) {
+        return binary_op(a, b, "sub");
+    }
 
-        // Logical operations
-        Array logical_and(const Array& a, const Array& b) {
-        // Convert to bool first
+    Array mul(const Array& a, const Array& b) {
+        return binary_op(a, b, "mul");
+    }
+
+    Array div(const Array& a, const Array& b) {
+        return binary_op(a, b, "div");
+    }
+
+    // ============================================================================
+    // 幂运算（特殊处理：整数指数转浮点避免精度问题）
+    // ============================================================================
+    Array pow(const Array& a, const Array& b) {
+        DType out_dtype = promote_types(a.dtype(), b.dtype());
+
+        // 如果指数是浮点，结果必须是浮点
+        if (is_floating_point(b.dtype()) || is_complex(b.dtype())) {
+            if (is_integer(out_dtype)) {
+                out_dtype = DType::F64;
+            }
+        }
+
+        // 转换类型
+        Array a1 = (a.dtype() == out_dtype) ? a : a.to(out_dtype);
+        Array b1 = (b.dtype() == out_dtype) ? b : b.to(out_dtype);
+
+        // 统一设备
+        Place target_place = promote_places(a1.place(), b1.place());
+        if (a1.place() != target_place) a1 = a1.to(target_place);
+        if (b1.place() != target_place) b1 = b1.to(target_place);
+
+        // 广播
+        if (a1.shape() != b1.shape()) {
+            auto bc = broadcast_arrays({ a1, b1 });
+            a1 = bc[0];
+            b1 = bc[1];
+        }
+
+        // 分配输出
+        Array out(a1.shape(), out_dtype, target_place);
+
+        // 调用 kernel
+        ops().launch("pow", target_place, out_dtype,
+            { a1.layout_ptr(), b1.layout_ptr() },
+            { out.layout_ptr() });
+
+        return out;
+    }
+
+    // ============================================================================
+    // 取模运算
+    // ============================================================================
+    Array mod(const Array& a, const Array& b) {
+        return binary_op(a, b, "mod");
+    }
+
+    // ============================================================================
+    // 比较运算
+    // ============================================================================
+    Array equal(const Array& a, const Array& b) {
+        return cmp_op(a, b, "equal");
+    }
+
+    Array not_equal(const Array& a, const Array& b) {
+        return cmp_op(a, b, "not_equal");
+    }
+
+    Array greater(const Array& a, const Array& b) {
+        return cmp_op(a, b, "greater");
+    }
+
+    Array less(const Array& a, const Array& b) {
+        return cmp_op(a, b, "less");
+    }
+
+    Array greater_equal(const Array& a, const Array& b) {
+        return cmp_op(a, b, "greater_equal");
+    }
+
+    Array less_equal(const Array& a, const Array& b) {
+        return cmp_op(a, b, "less_equal");
+    }
+
+    // 别名
+    Array greater_than(const Array& a, const Array& b) {
+        return greater(a, b);
+    }
+
+    Array less_than(const Array& a, const Array& b) {
+        return less(a, b);
+    }
+
+    // ============================================================================
+    // 逻辑运算（先转 bool）
+    // ============================================================================
+    static Array logical_op(const Array& a, const Array& b, const char* kernel_name) {
+        // 转换为 bool
         Array a1 = (a.dtype() == DType::BOOL) ? a : a.to(DType::BOOL);
         Array b1 = (b.dtype() == DType::BOOL) ? b : b.to(DType::BOOL);
+
+        // 统一设备
         Place target_place = promote_places(a1.place(), b1.place());
         if (a1.place() != target_place) a1 = a1.to(target_place);
         if (b1.place() != target_place) b1 = b1.to(target_place);
+
+        // 广播
         if (a1.shape() != b1.shape()) {
             auto bc = broadcast_arrays({ a1, b1 });
             a1 = bc[0];
             b1 = bc[1];
         }
-        if (!a1.is_contiguous()) a1 = a1.contiguous();
-        if (!b1.is_contiguous()) b1 = b1.contiguous();
-        OpArgs args = { a1, b1 };
-        DeviceKind dev = get_device_kind(target_place);
-        OpArgs result = ops()["logical_and"][dev][DType::BOOL](args);
-        return std::any_cast<Array>(result[0]);
+
+        // 输出是 bool
+        Array out(a1.shape(), DType::BOOL, target_place);
+
+        ops().launch(kernel_name, target_place, DType::BOOL,
+            { a1.layout_ptr(), b1.layout_ptr() },
+            { out.layout_ptr() });
+
+        return out;
+    }
+
+    Array logical_and(const Array& a, const Array& b) {
+        return logical_op(a, b, "logical_and");
     }
 
     Array logical_or(const Array& a, const Array& b) {
-        Array a1 = (a.dtype() == DType::BOOL) ? a : a.to(DType::BOOL);
-        Array b1 = (b.dtype() == DType::BOOL) ? b : b.to(DType::BOOL);
-        Place target_place = promote_places(a1.place(), b1.place());
-        if (a1.place() != target_place) a1 = a1.to(target_place);
-        if (b1.place() != target_place) b1 = b1.to(target_place);
-        if (a1.shape() != b1.shape()) {
-            auto bc = broadcast_arrays({ a1, b1 });
-            a1 = bc[0];
-            b1 = bc[1];
-        }
-        if (!a1.is_contiguous()) a1 = a1.contiguous();
-        if (!b1.is_contiguous()) b1 = b1.contiguous();
-        OpArgs args = { a1, b1 };
-        DeviceKind dev = get_device_kind(target_place);
-        OpArgs result = ops()["logical_or"][dev][DType::BOOL](args);
-        return std::any_cast<Array>(result[0]);
+        return logical_op(a, b, "logical_or");
     }
 
     Array logical_xor(const Array& a, const Array& b) {
-        Array a1 = (a.dtype() == DType::BOOL) ? a : a.to(DType::BOOL);
-        Array b1 = (b.dtype() == DType::BOOL) ? b : b.to(DType::BOOL);
+        return logical_op(a, b, "logical_xor");
+    }
+
+    // ============================================================================
+    // 位运算（整数类型）
+    // ============================================================================
+    static Array bitwise_op(const Array& a, const Array& b, const char* kernel_name) {
+        // 位运算只在整数上定义
+        DType out_dtype = promote_types(a.dtype(), b.dtype());
+
+        // 转换到统一类型
+        Array a1 = (a.dtype() == out_dtype) ? a : a.to(out_dtype);
+        Array b1 = (b.dtype() == out_dtype) ? b : b.to(out_dtype);
+
+        // 统一设备
         Place target_place = promote_places(a1.place(), b1.place());
         if (a1.place() != target_place) a1 = a1.to(target_place);
         if (b1.place() != target_place) b1 = b1.to(target_place);
+
+        // 广播
         if (a1.shape() != b1.shape()) {
             auto bc = broadcast_arrays({ a1, b1 });
             a1 = bc[0];
             b1 = bc[1];
         }
-        if (!a1.is_contiguous()) a1 = a1.contiguous();
-        if (!b1.is_contiguous()) b1 = b1.contiguous();
-        OpArgs args = { a1, b1 };
-        DeviceKind dev = get_device_kind(target_place);
-        OpArgs result = ops()["logical_xor"][dev][DType::BOOL](args);
-        return std::any_cast<Array>(result[0]);
+
+        // 分配输出
+        Array out(a1.shape(), out_dtype, target_place);
+
+        ops().launch(kernel_name, target_place, out_dtype,
+            { a1.layout_ptr(), b1.layout_ptr() },
+            { out.layout_ptr() });
+
+        return out;
     }
 
-    // Bitwise operations (only for integer types)
-#define DEFINE_BITWISE_OP(op_name) \
-    Array op_name(const Array& a, const Array& b) { \
-        DType out_dtype = promote_types(a.dtype(), b.dtype()); \
-        Array a1 = (a.dtype() == out_dtype) ? a : a.to(out_dtype); \
-        Array b1 = (b.dtype() == out_dtype) ? b : b.to(out_dtype); \
-        Place target_place = promote_places(a1.place(), b1.place()); \
-        if (a1.place() != target_place) a1 = a1.to(target_place); \
-        if (b1.place() != target_place) b1 = b1.to(target_place); \
-        if (a1.shape() != b1.shape()) { \
-            auto bc = broadcast_arrays({a1, b1}); \
-            a1 = bc[0]; \
-            b1 = bc[1]; \
-        } \
-        if (!a1.is_contiguous()) a1 = a1.contiguous(); \
-        if (!b1.is_contiguous()) b1 = b1.contiguous(); \
-        OpArgs args = {a1, b1}; \
-        DeviceKind dev = get_device_kind(target_place); \
-        OpArgs result = ops()[#op_name][dev][out_dtype](args); \
-        return std::any_cast<Array>(result[0]); \
+    Array bitwise_and(const Array& a, const Array& b) {
+        return bitwise_op(a, b, "bitwise_and");
     }
 
-    DEFINE_BITWISE_OP(bitwise_and)
-    DEFINE_BITWISE_OP(bitwise_or)
-    DEFINE_BITWISE_OP(bitwise_xor)
-    DEFINE_BITWISE_OP(bitwise_left_shift)
-    DEFINE_BITWISE_OP(bitwise_right_shift)
+    Array bitwise_or(const Array& a, const Array& b) {
+        return bitwise_op(a, b, "bitwise_or");
+    }
 
-    // Maximum and Minimum
-    DEFINE_BINARY_OP(maximum)
-    DEFINE_BINARY_OP(minimum)
+    Array bitwise_xor(const Array& a, const Array& b) {
+        return bitwise_op(a, b, "bitwise_xor");
+    }
+
+    Array bitwise_left_shift(const Array& a, const Array& b) {
+        return bitwise_op(a, b, "bitwise_left_shift");
+    }
+
+    Array bitwise_right_shift(const Array& a, const Array& b) {
+        return bitwise_op(a, b, "bitwise_right_shift");
+    }
+
+    // ============================================================================
+    // 最大值/最小值
+    // ============================================================================
+    Array maximum(const Array& a, const Array& b) {
+        return binary_op(a, b, "maximum");
+    }
+
+    Array minimum(const Array& a, const Array& b) {
+        return binary_op(a, b, "minimum");
+    }
 
 } // namespace ins

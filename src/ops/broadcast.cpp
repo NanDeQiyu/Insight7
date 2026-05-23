@@ -3,7 +3,6 @@
 #include "insight/ops/broadcast.h"
 #include "insight/core/exception.h"
 #include "insight/core/array.h"
-#include "../internal/array_impl.h"
 #include <algorithm>
 
 namespace ins {
@@ -87,9 +86,8 @@ namespace ins {
         INS_CHECK(is_broadcastable_to(x.shape(), target_shape),
             "broadcast_to: cannot broadcast shape ", x.shape(), " to ", target_shape);
 
-        Strides new_strides = broadcast_strides(x.impl_->shape, x.impl_->strides, target_shape);
-
-        return Array(x.impl_, target_shape, new_strides, x.impl_->offset);
+        Strides new_strides = broadcast_strides(x.shape(), x.strides(), target_shape);
+        return Array(x, target_shape, new_strides, x.offset());
     }
 
     std::vector<Array> broadcast_arrays(const std::vector<Array>& tensors) {

@@ -10,7 +10,7 @@ using namespace ins;
 class CsvTest : public ::testing::Test {
 protected:
     static void SetUpTestSuite() {
-        ins::init();
+        ins::init({"cpu"});
     }
 
     void SetUp() override {

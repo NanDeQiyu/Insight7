@@ -111,4 +111,28 @@ namespace ins {
 	Array bitwise_not(const Array& x);
 	inline Array invert(const Array& x) { return bitwise_not(x); }
 
+	/**
+	 * @brief Check if each element is NaN (Not a Number).
+	 *
+	 * @param x Input array
+	 * @return Boolean array where true indicates NaN
+	 */
+	Array isnan(const Array& x);
+
+	/**
+	 * @brief Check if each element is infinite (positive or negative infinity).
+	 *
+	 * @param x Input array
+	 * @return Boolean array where true indicates infinity
+	 */
+	Array isinf(const Array& x);
+
+	/**
+	 * @brief Check if each element is finite (not NaN and not infinity).
+	 *
+	 * @param x Input array
+	 * @return Boolean array where true indicates finite
+	 */
+	Array isfinite(const Array& x);
+
 } // namespace ins

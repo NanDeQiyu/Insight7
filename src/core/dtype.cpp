@@ -1,5 +1,6 @@
 // src/core/dtype.cpp
 #include "insight/core/dtype.h"
+#include "insight/c_api/dtype.h"
 
 namespace ins {
 
@@ -22,8 +23,8 @@ namespace ins {
         {"bfloat16", sizeof(uint16_t), true, false, false, true},                 // BF16
         {"float32", sizeof(float), true, false, false, true},                     // F32
         {"float64", sizeof(double), true, false, false, true},                    // F64
-        {"complex64", sizeof(std::complex<float>), true, false, true, true},      // C32
-        {"complex128", sizeof(std::complex<double>), true, false, true, true},    // C64
+        {"complex64", sizeof(std::complex<float>), false, false, true, true},      // C32
+        {"complex128", sizeof(std::complex<double>), false, false, true, true},    // C64
         {"float8_e4m3", sizeof(uint8_t), true, false, false, true},               // F8_E4M3
         {"float8_e5m2", sizeof(uint8_t), true, false, false, true},               // F8_E5M2
         {"uint16",  sizeof(uint16_t), false, true, false, false},                 // U16
@@ -91,3 +92,33 @@ namespace ins {
     }
 
 } // namespace ins
+
+// C API implementations
+
+extern "C" {
+
+    const char* insight_dtype_name(int32_t dtype) {
+        return ins::dtype_name(static_cast<ins::DType>(dtype));
+    }
+
+    int32_t insight_dtype_size(int32_t dtype) {
+        return static_cast<int32_t>(ins::dtype_size(static_cast<ins::DType>(dtype)));
+    }
+
+    int insight_dtype_is_float(int32_t dtype) {
+        return ins::is_floating_point(static_cast<ins::DType>(dtype)) ? 1 : 0;
+    }
+
+    int insight_dtype_is_int(int32_t dtype) {
+        return ins::is_integer(static_cast<ins::DType>(dtype)) ? 1 : 0;
+    }
+
+    int insight_dtype_is_complex(int32_t dtype) {
+        return ins::is_complex(static_cast<ins::DType>(dtype)) ? 1 : 0;
+    }
+
+    int insight_dtype_is_signed(int32_t dtype) {
+        return ins::is_signed(static_cast<ins::DType>(dtype)) ? 1 : 0;
+    }
+
+} // extern "C"

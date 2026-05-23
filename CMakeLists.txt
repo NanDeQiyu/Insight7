@@ -21,18 +21,12 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 地址消毒器（调试用）- 只对 C++ 生效
-#if(MSVC)
-#    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/fsanitize=address>)
-#    add_link_options($<$<COMPILE_LANGUAGE:CXX>:/fsanitize=address>)
-#else()
-#    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fsanitize=address -g>)
-#    add_link_options($<$<COMPILE_LANGUAGE:CXX>:-fsanitize=address>)
-#endif()
-
 # Options
 option(INSIGHT_BUILD_TESTS "Build unit tests" ON)
 option(INSIGHT_WITH_CUDA "Enable CUDA backend" ON)
+
+option(INSIGHT_DYNAMIC_CPU_BACKEND "Build CPU backend as shared library (DLL/SO)" ON)
+option(INSIGHT_DYNAMIC_GPU_BACKEND "Build GPU backend as shared library (DLL/SO)" ON)
 
 # Add custom CMake module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -135,7 +129,13 @@ target_include_directories(insight_core
 
 # ========== CPU Backend ==========
 add_subdirectory(backends/cpu)
-target_link_libraries(insight_core PRIVATE insight_cpu_backend)
+if(INSIGHT_DYNAMIC_CPU_BACKEND)
+    message(STATUS "CPU backend: dynamic linkage (DLL/SO)")
+    target_compile_definitions(insight_core PRIVATE INSIGHT_CPU_BACKEND_EXPORTS)
+else()
+    target_link_libraries(insight_core PRIVATE insight_cpu_backend)
+    message(STATUS "CPU backend: static linkage")
+endif()
 
 # ========== CUDA Backend ==========
 if(INSIGHT_WITH_CUDA)
@@ -146,7 +146,13 @@ if(INSIGHT_WITH_CUDA)
         set(INSIGHT_CUDA_USE_THRUST OFF)
     endif()
     add_subdirectory(backends/cuda)
-    target_link_libraries(insight_core PRIVATE insight_cuda_backend)
+    if(INSIGHT_DYNAMIC_GPU_BACKEND)
+        message(STATUS "CUDA backend: dynamic linkage (DLL/SO)")
+            target_compile_definitions(insight_core PRIVATE INSIGHT_GPU_BACKEND_EXPORTS)
+    else()
+        target_link_libraries(insight_core PRIVATE insight_cuda_backend)
+        message(STATUS "CUDA backend: static linkage")
+    endif()
     target_compile_definitions(insight_core PUBLIC INSIGHT_WITH_CUDA)
 else()
     message(STATUS "CUDA backend disabled by user option")
@@ -165,6 +171,27 @@ target_include_directories(insight_demo
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# ========== Copy backend DLLs next to executable ==========
+if(INSIGHT_DYNAMIC_CPU_BACKEND)
+    add_dependencies(insight_demo insight_cpu_backend)
+    add_custom_command(TARGET insight_demo POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:insight_cpu_backend>"
+            "$<TARGET_FILE_DIR:insight_demo>/$<TARGET_FILE_NAME:insight_cpu_backend>"
+        COMMENT "Copying CPU backend DLL to executable directory"
+    )
+endif()
+
+if(INSIGHT_WITH_CUDA AND INSIGHT_DYNAMIC_GPU_BACKEND)
+    add_dependencies(insight_demo insight_cuda_backend)
+    add_custom_command(TARGET insight_demo POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:insight_cuda_backend>"
+            "$<TARGET_FILE_DIR:insight_demo>/$<TARGET_FILE_NAME:insight_cuda_backend>"
+        COMMENT "Copying GPU backend DLL to executable directory"
+    )
+endif()
+
 # ========== Unit Tests ==========
 if(INSIGHT_BUILD_TESTS)
     enable_testing()
@@ -178,6 +205,19 @@ set_target_properties(insight_demo PROPERTIES
 )
 
 # ========== Configuration Summary ==========
+
+if(INSIGHT_DYNAMIC_CPU_BACKEND)
+    set(CPU_BACKEND_TYPE "dynamic")
+else()
+    set(CPU_BACKEND_TYPE "static")
+endif()
+
+if(INSIGHT_DYNAMIC_GPU_BACKEND)
+    set(GPU_BACKEND_TYPE "dynamic")
+else()
+    set(GPU_BACKEND_TYPE "static")
+endif()
+
 message(STATUS "")
 message(STATUS "Insight Configuration Summary:")
 message(STATUS "  Version: ${PROJECT_VERSION}")
@@ -189,4 +229,6 @@ message(STATUS "  FFTW3:     ${INSIGHT_USE_FFTW3}")
 message(STATUS "  CUDA:      ${INSIGHT_WITH_CUDA}")
 message(STATUS "  Thrust:    ${INSIGHT_USE_THRUST}")
 message(STATUS "  Tests:     ${INSIGHT_BUILD_TESTS}")
+message(STATUS "  CPU backend: ${CPU_BACKEND_TYPE}")
+message(STATUS "  GPU backend: ${GPU_BACKEND_TYPE}")
 message(STATUS "")

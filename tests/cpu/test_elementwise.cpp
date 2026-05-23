@@ -1,8 +1,6 @@
 // tests/cpu/test_elementwise.cpp
 #include <gtest/gtest.h>
-#include "insight/core/array.h"
-#include "insight/ops/elementwise.h"
-#include "insight/init.h"
+#include "insight/insight.h"
 #include <complex>
 #include <cmath>
 
@@ -66,11 +64,20 @@ namespace {
         }
     }
 }
+
+class ElementwiseTestCPU : public ::testing::Test {
+protected:
+    static void SetUpTestSuite() {
+        ins::init({ "cpu" });
+        set_device(ins::CPUPlace(0));
+    }
+};
+
 // ============================================================================
 // Subtraction Tests (sub)
 // ============================================================================
 
-TEST(ElementwiseTest, SubSameShape) {
+TEST_F(ElementwiseTestCPU, SubSameShape) {
     ins::init();
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
@@ -83,7 +90,7 @@ TEST(ElementwiseTest, SubSameShape) {
     expect_float_equal<float>(c, expected);
 }
 
-TEST(ElementwiseTest, SubBroadcast) {
+TEST_F(ElementwiseTestCPU, SubBroadcast) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 3 }, DType::F32);
     fill_sequential<float>(a);
@@ -101,7 +108,7 @@ TEST(ElementwiseTest, SubBroadcast) {
 // Multiplication Tests (mul)
 // ============================================================================
 
-TEST(ElementwiseTest, MulSameShape) {
+TEST_F(ElementwiseTestCPU, MulSameShape) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     fill_sequential<float>(a);
@@ -118,7 +125,7 @@ TEST(ElementwiseTest, MulSameShape) {
 // Division Tests (div)
 // ============================================================================
 
-TEST(ElementwiseTest, DivSameShape) {
+TEST_F(ElementwiseTestCPU, DivSameShape) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     fill_sequential<float>(a);
@@ -143,7 +150,7 @@ TEST(ElementwiseTest, DivSameShape) {
 // Power Tests (pow)
 // ============================================================================
 
-TEST(ElementwiseTest, PowSameShape) {
+TEST_F(ElementwiseTestCPU, PowSameShape) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     fill_sequential<float>(a);
@@ -165,7 +172,7 @@ TEST(ElementwiseTest, PowSameShape) {
 // Modulo Tests (mod)
 // ============================================================================
 
-TEST(ElementwiseTest, ModSameShape) {
+TEST_F(ElementwiseTestCPU, ModSameShape) {
     Array a({ 2, 3 }, DType::I32);
     Array b({ 2, 3 }, DType::I32);
     int32_t* a_data = a.data<int32_t>();
@@ -181,7 +188,7 @@ TEST(ElementwiseTest, ModSameShape) {
     expect_equal<int32_t>(c, expected);
 }
 
-TEST(ElementwiseTest, ModFloat) {
+TEST_F(ElementwiseTestCPU, ModFloat) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     float* a_data = a.data<float>();
@@ -206,7 +213,7 @@ TEST(ElementwiseTest, ModFloat) {
 // Comparison Tests (equal, not_equal, greater, less, greater_equal, less_equal)
 // ============================================================================
 
-TEST(ElementwiseTest, Equal) {
+TEST_F(ElementwiseTestCPU, Equal) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     float* a_data = a.data<float>();
@@ -222,7 +229,7 @@ TEST(ElementwiseTest, Equal) {
     expect_bool_equal(c, expected);
 }
 
-TEST(ElementwiseTest, NotEqual) {
+TEST_F(ElementwiseTestCPU, NotEqual) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     float* a_data = a.data<float>();
@@ -233,12 +240,11 @@ TEST(ElementwiseTest, NotEqual) {
     }
 
     Array c = not_equal(a, b);
-
     std::vector<bool> expected = { true, true, true, true, true, true };
     expect_bool_equal(c, expected);
 }
 
-TEST(ElementwiseTest, Greater) {
+TEST_F(ElementwiseTestCPU, Greater) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     fill_sequential<float>(a);
@@ -250,7 +256,7 @@ TEST(ElementwiseTest, Greater) {
     expect_bool_equal(c, expected);
 }
 
-TEST(ElementwiseTest, Less) {
+TEST_F(ElementwiseTestCPU, Less) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     fill_sequential<float>(a);
@@ -262,7 +268,7 @@ TEST(ElementwiseTest, Less) {
     expect_bool_equal(c, expected);
 }
 
-TEST(ElementwiseTest, GreaterEqual) {
+TEST_F(ElementwiseTestCPU, GreaterEqual) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     float* a_data = a.data<float>();
@@ -278,7 +284,7 @@ TEST(ElementwiseTest, GreaterEqual) {
     expect_bool_equal(c, expected);
 }
 
-TEST(ElementwiseTest, LessEqual) {
+TEST_F(ElementwiseTestCPU, LessEqual) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     float* a_data = a.data<float>();
@@ -298,7 +304,7 @@ TEST(ElementwiseTest, LessEqual) {
 // Logical Operations Tests (logical_and, logical_or, logical_xor)
 // ============================================================================
 
-TEST(ElementwiseTest, LogicalAnd) {
+TEST_F(ElementwiseTestCPU, LogicalAnd) {
     Array a({ 2, 3 }, DType::BOOL);
     Array b({ 2, 3 }, DType::BOOL);
     bool* a_data = a.data<bool>();
@@ -317,7 +323,7 @@ TEST(ElementwiseTest, LogicalAnd) {
     expect_bool_equal(c, expected);
 }
 
-TEST(ElementwiseTest, LogicalOr) {
+TEST_F(ElementwiseTestCPU, LogicalOr) {
     Array a({ 2, 3 }, DType::BOOL);
     Array b({ 2, 3 }, DType::BOOL);
     bool* a_data = a.data<bool>();
@@ -335,7 +341,7 @@ TEST(ElementwiseTest, LogicalOr) {
     expect_bool_equal(c, expected);
 }
 
-TEST(ElementwiseTest, LogicalXor) {
+TEST_F(ElementwiseTestCPU, LogicalXor) {
     Array a({ 2, 3 }, DType::BOOL);
     Array b({ 2, 3 }, DType::BOOL);
     bool* a_data = a.data<bool>();
@@ -357,7 +363,7 @@ TEST(ElementwiseTest, LogicalXor) {
 // Bitwise Operations Tests
 // ============================================================================
 
-TEST(ElementwiseTest, BitwiseAnd) {
+TEST_F(ElementwiseTestCPU, BitwiseAnd) {
     Array a({ 2, 3 }, DType::I32);
     Array b({ 2, 3 }, DType::I32);
     int32_t* a_data = a.data<int32_t>();
@@ -375,7 +381,7 @@ TEST(ElementwiseTest, BitwiseAnd) {
     }
 }
 
-TEST(ElementwiseTest, BitwiseOr) {
+TEST_F(ElementwiseTestCPU, BitwiseOr) {
     Array a({ 2, 3 }, DType::I32);
     Array b({ 2, 3 }, DType::I32);
     int32_t* a_data = a.data<int32_t>();
@@ -393,7 +399,7 @@ TEST(ElementwiseTest, BitwiseOr) {
     }
 }
 
-TEST(ElementwiseTest, BitwiseXor) {
+TEST_F(ElementwiseTestCPU, BitwiseXor) {
     Array a({ 2, 3 }, DType::I32);
     Array b({ 2, 3 }, DType::I32);
     int32_t* a_data = a.data<int32_t>();
@@ -411,7 +417,7 @@ TEST(ElementwiseTest, BitwiseXor) {
     }
 }
 
-TEST(ElementwiseTest, BitwiseLeftShift) {
+TEST_F(ElementwiseTestCPU, BitwiseLeftShift) {
     Array a({ 2, 3 }, DType::I32);
     Array b({ 2, 3 }, DType::I32);
     int32_t* a_data = a.data<int32_t>();
@@ -429,7 +435,7 @@ TEST(ElementwiseTest, BitwiseLeftShift) {
     }
 }
 
-TEST(ElementwiseTest, BitwiseRightShift) {
+TEST_F(ElementwiseTestCPU, BitwiseRightShift) {
     Array a({ 2, 3 }, DType::I32);
     Array b({ 2, 3 }, DType::I32);
     int32_t* a_data = a.data<int32_t>();
@@ -451,7 +457,7 @@ TEST(ElementwiseTest, BitwiseRightShift) {
 // Maximum / Minimum Tests
 // ============================================================================
 
-TEST(ElementwiseTest, Maximum) {
+TEST_F(ElementwiseTestCPU, Maximum) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     float* a_data = a.data<float>();
@@ -467,7 +473,7 @@ TEST(ElementwiseTest, Maximum) {
     expect_float_equal<float>(c, expected);
 }
 
-TEST(ElementwiseTest, Minimum) {
+TEST_F(ElementwiseTestCPU, Minimum) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 2, 3 }, DType::F32);
     float* a_data = a.data<float>();
@@ -487,7 +493,7 @@ TEST(ElementwiseTest, Minimum) {
 // Broadcasting Tests for all ops
 // ============================================================================
 
-TEST(ElementwiseTest, Broadcast2D1D) {
+TEST_F(ElementwiseTestCPU, Broadcast2D1D) {
     Array a({ 2, 3 }, DType::F32);
     Array b({ 3 }, DType::F32);
     fill_sequential<float>(a);
@@ -514,7 +520,7 @@ TEST(ElementwiseTest, Broadcast2D1D) {
 // Complex Number Tests
 // ============================================================================
 
-TEST(ElementwiseTest, ComplexAdd) {
+TEST_F(ElementwiseTestCPU, ComplexAdd) {
     Array a({ 2, 3 }, DType::C32);
     Array b({ 2, 3 }, DType::C32);
 
@@ -541,7 +547,7 @@ TEST(ElementwiseTest, ComplexAdd) {
 // Scalar Broadcast Tests
 // ============================================================================
 
-TEST(ElementwiseTest, ScalarAdd) {
+TEST_F(ElementwiseTestCPU, ScalarAdd) {
     Array a({ 2, 3 }, DType::F32);
     fill_sequential<float>(a);
     Array b(5.0f);
@@ -556,7 +562,7 @@ TEST(ElementwiseTest, ScalarAdd) {
 // View (Non-Contiguous) Tests
 // ============================================================================
 
-TEST(ElementwiseTest, ViewAdd) {
+TEST_F(ElementwiseTestCPU, ViewAdd) {
     Array a({ 3, 4 }, DType::F32);
     fill_sequential<float>(a);
 
@@ -586,7 +592,7 @@ TEST(ElementwiseTest, ViewAdd) {
 // Type Promotion Tests
 // ============================================================================
 
-TEST(ElementwiseTest, TypePromotionIntToFloat) {
+TEST_F(ElementwiseTestCPU, TypePromotionIntToFloat) {
     Array a({ 2, 3 }, DType::I32);
     Array b({ 2, 3 }, DType::F32);
 

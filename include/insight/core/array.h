@@ -1,5 +1,6 @@
 // insight/core/array.h
 #pragma once
+#include "insight/c_api/array.h"
 #include "insight/core/shape.h"
 #include "insight/core/dtype.h"
 #include "insight/core/place.h"
@@ -11,9 +12,6 @@
 #include <cstdint>
 
 namespace ins {
-
-    // Forward declaration
-    class ArrayImpl;
 
     /**
      * @brief Multi-dimensional array container.
@@ -34,7 +32,16 @@ namespace ins {
         Array();
 
         /// Create a new array with given shape, dtype, and place
-        Array(const Shape& shape, DType dtype = DType::F32, const Place& place = Place::CPU());
+        Array(const Shape& shape, DType dtype = DType::F32, const Place& place = ins::get_device());
+
+        /**
+         * @brief Construct an Array from an existing InsightArray layout.
+         *
+         * Takes ownership of the layout. The layout's ref_count is incremented.
+         *
+         * @param layout Pointer to an initialized InsightArray
+         */
+        explicit Array(InsightArray* layout);
 
         /// Create a scalar array from a value
         // Boolean
@@ -60,10 +67,22 @@ namespace ins {
         explicit Array(std::complex<float> value);
         explicit Array(std::complex<double> value);
 
-        Array(const Array& other) = default;
+        // 拷贝构造函数
+        Array(const Array& other)
+            : layout_(other.layout_)
+            , shape_(other.shape_)
+            , place_(other.place_)
+            , strides_(other.strides_) {
+            if (layout_.ref_count) {
+                ++(*layout_.ref_count);
+            }
+        }
 
         /// Move constructor
-        Array(Array&& other) noexcept = default;
+        Array(Array&& other) noexcept;
+
+		/// View constructor
+        Array(const Array& parent, const Shape& view_shape, const Strides& view_strides, int64_t offset);
 
         /// Destructor
         ~Array();
@@ -95,6 +114,9 @@ namespace ins {
         /// Return the total number of elements
         int64_t numel() const;
 
+		/// Return the total number of bytes (numel * dtype size)
+		size_t nbytes() const;
+
         // ========== Memory Layout ==========
 
         /// Check if the array is contiguous in memory
@@ -119,6 +141,10 @@ namespace ins {
         const T* data() const {
             return static_cast<const T*>(data());
         }
+
+        InsightArray* layout_ptr();
+
+		const InsightArray* layout_ptr() const;
 
         // ========== Element Access ==========
 
@@ -242,7 +268,7 @@ namespace ins {
          *
          * @return const reference to the strides object
          */
-        const Strides strides() const;
+        const Strides& strides() const;
 
         /**
          * @brief Get the offset of the first element in the underlying storage.
@@ -278,14 +304,28 @@ namespace ins {
         bool all() const;
 
     private:
-        std::shared_ptr<ArrayImpl> impl_;
+        InsightArray layout_;
+        Shape shape_;        
+        Place place_;        
+        Strides strides_;    
 
+        void compute_strides();
+        void allocate_storage();
+        void deallocate_storage();
+
+        friend class OpRegistry;
         friend Array broadcast_to(const Array& x, const Shape& target_shape);
         friend std::vector<Array> broadcast_arrays(const std::vector<Array>& tensors);
 
-        /// View constructor (internal, zero-copy)
-        Array(std::shared_ptr<ArrayImpl> parent_impl,
-            const Shape& shape, const Strides& strides, int64_t offset);
+        template<typename T>
+        void set_scalar(T value) {
+            *data<T>() = value;
+            // Move to default device
+            Place default_dev = get_device();
+            if (place_ != default_dev) {
+                *this = this->to(default_dev);
+            }
+        }
     };
 
 } // namespace ins
