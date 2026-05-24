@@ -95,7 +95,7 @@ static void* allocate_output(InsightArray* out, size_t elem_size, int32_t dtype,
     out->device_id = 0;
 
     if (!out->ref_count) {
-        out->ref_count = (int32_t*)malloc(sizeof(int32_t));
+        out->ref_count = new int32_t;
         if (out->ref_count) *out->ref_count = 1;
     }
 

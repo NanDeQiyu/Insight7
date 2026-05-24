@@ -3,6 +3,7 @@
 #include <vector>
 #include <initializer_list>
 #include <complex>
+#include <cstring>
 #include "insight/core/array.h"
 #include "insight/core/place.h"
 #include "insight/core/dtype.h"

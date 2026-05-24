@@ -62,7 +62,7 @@ extern "C" {
         out->is_view = 0;
 
         if (!out->ref_count) {
-            out->ref_count = (int32_t*)malloc(sizeof(int32_t));
+            out->ref_count = new int32_t;
             if (out->ref_count) *out->ref_count = 1;
         }
 

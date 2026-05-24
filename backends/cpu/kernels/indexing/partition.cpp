@@ -31,7 +31,7 @@ static void partition_1d_impl(const T* src, T* dst, int64_t n, int64_t kth) {
 }
 
 template<>
-static void partition_1d_impl<bool>(const bool* src, bool* dst, int64_t n, int64_t kth) {
+void partition_1d_impl<bool>(const bool* src, bool* dst, int64_t n, int64_t kth) {
     std::vector<bool> data(src, src + n);
     std::nth_element(data.begin(), data.begin() + kth, data.end());
     for (int64_t i = 0; i < n; ++i) {
