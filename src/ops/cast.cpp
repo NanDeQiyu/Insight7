@@ -1,8 +1,7 @@
 // src/ops/cast.cpp
 #include "insight/ops/cast.h"
 #include "insight/core/op_registry.h"
-#include "insight/core/exception.h"
-#include <iostream>
+
 namespace ins {
 
     Array cast(const Array& input, DType target_dtype, bool copy) {
@@ -26,7 +25,7 @@ namespace ins {
             { (void*)input.layout_ptr(), &target_dtype_int },
             { output.layout_ptr() });
 
-        return output;
+        return Array(output.layout_ptr());
     }
 
     Array cast_like(const Array& input, const Array& other, bool copy) {
