@@ -975,18 +975,19 @@ TEST_F(LinalgTest, LuDecomposition) {
 // lq tests
 // ============================================================================
 
-TEST_F(LinalgTest, LqDecompositionF64) {
-    Array A = create_matrix_f64(3, 3, { 1, 2, 3, 2, 5, 3, 1, 0, 8 });
-    auto [L, Q] = lq(A, "reduced");
-    Array LQ = matmul(L, Q);
-    EXPECT_TRUE(check_matrix_equal(A, LQ, 1e-5));
-}
-
-TEST_F(LinalgTest, LqDecompositionF32) {
-    Array A = create_matrix_f32(3, 3, { 1.0f, 2.0f, 3.0f, 2.0f, 5.0f, 3.0f, 1.0f, 0.0f, 8.0f });
-    auto [L, Q] = lq(A, "reduced");
-    Array LQ = matmul(L, Q);
-    EXPECT_TRUE(check_matrix_equal(A, LQ, 1e-4f));
+TEST_F(LinalgTest, LqDecomposition) {
+    {
+        Array A = create_matrix_f64(3, 3, { 1, 2, 3, 2, 5, 3, 1, 0, 8 });
+        auto [L, Q] = lq(A, "reduced");
+        Array LQ = matmul(L, Q);
+        EXPECT_TRUE(check_matrix_equal(A, LQ, 1e-5));
+    }
+    {
+        Array A = create_matrix_f32(3, 3, { 1.0f, 2.0f, 3.0f, 2.0f, 5.0f, 3.0f, 1.0f, 0.0f, 8.0f });
+        auto [L, Q] = lq(A, "reduced");
+        Array LQ = matmul(L, Q);
+        EXPECT_TRUE(check_matrix_equal(A, LQ, 1e-4f));
+    }
 }
 
 // ============================================================================

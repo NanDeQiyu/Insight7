@@ -255,27 +255,27 @@ TEST_F(CastTestCPU, C64ToAll) {
 }
 
 // Test 8: Type promotion in add requires cast
-//TEST_F(CastTestCPU, AddTypePromotionUsesCast) {
-//    Array a({ 2, 3 }, DType::I32);
-//    Array b({ 2, 3 }, DType::F32);
-//
-//    int32_t* a_data = a.data<int32_t>();
-//    float* b_data = b.data<float>();
-//
-//    for (int64_t i = 0; i < 6; ++i) {
-//        a_data[i] = static_cast<int32_t>(i);
-//        b_data[i] = static_cast<float>(i) * 1.5f;
-//    }
-//
-//    // This should internally use cast to convert I32 to F32
-//    Array c = ins::add(a, b);
-//
-//    EXPECT_EQ(c.dtype(), DType::F32);
-//    const float* c_data = c.data<float>();
-//    for (int64_t i = 0; i < 6; ++i) {
-//        EXPECT_FLOAT_EQ(c_data[i], static_cast<float>(i) + i * 1.5f);
-//    }
-//}
+TEST_F(CastTestCPU, AddTypePromotionUsesCast) {
+    Array a({ 2, 3 }, DType::I32);
+    Array b({ 2, 3 }, DType::F32);
+
+    int32_t* a_data = a.data<int32_t>();
+    float* b_data = b.data<float>();
+
+    for (int64_t i = 0; i < 6; ++i) {
+        a_data[i] = static_cast<int32_t>(i);
+        b_data[i] = static_cast<float>(i) * 1.5f;
+    }
+
+    // This should internally use cast to convert I32 to F32
+    Array c = ins::add(a, b);
+
+    EXPECT_EQ(c.dtype(), DType::F32);
+    const float* c_data = c.data<float>();
+    for (int64_t i = 0; i < 6; ++i) {
+        EXPECT_FLOAT_EQ(c_data[i], static_cast<float>(i) + i * 1.5f);
+    }
+}
 
 // Test 9: Identity cast (no conversion)
 TEST_F(CastTestCPU, IdentityCast) {
