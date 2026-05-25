@@ -6,34 +6,36 @@
 extern "C" {
 #endif
 
-    C_Status deg2rad_kernel_cpu(void** inputs, void** outputs) {
-        InsightArray* x = (InsightArray*)inputs[0];
-        InsightArray* out = (InsightArray*)outputs[0];
+C_Status deg2rad_kernel_cpu(void **inputs, void **outputs) {
+  InsightArray *x = (InsightArray *)inputs[0];
+  InsightArray *out = (InsightArray *)outputs[0];
 
-        if (!x || !out) {
-            cpu_set_last_error("deg2rad: null array pointer");
-            return C_FAILED;
-        }
+  if (!x || !out) {
+    cpu_set_last_error("deg2rad: null array pointer");
+    return C_FAILED;
+  }
 
-        if (x->numel != out->numel) {
-            cpu_set_last_error("deg2rad: shape mismatch");
-            return C_FAILED;
-        }
+  if (x->numel != out->numel) {
+    cpu_set_last_error("deg2rad: shape mismatch");
+    return C_FAILED;
+  }
 
-        switch (x->dtype) {
-        case INSIGHT_DTYPE_F32:
-            UNARY_KERNEL_LOOP(float, [](float v) { return v * 3.141592653589793f / 180.0f; });
-            break;
-        case INSIGHT_DTYPE_F64:
-            UNARY_KERNEL_LOOP(double, [](double v) { return v * 3.141592653589793 / 180.0; });
-            break;
-        default:
-            cpu_set_last_error("deg2rad: only float32 and float64 supported");
-            return C_FAILED;
-        }
+  switch (x->dtype) {
+  case INSIGHT_DTYPE_F32:
+    UNARY_KERNEL_LOOP(float,
+                      [](float v) { return v * 3.141592653589793f / 180.0f; });
+    break;
+  case INSIGHT_DTYPE_F64:
+    UNARY_KERNEL_LOOP(double,
+                      [](double v) { return v * 3.141592653589793 / 180.0; });
+    break;
+  default:
+    cpu_set_last_error("deg2rad: only float32 and float64 supported");
+    return C_FAILED;
+  }
 
-        return C_SUCCESS;
-    }
+  return C_SUCCESS;
+}
 
 #ifdef __cplusplus
 }

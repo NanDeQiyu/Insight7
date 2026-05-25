@@ -17,80 +17,91 @@
 extern "C" {
 #endif
 
-C_Status cast_i16_kernel_cpu(void** inputs, void** outputs) {
-    InsightArray* src = static_cast<InsightArray*>(inputs[0]);
-    InsightArray* dst = static_cast<InsightArray*>(outputs[0]);
-    int32_t target_dtype = *static_cast<int32_t*>(inputs[1]);
+C_Status cast_i16_kernel_cpu(void **inputs, void **outputs) {
+  InsightArray *src = static_cast<InsightArray *>(inputs[0]);
+  InsightArray *dst = static_cast<InsightArray *>(outputs[0]);
+  int32_t target_dtype = *static_cast<int32_t *>(inputs[1]);
 
-    if (!src || !dst) {
-        cpu_set_last_error("cast_i16: null array pointer");
-        return C_FAILED;
-    }
+  if (!src || !dst) {
+    cpu_set_last_error("cast_i16: null array pointer");
+    return C_FAILED;
+  }
 
-    // Copy layout from source to destination
-    copy_layout(dst, src);
-    dst->dtype = target_dtype;
+  // Copy layout from source to destination
+  copy_layout(dst, src);
+  dst->dtype = target_dtype;
 
-    // Data conversion
-    int64_t n = src->numel;
-    const int16_t* s = static_cast<const int16_t*>(src->data);
+  // Data conversion
+  int64_t n = src->numel;
+  const int16_t *s = static_cast<const int16_t *>(src->data);
 
-    switch (target_dtype) {
-        case INSIGHT_DTYPE_BOOL: {
-            bool* d = static_cast<bool*>(dst->data);
-            CAST_LOOP(n, d[i] = s[i] != 0;);
-            break;
-        }        case INSIGHT_DTYPE_U8: {
-            uint8_t* d = static_cast<uint8_t*>(dst->data);
-            CAST_LOOP(n, d[i] = static_cast<uint8_t>(s[i]););
-            break;
-        }        case INSIGHT_DTYPE_I8: {
-            int8_t* d = static_cast<int8_t*>(dst->data);
-            CAST_LOOP(n, d[i] = static_cast<int8_t>(s[i]););
-            break;
-        }        case INSIGHT_DTYPE_I32: {
-            int32_t* d = static_cast<int32_t*>(dst->data);
-            CAST_LOOP(n, d[i] = static_cast<int32_t>(s[i]););
-            break;
-        }        case INSIGHT_DTYPE_I64: {
-            int64_t* d = static_cast<int64_t*>(dst->data);
-            CAST_LOOP(n, d[i] = static_cast<int64_t>(s[i]););
-            break;
-        }        case INSIGHT_DTYPE_U16: {
-            uint16_t* d = static_cast<uint16_t*>(dst->data);
-            CAST_LOOP(n, d[i] = static_cast<uint16_t>(s[i]););
-            break;
-        }        case INSIGHT_DTYPE_U32: {
-            uint32_t* d = static_cast<uint32_t*>(dst->data);
-            CAST_LOOP(n, d[i] = static_cast<uint32_t>(s[i]););
-            break;
-        }        case INSIGHT_DTYPE_U64: {
-            uint64_t* d = static_cast<uint64_t*>(dst->data);
-            CAST_LOOP(n, d[i] = static_cast<uint64_t>(s[i]););
-            break;
-        }        case INSIGHT_DTYPE_F32: {
-            float* d = static_cast<float*>(dst->data);
-            CAST_LOOP(n, d[i] = static_cast<float>(s[i]););
-            break;
-        }        case INSIGHT_DTYPE_F64: {
-            double* d = static_cast<double*>(dst->data);
-            CAST_LOOP(n, d[i] = static_cast<double>(s[i]););
-            break;
-        }        case INSIGHT_DTYPE_C32: {
-            std::complex<float>* d = static_cast<std::complex<float>*>(dst->data);
-            CAST_LOOP(n, d[i] = std::complex<float>(static_cast<float>(s[i]), 0.0f););
-            break;
-        }        case INSIGHT_DTYPE_C64: {
-            std::complex<double>* d = static_cast<std::complex<double>*>(dst->data);
-            CAST_LOOP(n, d[i] = std::complex<double>(static_cast<double>(s[i]), 0.0););
-            break;
-        }
-        default:
-            cpu_set_last_error("cast_i16: unsupported target type");
-            return C_FAILED;
-    }
+  switch (target_dtype) {
+  case INSIGHT_DTYPE_BOOL: {
+    bool *d = static_cast<bool *>(dst->data);
+    CAST_LOOP(n, d[i] = s[i] != 0;);
+    break;
+  }
+  case INSIGHT_DTYPE_U8: {
+    uint8_t *d = static_cast<uint8_t *>(dst->data);
+    CAST_LOOP(n, d[i] = static_cast<uint8_t>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_I8: {
+    int8_t *d = static_cast<int8_t *>(dst->data);
+    CAST_LOOP(n, d[i] = static_cast<int8_t>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_I32: {
+    int32_t *d = static_cast<int32_t *>(dst->data);
+    CAST_LOOP(n, d[i] = static_cast<int32_t>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_I64: {
+    int64_t *d = static_cast<int64_t *>(dst->data);
+    CAST_LOOP(n, d[i] = static_cast<int64_t>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_U16: {
+    uint16_t *d = static_cast<uint16_t *>(dst->data);
+    CAST_LOOP(n, d[i] = static_cast<uint16_t>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_U32: {
+    uint32_t *d = static_cast<uint32_t *>(dst->data);
+    CAST_LOOP(n, d[i] = static_cast<uint32_t>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_U64: {
+    uint64_t *d = static_cast<uint64_t *>(dst->data);
+    CAST_LOOP(n, d[i] = static_cast<uint64_t>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_F32: {
+    float *d = static_cast<float *>(dst->data);
+    CAST_LOOP(n, d[i] = static_cast<float>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_F64: {
+    double *d = static_cast<double *>(dst->data);
+    CAST_LOOP(n, d[i] = static_cast<double>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_C32: {
+    std::complex<float> *d = static_cast<std::complex<float> *>(dst->data);
+    CAST_LOOP(n, d[i] = std::complex<float>(static_cast<float>(s[i]), 0.0f););
+    break;
+  }
+  case INSIGHT_DTYPE_C64: {
+    std::complex<double> *d = static_cast<std::complex<double> *>(dst->data);
+    CAST_LOOP(n, d[i] = std::complex<double>(static_cast<double>(s[i]), 0.0););
+    break;
+  }
+  default:
+    cpu_set_last_error("cast_i16: unsupported target type");
+    return C_FAILED;
+  }
 
-    return C_SUCCESS;
+  return C_SUCCESS;
 }
 
 #ifdef __cplusplus

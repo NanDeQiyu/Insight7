@@ -5,31 +5,32 @@
 extern "C" {
 #endif
 
-    C_Status uniform_kernel_cpu(void** inputs, void** outputs) {
-        InsightArray* out = (InsightArray*)outputs[0];
+C_Status uniform_kernel_cpu(void **inputs, void **outputs) {
+  InsightArray *out = (InsightArray *)outputs[0];
 
-        if (!out) {
-            cpu_set_last_error("uniform: output array is null");
-            return C_FAILED;
-        }
+  if (!out) {
+    cpu_set_last_error("uniform: output array is null");
+    return C_FAILED;
+  }
 
-        double low = *(double*)inputs[1];
-        double high = *(double*)inputs[2];
+  double low = *(double *)inputs[1];
+  double high = *(double *)inputs[2];
 
-        switch (out->dtype) {
-        case INSIGHT_DTYPE_F32:
-            RANDOM_FILL_LOOP(float, std::uniform_real_distribution<float>, (low, high));
-            break;
-        case INSIGHT_DTYPE_F64:
-            RANDOM_FILL_LOOP(double, std::uniform_real_distribution<double>, (low, high));
-            break;
-        default:
-            cpu_set_last_error("uniform: unsupported dtype");
-            return C_FAILED;
-        }
+  switch (out->dtype) {
+  case INSIGHT_DTYPE_F32:
+    RANDOM_FILL_LOOP(float, std::uniform_real_distribution<float>, (low, high));
+    break;
+  case INSIGHT_DTYPE_F64:
+    RANDOM_FILL_LOOP(double, std::uniform_real_distribution<double>,
+                     (low, high));
+    break;
+  default:
+    cpu_set_last_error("uniform: unsupported dtype");
+    return C_FAILED;
+  }
 
-        return C_SUCCESS;
-    }
+  return C_SUCCESS;
+}
 
 #ifdef __cplusplus
 }

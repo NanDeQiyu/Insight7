@@ -3,36 +3,36 @@
 
 namespace ins {
 
-    bool is_compiled_with_openblas() {
+bool is_compiled_with_openblas() {
 #ifdef INSIGHT_USE_OPENBLAS
-        return true;
+  return true;
 #else
-        return false;
+  return false;
 #endif
-    }
+}
 
-    bool is_compiled_with_fftw3() {
+bool is_compiled_with_fftw3() {
 #ifdef INSIGHT_USE_FFTW3
-        return true;
+  return true;
 #else
-        return false;
+  return false;
 #endif
-    }
+}
 
-    bool is_compiled_with_lapack() {
+bool is_compiled_with_lapack() {
 #ifdef INSIGHT_USE_LAPACK
-        return true;
+  return true;
 #else
-        return false;
+  return false;
 #endif
-    }
+}
 
-    bool is_compiled_with_thrust() {
+bool is_compiled_with_thrust() {
 #ifdef INSIGHT_USE_THRUST
-        return true;
+  return true;
 #else
-        return false;
+  return false;
 #endif
-    }
+}
 
 } // namespace ins

@@ -11,61 +11,68 @@
  * @return C_SUCCESS on success, C_FAILED on error
  */
 
-#include "common.cuh"
 #include "../../registry/cuda_registry.h"
+#include "common.cuh"
 #include "insight/c_api/array.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-C_Status cast_c64_kernel_gpu(void** inputs, void** outputs) {
-    InsightArray* src = (InsightArray*)inputs[0];
-    InsightArray* dst = (InsightArray*)outputs[0];
-    int32_t target_dtype = *(int32_t*)inputs[1];
+C_Status cast_c64_kernel_gpu(void **inputs, void **outputs) {
+  InsightArray *src = (InsightArray *)inputs[0];
+  InsightArray *dst = (InsightArray *)outputs[0];
+  int32_t target_dtype = *(int32_t *)inputs[1];
 
-    if (!src || !dst) {
-        gpu_set_last_error("cast_c64: null array pointer");
-        return C_FAILED;
-    }
+  if (!src || !dst) {
+    gpu_set_last_error("cast_c64: null array pointer");
+    return C_FAILED;
+  }
 
-    // Copy layout from source to destination
-    copy_layout(dst, src);
-    dst->dtype = target_dtype;
+  // Copy layout from source to destination
+  copy_layout(dst, src);
+  dst->dtype = target_dtype;
 
-    // Data conversion
-    int64_t n = src->numel;
-    const cuDoubleComplex* src_data = (const cuDoubleComplex*)src->data;
+  // Data conversion
+  int64_t n = src->numel;
+  const cuDoubleComplex *src_data = (const cuDoubleComplex *)src->data;
 
-    int blocks, threads;
-    cast_launch_config(n, blocks, threads);
+  int blocks, threads;
+  cast_launch_config(n, blocks, threads);
 
-    switch (target_dtype) {
-        case INSIGHT_DTYPE_BOOL: {
-            cast_c64_to_bool_kernel<<<blocks, threads>>>(src_data, (bool*)dst->data, n);
-            break;
-        }        case INSIGHT_DTYPE_F32: {
-            cast_c64_to_f32_kernel<<<blocks, threads>>>(src_data, (float*)dst->data, n);
-            break;
-        }        case INSIGHT_DTYPE_F64: {
-            cast_c64_to_f64_kernel<<<blocks, threads>>>(src_data, (double*)dst->data, n);
-            break;
-        }        case INSIGHT_DTYPE_C32: {
-            cast_c64_to_c32_kernel<<<blocks, threads>>>(src_data, (cuFloatComplex*)dst->data, n);
-            break;
-        }
-        default:
-            gpu_set_last_error("cast_c64: unsupported target type");
-            return C_FAILED;
-    }
+  switch (target_dtype) {
+  case INSIGHT_DTYPE_BOOL: {
+    cast_c64_to_bool_kernel<<<blocks, threads>>>(src_data, (bool *)dst->data,
+                                                 n);
+    break;
+  }
+  case INSIGHT_DTYPE_F32: {
+    cast_c64_to_f32_kernel<<<blocks, threads>>>(src_data, (float *)dst->data,
+                                                n);
+    break;
+  }
+  case INSIGHT_DTYPE_F64: {
+    cast_c64_to_f64_kernel<<<blocks, threads>>>(src_data, (double *)dst->data,
+                                                n);
+    break;
+  }
+  case INSIGHT_DTYPE_C32: {
+    cast_c64_to_c32_kernel<<<blocks, threads>>>(src_data,
+                                                (cuFloatComplex *)dst->data, n);
+    break;
+  }
+  default:
+    gpu_set_last_error("cast_c64: unsupported target type");
+    return C_FAILED;
+  }
 
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        gpu_set_last_error(cudaGetErrorString(err));
-        return C_FAILED;
-    }
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    gpu_set_last_error(cudaGetErrorString(err));
+    return C_FAILED;
+  }
 
-    return C_SUCCESS;
+  return C_SUCCESS;
 }
 
 #ifdef __cplusplus
