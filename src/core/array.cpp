@@ -290,16 +290,28 @@ namespace ins {
 
     Array& Array::operator=(const Array& other) {
         if (this != &other) {
-            this->~Array();
+            // Increment other's ref_count first, since other may share data
+            // with this (e.g. broadcast views). Must happen before releasing old data.
+            if (other.layout_.ref_count) {
+                ++(*other.layout_.ref_count);
+            }
+
+            // Release old shared data (without destroying C++ members,
+            // since we'll overwrite them in the copy below).
+            if (layout_.ref_count) {
+                bool is_last = (*layout_.ref_count == 1);
+                void* data = layout_.data;
+                size_t bytes = layout_.numel * insight_dtype_size(layout_.dtype);
+                insight_array_destroy(&layout_);
+                if (is_last && data) {
+                    place_.deallocate(data, bytes);
+                }
+            }
 
             layout_ = other.layout_;
             shape_ = other.shape_;
             place_ = other.place_;
             strides_ = other.strides_;
-
-            if (layout_.ref_count) {
-                ++(*layout_.ref_count);
-            }
         }
         return *this;
     }
@@ -314,7 +326,17 @@ namespace ins {
 
     Array& Array::operator=(Array&& other) noexcept {
         if (this != &other) {
-            this->~Array();
+            // Release old shared data (without destroying C++ members).
+            if (layout_.ref_count) {
+                bool is_last = (*layout_.ref_count == 1);
+                void* data = layout_.data;
+                size_t bytes = layout_.numel * insight_dtype_size(layout_.dtype);
+                insight_array_destroy(&layout_);
+                if (is_last && data) {
+                    place_.deallocate(data, bytes);
+                }
+            }
+
             layout_ = other.layout_;
             shape_ = std::move(other.shape_);
             place_ = other.place_;

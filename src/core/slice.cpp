@@ -77,7 +77,7 @@ namespace ins {
             if (start_out < 0) {
                 start_out += dim_size;
             }
-            start_out = std::clamp(start_out, 0LL, dim_size - 1);
+            start_out = std::clamp<int64_t>(start_out, 0, dim_size - 1);
         }
         else {
             start_out = (step_out > 0) ? 0 : dim_size - 1;
@@ -90,10 +90,10 @@ namespace ins {
                 stop_out += dim_size;
             }
             if (step_out > 0) {
-                stop_out = std::clamp(stop_out, 0LL, dim_size);
+                stop_out = std::clamp<int64_t>(stop_out, 0, dim_size);
             }
             else {
-                stop_out = std::clamp(stop_out, -1LL, dim_size - 1);
+                stop_out = std::clamp<int64_t>(stop_out, -1, dim_size - 1);
             }
         }
         else {
