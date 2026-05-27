@@ -21,7 +21,7 @@ protected:
     ins::init();
     set_device(CPUPlace());
     seed(42);
-    if (!ins::is_compiled_with_fftw3) {
+    if (!ins::is_compiled_with_fftw3()) {
       GTEST_SKIP() << "FFTW3 library is not available, skipping FFT tests.";
     }
   }

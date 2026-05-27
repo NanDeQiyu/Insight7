@@ -138,6 +138,11 @@ TEST_F(SignalTest, Sinc) {
 }
 
 TEST_F(SignalTest, Convolve) {
+
+  if (!is_compiled_with_fftw3()) {
+    GTEST_SKIP() << "FFTW3 library is not available, skipping this tests.";
+  }
+
   std::vector<float> a_data = {1.0f, 2.0f, 3.0f};
   std::vector<float> v_data = {1.0f, 1.0f};
   Array a = to_array(a_data);
