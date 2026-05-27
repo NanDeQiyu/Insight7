@@ -73,6 +73,16 @@ jobs:
           name: test-logs-full
           path: build/Testing/Temporary/
 
+      - name: Debug linkage
+        run: |
+                cd build
+                # 检查 libinsight_cpu_backend.so 依赖哪些库
+                ldd backends/cpu/libinsight_cpu_backend.so
+                # 检查 OpenBLAS 库中是否有 LAPACKE 符号
+                nm -D /usr/lib/x86_64-linux-gnu/libopenblas.so | grep LAPACKE_dgeqrf
+                # 检查 libinsight_cpu_backend.so 中是否有这些符号
+                nm -D backends/cpu/libinsight_cpu_backend.so | grep LAPACKE
+
   # Job 2: No FFTW3 (fallback to internal implementation)
   no-fftw:
     name: No FFTW3 (internal fallback)
