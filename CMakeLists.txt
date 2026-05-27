@@ -1,4 +1,4 @@
-﻿# CMakeLists.txt
+# CMakeLists.txt
 cmake_minimum_required(VERSION 3.15)
 
 # ========== 设置策略以消除警告 ==========
@@ -87,21 +87,6 @@ else()
     message(STATUS "OpenBLAS support disabled")
 endif()
 
-# ========== Linear Algebra (CLAPACK) ==========
-option(INSIGHT_USE_LAPACK "Use LAPACK for linear algebra" ON)
-if(INSIGHT_USE_LAPACK)
-    find_package(CLAPACK)
-    if(CLAPACK_FOUND)
-        target_link_libraries(insight_core PUBLIC ${CLAPACK_LIBRARIES})
-        target_include_directories(insight_core PUBLIC ${CLAPACK_INCLUDE_DIRS})
-        target_compile_definitions(insight_core PUBLIC INSIGHT_USE_LAPACK ${CLAPACK_DEFINITIONS})
-        message(STATUS "CLAPACK enabled for linear algebra")
-    else()
-        message(WARNING "CLAPACK not found, disabling INSIGHT_USE_LAPACK")
-        set(INSIGHT_USE_LAPACK OFF)
-    endif()
-endif()
-
 # ========== FFTW3 ==========
 option(INSIGHT_USE_FFTW3 "Use FFTW3 for FFT operations" ON)
 if(INSIGHT_USE_FFTW3)
@@ -122,6 +107,7 @@ endif()
 target_include_directories(insight_core
     PUBLIC
         ${INSIGHT_INCLUDE_DIR}
+        ${OpenBLAS_INCLUDE_DIRS}
     PRIVATE
         ${INSIGHT_INTERNAL_DIR}
         ${INSIGHT_UTILS_DIR}

@@ -978,7 +978,6 @@ TEST_F(LinalgTest, LuDecomposition) {
 
     Array PA = matmul(P, A);
     Array LU_mat = matmul(L, U);
-
     EXPECT_TRUE(check_matrix_equal(PA, LU_mat, 1e-5));
   }
   {
@@ -989,7 +988,6 @@ TEST_F(LinalgTest, LuDecomposition) {
 
     Array PA = matmul(P, A);
     Array LU_mat = matmul(L, U);
-
     EXPECT_TRUE(check_matrix_equal(PA, LU_mat, 1e-4f));
   }
 }

@@ -7,51 +7,57 @@
 #ifdef INSIGHT_USE_OPENBLAS
 
 #include "common.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <cstdlib>
+#include <cstring>
 
 static void eigvalsh_f32(const float *src, float *vals, int n, int uplo) {
+  // 复制到列主序
   float *a = (float *)malloc(n * n * sizeof(float));
-  memcpy(a, src, n * n * sizeof(float));
-  char uplo_char[2];
-  uplo_char[0] = uplo ? 'U' : 'L';
-  uplo_char[1] = '\0';
-  char jobz[2] = "N";
-  float *work = (float *)malloc(1 * sizeof(float));
-  int lwork = -1;
-  int info;
-  ssyev_(jobz, uplo_char, &n, a, &n, vals, work, &lwork, &info);
-  lwork = (int)work[0];
-  work = (float *)realloc(work, lwork * sizeof(float));
-  ssyev_(jobz, uplo_char, &n, a, &n, vals, work, &lwork, &info);
-  free(a);
-  free(work);
+  if (!a) {
+    cpu_set_last_error("eigvalsh: memory allocation failed");
+    return;
+  }
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < n; ++j) {
+      a[i + j * n] = src[i * n + j];
+    }
+  }
+
+  char uplo_char = uplo ? 'U' : 'L';
+  char jobz = 'N'; // 只计算特征值，不计算特征向量
+
+  // LAPACKE 内部自动管理 workspace
+  int info = LAPACKE_ssyev(LAPACK_COL_MAJOR, jobz, uplo_char, n, a, n, vals);
+
   if (info != 0) {
     cpu_set_last_error("eigvalsh: LAPACK ssyev failed");
   }
+
+  free(a);
 }
 
 static void eigvalsh_f64(const double *src, double *vals, int n, int uplo) {
   double *a = (double *)malloc(n * n * sizeof(double));
-  memcpy(a, src, n * n * sizeof(double));
-  char uplo_char[2];
-  uplo_char[0] = uplo ? 'U' : 'L';
-  uplo_char[1] = '\0';
-  char jobz[2] = "N";
-  double *work = (double *)malloc(1 * sizeof(double));
-  int lwork = -1;
-  int info;
-  dsyev_(jobz, uplo_char, &n, a, &n, vals, work, &lwork, &info);
-  lwork = (int)work[0];
-  work = (double *)realloc(work, lwork * sizeof(double));
-  dsyev_(jobz, uplo_char, &n, a, &n, vals, work, &lwork, &info);
-  free(a);
-  free(work);
+  if (!a) {
+    cpu_set_last_error("eigvalsh: memory allocation failed");
+    return;
+  }
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < n; ++j) {
+      a[i + j * n] = src[i * n + j];
+    }
+  }
+
+  char uplo_char = uplo ? 'U' : 'L';
+  char jobz = 'N';
+
+  int info = LAPACKE_dsyev(LAPACK_COL_MAJOR, jobz, uplo_char, n, a, n, vals);
+
   if (info != 0) {
     cpu_set_last_error("eigvalsh: LAPACK dsyev failed");
   }
+
+  free(a);
 }
 
 C_Status eigvalsh_kernel_cpu(void **inputs, void **outputs) {
@@ -63,8 +69,10 @@ C_Status eigvalsh_kernel_cpu(void **inputs, void **outputs) {
     cpu_set_last_error("eigvalsh: null array pointer");
     return C_FAILED;
   }
-  if (!cpu_ensure_contiguous(x) || !cpu_ensure_contiguous(out))
+
+  if (!cpu_ensure_contiguous(x) || !cpu_ensure_contiguous(out)) {
     return C_FAILED;
+  }
 
   int n = (int)x->dims[0];
   if (x->dims[1] != n) {
@@ -72,19 +80,36 @@ C_Status eigvalsh_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
+  cpu_set_last_error("");
+
   if (x->dtype == INSIGHT_DTYPE_F32) {
     eigvalsh_f32((float *)x->data, (float *)out->data, n, uplo);
   } else {
     eigvalsh_f64((double *)x->data, (double *)out->data, n, uplo);
   }
+
+  const char *err = cpu_get_last_error();
+  if (err && err[0] != '\0') {
+    return C_FAILED;
+  }
+
   return C_SUCCESS;
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 REGISTER_CPU_KERNEL(eigvalsh, INSIGHT_DTYPE_F32, eigvalsh_kernel_cpu);
 REGISTER_CPU_KERNEL(eigvalsh, INSIGHT_DTYPE_F64, eigvalsh_kernel_cpu);
 
-#endif
+#else // !INSIGHT_USE_OPENBLAS
+
+#include "../../registry/cpu_registry.h"
+#include "insight/c_api/array.h"
+
+C_Status eigvalsh_kernel_cpu(void **inputs, void **outputs) {
+  cpu_set_last_error("eigvalsh: not compiled with OpenBLAS support");
+  return C_FAILED;
+}
+
+REGISTER_CPU_KERNEL(eigvalsh, INSIGHT_DTYPE_F32, eigvalsh_kernel_cpu);
+REGISTER_CPU_KERNEL(eigvalsh, INSIGHT_DTYPE_F64, eigvalsh_kernel_cpu);
+
+#endif // INSIGHT_USE_OPENBLAS

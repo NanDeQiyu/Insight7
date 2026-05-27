@@ -7,49 +7,76 @@
 #ifdef INSIGHT_USE_OPENBLAS
 
 #include "common.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <cstdlib>
+#include <cstring>
 
 static void eigh_f32(const float *src, float *vals, float *vecs, int n,
                      int uplo) {
-  memcpy(vecs, src, n * n * sizeof(float));
-  char uplo_char[2];
-  uplo_char[0] = uplo ? 'U' : 'L';
-  uplo_char[1] = '\0';
-  char jobz[2] = "V";
-  float *work = (float *)malloc(1 * sizeof(float));
-  int lwork = -1;
-  int info;
-  ssyev_(jobz, uplo_char, &n, vecs, &n, vals, work, &lwork, &info);
-  lwork = (int)work[0];
-  work = (float *)realloc(work, lwork * sizeof(float));
-  ssyev_(jobz, uplo_char, &n, vecs, &n, vals, work, &lwork, &info);
-  free(work);
+  // 复制到列主序
+  float *a = (float *)malloc(n * n * sizeof(float));
+  if (!a) {
+    cpu_set_last_error("eigh: memory allocation failed");
+    return;
+  }
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < n; ++j) {
+      a[i + j * n] = src[i * n + j];
+    }
+  }
+
+  char uplo_char = uplo ? 'U' : 'L';
+  char jobz = 'V'; // 计算特征值和特征向量
+
+  // LAPACKE 内部自动管理 workspace
+  int info = LAPACKE_ssyev(LAPACK_COL_MAJOR, jobz, uplo_char, n, a, n, vals);
+
   if (info != 0) {
     cpu_set_last_error("eigh: LAPACK ssyev failed");
+    free(a);
+    return;
   }
+
+  // 输出特征向量（列主序转行主序）
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < n; ++j) {
+      vecs[i * n + j] = a[i + j * n];
+    }
+  }
+
+  free(a);
 }
 
 static void eigh_f64(const double *src, double *vals, double *vecs, int n,
                      int uplo) {
-  memcpy(vecs, src, n * n * sizeof(double));
-  char uplo_char[2];
-  uplo_char[0] = uplo ? 'U' : 'L';
-  uplo_char[1] = '\0';
-  char jobz[2] = "V";
-  double *work = (double *)malloc(1 * sizeof(double));
-  int lwork = -1;
-  int info;
-  dsyev_(jobz, uplo_char, &n, vecs, &n, vals, work, &lwork, &info);
-  lwork = (int)work[0];
-  work = (double *)realloc(work, lwork * sizeof(double));
-  dsyev_(jobz, uplo_char, &n, vecs, &n, vals, work, &lwork, &info);
-  free(work);
+  double *a = (double *)malloc(n * n * sizeof(double));
+  if (!a) {
+    cpu_set_last_error("eigh: memory allocation failed");
+    return;
+  }
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < n; ++j) {
+      a[i + j * n] = src[i * n + j];
+    }
+  }
+
+  char uplo_char = uplo ? 'U' : 'L';
+  char jobz = 'V';
+
+  int info = LAPACKE_dsyev(LAPACK_COL_MAJOR, jobz, uplo_char, n, a, n, vals);
+
   if (info != 0) {
     cpu_set_last_error("eigh: LAPACK dsyev failed");
+    free(a);
+    return;
   }
+
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < n; ++j) {
+      vecs[i * n + j] = a[i + j * n];
+    }
+  }
+
+  free(a);
 }
 
 C_Status eigh_kernel_cpu(void **inputs, void **outputs) {
@@ -62,15 +89,19 @@ C_Status eigh_kernel_cpu(void **inputs, void **outputs) {
     cpu_set_last_error("eigh: null array pointer");
     return C_FAILED;
   }
+
   if (!cpu_ensure_contiguous(x) || !cpu_ensure_contiguous(vals) ||
-      !cpu_ensure_contiguous(vecs))
+      !cpu_ensure_contiguous(vecs)) {
     return C_FAILED;
+  }
 
   int n = (int)x->dims[0];
   if (x->dims[1] != n) {
     cpu_set_last_error("eigh: matrix must be square");
     return C_FAILED;
   }
+
+  cpu_set_last_error("");
 
   if (x->dtype == INSIGHT_DTYPE_F32) {
     eigh_f32((float *)x->data, (float *)vals->data, (float *)vecs->data, n,
@@ -79,14 +110,29 @@ C_Status eigh_kernel_cpu(void **inputs, void **outputs) {
     eigh_f64((double *)x->data, (double *)vals->data, (double *)vecs->data, n,
              uplo);
   }
+
+  const char *err = cpu_get_last_error();
+  if (err && err[0] != '\0') {
+    return C_FAILED;
+  }
+
   return C_SUCCESS;
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 REGISTER_CPU_KERNEL(eigh, INSIGHT_DTYPE_F32, eigh_kernel_cpu);
 REGISTER_CPU_KERNEL(eigh, INSIGHT_DTYPE_F64, eigh_kernel_cpu);
 
-#endif
+#else // !INSIGHT_USE_OPENBLAS
+
+#include "../../registry/cpu_registry.h"
+#include "insight/c_api/array.h"
+
+C_Status eigh_kernel_cpu(void **inputs, void **outputs) {
+  cpu_set_last_error("eigh: not compiled with OpenBLAS support");
+  return C_FAILED;
+}
+
+REGISTER_CPU_KERNEL(eigh, INSIGHT_DTYPE_F32, eigh_kernel_cpu);
+REGISTER_CPU_KERNEL(eigh, INSIGHT_DTYPE_F64, eigh_kernel_cpu);
+
+#endif // INSIGHT_USE_OPENBLAS

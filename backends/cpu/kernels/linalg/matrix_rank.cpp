@@ -1,53 +1,140 @@
-﻿// backends/cpu/kernels/linalg/matrix_rank.cpp
+// backends/cpu/kernels/linalg/matrix_rank.cpp
 /**
  * @file matrix_rank.cpp
  * @brief CPU kernel for matrix rank using SVD.
  */
 
-#include "common.h"
 #ifdef INSIGHT_USE_OPENBLAS
-#ifdef __cplusplus
-extern "C" {
-#endif
+
+#include "common.h"
+#include <algorithm>
+#include <cfloat>
+#include <cstdlib>
+#include <cstring>
 
 static int rank_f64(const double *src, int m, int n, double tol) {
   int min_mn = m < n ? m : n;
   double *a = (double *)malloc(m * n * sizeof(double));
-  memcpy(a, src, m * n * sizeof(double));
+  if (!a) {
+    cpu_set_last_error("matrix_rank: memory allocation failed");
+    return 0;
+  }
+  // 行主序 → 列主序 (LAPACK 要求)
+  for (int i = 0; i < m; ++i) {
+    for (int j = 0; j < n; ++j) {
+      a[i + j * m] = src[i * n + j];
+    }
+  }
+
   double *s = (double *)malloc(min_mn * sizeof(double));
-  double *work = (double *)malloc(1 * sizeof(double));
-  int lwork = -1;
-  int info;
-  char jobu[2] = "N";
-  char jobvt[2] = "N";
-  dgesvd_(jobu, jobvt, &m, &n, a, &m, s, NULL, &m, NULL, &n, work, &lwork,
-          &info);
-  lwork = (int)work[0];
-  work = (double *)realloc(work, lwork * sizeof(double));
-  dgesvd_(jobu, jobvt, &m, &n, a, &m, s, NULL, &m, NULL, &n, work, &lwork,
-          &info);
+  if (!s) {
+    cpu_set_last_error("matrix_rank: memory allocation failed");
+    free(a);
+    return 0;
+  }
+
+  double *superb = (double *)malloc((min_mn - 1) * sizeof(double));
+  if (!superb) {
+    cpu_set_last_error("matrix_rank: memory allocation failed");
+    free(a);
+    free(s);
+    return 0;
+  }
+
+  // 使用 LAPACKE_dgesvd 计算奇异值
+  int info = LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'N', 'N', m, n, a, m, s, NULL, m,
+                            NULL, n, superb);
+
+  if (info != 0) {
+    cpu_set_last_error("matrix_rank: LAPACK dgesvd failed");
+    free(a);
+    free(s);
+    free(superb);
+    return 0;
+  }
+
   double max_s = s[0];
-  double actual_tol = (tol < 0) ? max_s * (m > n ? m : n) * 1e-14 : tol;
+  double actual_tol;
+  if (tol < 0) {
+    // 使用 LAPACK 推荐的容差公式
+    actual_tol = max_s * std::max(m, n) * DBL_EPSILON;
+  } else {
+    actual_tol = tol;
+  }
+
   int rank = 0;
   for (int i = 0; i < min_mn; ++i) {
-    if (s[i] > actual_tol)
+    if (s[i] > actual_tol) {
       ++rank;
+    }
   }
+
   free(a);
   free(s);
-  free(work);
+  free(superb);
   return rank;
 }
 
 static int rank_f32(const float *src, int m, int n, double tol) {
-  double *src_f64 = (double *)malloc(m * n * sizeof(double));
-  for (int i = 0; i < m * n; ++i) {
-    src_f64[i] = src[i];
+  int min_mn = m < n ? m : n;
+  float *a = (float *)malloc(m * n * sizeof(float));
+  if (!a) {
+    cpu_set_last_error("matrix_rank: memory allocation failed");
+    return 0;
+  }
+  // 行主序 → 列主序 (LAPACK 要求)
+  for (int i = 0; i < m; ++i) {
+    for (int j = 0; j < n; ++j) {
+      a[i + j * m] = src[i * n + j];
+    }
   }
 
-  int rank = rank_f64(src_f64, m, n, tol);
+  float *s = (float *)malloc(min_mn * sizeof(float));
+  if (!s) {
+    cpu_set_last_error("matrix_rank: memory allocation failed");
+    free(a);
+    return 0;
+  }
 
-  free(src_f64);
+  float *superb = (float *)malloc((min_mn - 1) * sizeof(float));
+  if (!superb) {
+    cpu_set_last_error("matrix_rank: memory allocation failed");
+    free(a);
+    free(s);
+    return 0;
+  }
+
+  // 使用 LAPACKE_sgesvd 计算奇异值
+  int info = LAPACKE_sgesvd(LAPACK_COL_MAJOR, 'N', 'N', m, n, a, m, s, NULL, m,
+                            NULL, n, superb);
+
+  if (info != 0) {
+    cpu_set_last_error("matrix_rank: LAPACK sgesvd failed");
+    free(a);
+    free(s);
+    free(superb);
+    return 0;
+  }
+
+  float max_s = s[0];
+  float actual_tol;
+  if (tol < 0) {
+    // 使用 LAPACK 推荐的容差公式
+    actual_tol = max_s * std::max(m, n) * FLT_EPSILON;
+  } else {
+    actual_tol = (float)tol;
+  }
+
+  int rank = 0;
+  for (int i = 0; i < min_mn; ++i) {
+    if (s[i] > actual_tol) {
+      ++rank;
+    }
+  }
+
+  free(a);
+  free(s);
+  free(superb);
   return rank;
 }
 
@@ -60,11 +147,15 @@ C_Status matrix_rank_kernel_cpu(void **inputs, void **outputs) {
     cpu_set_last_error("matrix_rank: null array pointer");
     return C_FAILED;
   }
-  if (!cpu_ensure_contiguous(x))
+
+  if (!cpu_ensure_contiguous(x)) {
     return C_FAILED;
+  }
 
   int m = (int)x->dims[0];
   int n = (int)x->dims[1];
+
+  cpu_set_last_error("");
 
   int r;
   if (x->dtype == INSIGHT_DTYPE_F32) {
@@ -72,14 +163,30 @@ C_Status matrix_rank_kernel_cpu(void **inputs, void **outputs) {
   } else {
     r = rank_f64((double *)x->data, m, n, tol);
   }
+
+  const char *err = cpu_get_last_error();
+  if (err && err[0] != '\0') {
+    return C_FAILED;
+  }
+
   *(int64_t *)out->data = r;
   return C_SUCCESS;
 }
 
-#ifdef __cplusplus
+REGISTER_CPU_KERNEL(matrix_rank, INSIGHT_DTYPE_F32, matrix_rank_kernel_cpu);
+REGISTER_CPU_KERNEL(matrix_rank, INSIGHT_DTYPE_F64, matrix_rank_kernel_cpu);
+
+#else // !INSIGHT_USE_OPENBLAS
+
+#include "../../registry/cpu_registry.h"
+#include "insight/c_api/array.h"
+
+C_Status matrix_rank_kernel_cpu(void **inputs, void **outputs) {
+  cpu_set_last_error("matrix_rank: not compiled with OpenBLAS support");
+  return C_FAILED;
 }
-#endif
 
 REGISTER_CPU_KERNEL(matrix_rank, INSIGHT_DTYPE_F32, matrix_rank_kernel_cpu);
 REGISTER_CPU_KERNEL(matrix_rank, INSIGHT_DTYPE_F64, matrix_rank_kernel_cpu);
-#endif
+
+#endif // INSIGHT_USE_OPENBLAS

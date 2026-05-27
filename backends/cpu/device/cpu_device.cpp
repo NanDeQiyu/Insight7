@@ -312,10 +312,7 @@ void cpu_set_last_error(const char *msg) {
   cpu_last_error_str = msg ? msg : "";
 }
 
-const char *cpu_get_last_error(void) {
-  return cpu_last_error_str.empty() ? "CPU backend: no error"
-                                    : cpu_last_error_str.c_str();
-}
+const char *cpu_get_last_error(void) { return cpu_last_error_str.c_str(); }
 
 // ========================================================================
 // InitPlugin - Plugin Entry Point

@@ -7,17 +7,24 @@
 #ifdef INSIGHT_USE_OPENBLAS
 
 #include "common.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <cstdlib>
+#include <cstring>
 
 static void solve_triangular_f32(const float *A, const float *B, float *X,
                                  int n, int nrhs, int lower, int unit_diag) {
   float *a = (float *)malloc(n * n * sizeof(float));
+  if (!a) {
+    cpu_set_last_error("solve_triangular: memory allocation failed");
+    return;
+  }
   cpu_rowmajor_to_colmajor_f32(A, a, n, n);
 
   float *b = (float *)malloc(n * nrhs * sizeof(float));
+  if (!b) {
+    cpu_set_last_error("solve_triangular: memory allocation failed");
+    free(a);
+    return;
+  }
   cpu_rowmajor_to_colmajor_f32(B, b, n, nrhs);
 
   char uplo = lower ? 'L' : 'U';
@@ -25,7 +32,8 @@ static void solve_triangular_f32(const float *A, const float *B, float *X,
   char diag = unit_diag ? 'U' : 'N';
   int info;
 
-  strtrs_(&uplo, &trans, &diag, &n, &nrhs, a, &n, b, &n, &info);
+  info =
+      LAPACKE_strtrs(LAPACK_COL_MAJOR, uplo, trans, diag, n, nrhs, a, n, b, n);
 
   cpu_colmajor_to_rowmajor_f32(b, X, n, nrhs);
 
@@ -40,9 +48,18 @@ static void solve_triangular_f32(const float *A, const float *B, float *X,
 static void solve_triangular_f64(const double *A, const double *B, double *X,
                                  int n, int nrhs, int lower, int unit_diag) {
   double *a = (double *)malloc(n * n * sizeof(double));
+  if (!a) {
+    cpu_set_last_error("solve_triangular: memory allocation failed");
+    return;
+  }
   cpu_rowmajor_to_colmajor_f64(A, a, n, n);
 
   double *b = (double *)malloc(n * nrhs * sizeof(double));
+  if (!b) {
+    cpu_set_last_error("solve_triangular: memory allocation failed");
+    free(a);
+    return;
+  }
   cpu_rowmajor_to_colmajor_f64(B, b, n, nrhs);
 
   char uplo = lower ? 'L' : 'U';
@@ -50,7 +67,8 @@ static void solve_triangular_f64(const double *A, const double *B, double *X,
   char diag = unit_diag ? 'U' : 'N';
   int info;
 
-  dtrtrs_(&uplo, &trans, &diag, &n, &nrhs, a, &n, b, &n, &info);
+  info =
+      LAPACKE_dtrtrs(LAPACK_COL_MAJOR, uplo, trans, diag, n, nrhs, a, n, b, n);
 
   cpu_colmajor_to_rowmajor_f64(b, X, n, nrhs);
 
@@ -73,9 +91,11 @@ C_Status solve_triangular_kernel_cpu(void **inputs, void **outputs) {
     cpu_set_last_error("solve_triangular: null array pointer");
     return C_FAILED;
   }
+
   if (!cpu_ensure_contiguous(A) || !cpu_ensure_contiguous(B) ||
-      !cpu_ensure_contiguous(out))
+      !cpu_ensure_contiguous(out)) {
     return C_FAILED;
+  }
 
   int n = (int)A->dims[0];
   int nrhs = (B->ndim == 1) ? 1 : (int)B->dims[1];
@@ -84,6 +104,8 @@ C_Status solve_triangular_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
+  cpu_set_last_error("");
+
   if (A->dtype == INSIGHT_DTYPE_F32) {
     solve_triangular_f32((float *)A->data, (float *)B->data, (float *)out->data,
                          n, nrhs, lower, unit_diag);
@@ -91,16 +113,33 @@ C_Status solve_triangular_kernel_cpu(void **inputs, void **outputs) {
     solve_triangular_f64((double *)A->data, (double *)B->data,
                          (double *)out->data, n, nrhs, lower, unit_diag);
   }
+
+  const char *err = cpu_get_last_error();
+  if (err && err[0] != '\0') {
+    return C_FAILED;
+  }
+
   return C_SUCCESS;
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 REGISTER_CPU_KERNEL(solve_triangular, INSIGHT_DTYPE_F32,
                     solve_triangular_kernel_cpu);
 REGISTER_CPU_KERNEL(solve_triangular, INSIGHT_DTYPE_F64,
                     solve_triangular_kernel_cpu);
 
-#endif
+#else // !INSIGHT_USE_OPENBLAS
+
+#include "../../registry/cpu_registry.h"
+#include "insight/c_api/array.h"
+
+C_Status solve_triangular_kernel_cpu(void **inputs, void **outputs) {
+  cpu_set_last_error("solve_triangular: not compiled with OpenBLAS support");
+  return C_FAILED;
+}
+
+REGISTER_CPU_KERNEL(solve_triangular, INSIGHT_DTYPE_F32,
+                    solve_triangular_kernel_cpu);
+REGISTER_CPU_KERNEL(solve_triangular, INSIGHT_DTYPE_F64,
+                    solve_triangular_kernel_cpu);
+
+#endif // INSIGHT_USE_OPENBLAS

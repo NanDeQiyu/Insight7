@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/linalg/lu_unpack.cpp
+// backends/cpu/kernels/linalg/lu_unpack.cpp
 /**
  * @file lu_unpack.cpp
  * @brief CPU kernel to unpack LU decomposition into P, L, U.
@@ -6,18 +6,28 @@
 
 #include "common.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 static void lu_unpack_f32(const float *lu, const int *ipiv, float *p, float *l,
                           float *u, int n) {
-  // P is permutation matrix
+  // Initialize P as identity matrix
   memset(p, 0, n * n * sizeof(float));
   for (int i = 0; i < n; ++i) {
-    p[i * n + (ipiv[i] - 1)] = 1.0f;
+    p[i * n + i] = 1.0f;
   }
-  // L and U
+
+  // Apply permutations from ipiv (LAPACK returns row swaps)
+  for (int i = 0; i < n; ++i) {
+    int pivot_idx = ipiv[i] - 1; // Convert to 0-based
+    if (pivot_idx != i) {
+      // Swap rows i and pivot_idx in P
+      for (int j = 0; j < n; ++j) {
+        float tmp = p[i * n + j];
+        p[i * n + j] = p[pivot_idx * n + j];
+        p[pivot_idx * n + j] = tmp;
+      }
+    }
+  }
+
+  // L and U extraction
   for (int i = 0; i < n; ++i) {
     for (int j = 0; j < n; ++j) {
       float val = lu[i * n + j];
@@ -37,10 +47,26 @@ static void lu_unpack_f32(const float *lu, const int *ipiv, float *p, float *l,
 
 static void lu_unpack_f64(const double *lu, const int *ipiv, double *p,
                           double *l, double *u, int n) {
+  // Initialize P as identity matrix
   memset(p, 0, n * n * sizeof(double));
   for (int i = 0; i < n; ++i) {
-    p[i * n + (ipiv[i] - 1)] = 1.0;
+    p[i * n + i] = 1.0;
   }
+
+  // Apply permutations from ipiv (LAPACK returns row swaps)
+  for (int i = 0; i < n; ++i) {
+    int pivot_idx = ipiv[i] - 1; // Convert to 0-based
+    if (pivot_idx != i) {
+      // Swap rows i and pivot_idx in P
+      for (int j = 0; j < n; ++j) {
+        double tmp = p[i * n + j];
+        p[i * n + j] = p[pivot_idx * n + j];
+        p[pivot_idx * n + j] = tmp;
+      }
+    }
+  }
+
+  // L and U extraction
   for (int i = 0; i < n; ++i) {
     for (int j = 0; j < n; ++j) {
       double val = lu[i * n + j];
@@ -90,10 +116,6 @@ C_Status lu_unpack_kernel_cpu(void **inputs, void **outputs) {
   }
   return C_SUCCESS;
 }
-
-#ifdef __cplusplus
-}
-#endif
 
 REGISTER_CPU_KERNEL(lu_unpack, INSIGHT_DTYPE_F32, lu_unpack_kernel_cpu);
 REGISTER_CPU_KERNEL(lu_unpack, INSIGHT_DTYPE_F64, lu_unpack_kernel_cpu);
