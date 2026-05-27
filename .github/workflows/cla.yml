@@ -13,9 +13,9 @@ jobs:
   CLAAssistant:
     runs-on: ubuntu-latest
     permissions:
-      contents: read        # 读取仓库内容（包括 CLA 文件）
-      pull-requests: write  # 在 PR 中添加评论
-      issues: write         # 在 issue 中添加评论
+      contents: read
+      pull-requests: write
+      issues: write
 
     steps:
       - name: "CLA Assistant"
@@ -23,33 +23,16 @@ jobs:
         uses: contributor-assistant/github-action@v2.3.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 使用同一个 token，不需要单独的 PERSONAL_ACCESS_TOKEN
         with:
-          # 关键修复：使用 raw 内容链接，而不是 GitHub 页面链接
           path-to-document: 'https://raw.githubusercontent.com/PlumBlossomMaid/Insight7/main/.github/CLA.md'
           path-to-signatures: 'signatures/version1/cla.json'
           branch: 'main'
-          
-          # 允许跳过 CLA 的用户（添加你自己和学弟的 GitHub 用户名）
+          repository: 'PlumBlossomMaid/Insight7'
           allowlist: |
             dependabot[bot]
             github-actions[bot]
             PlumBlossomMaid
-            你的学弟用户名
-            
-          # 当签署后锁住 PR（防止被修改后绕过 CLA）
           lock-pullrequest-aftermerge: true
-          
-          # 签署评论的触发词
           custom-pr-sign-comment: 'I have read the CLA Document and I hereby sign the CLA.'
           custom-allsigned-prcomment: 'All contributors have signed the CLA. ✅'
           
-          # 移除 remote-* 配置，让 action 使用当前仓库
-          # remote-organization-name 和 remote-repository-name 不是必需的
-          
-      # 调试步骤：确认 CLA 文件可访问
-      - name: Debug - Check CLA file
-        if: always()
-        run: |
-          echo "Testing CLA file URL..."
-          curl -I https://raw.githubusercontent.com/PlumBlossomMaid/Insight7/main/.github/CLA.md
