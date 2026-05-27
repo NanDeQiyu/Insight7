@@ -17,7 +17,7 @@ if(INSIGHT_WITH_CUDA AND NOT CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 # C++ standard
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -58,6 +58,7 @@ add_library(insight_core STATIC
     ${INSIGHT_SOURCES}
     src/init.cpp
 )
+set_target_properties(insight_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ========== OpenMP ==========
 find_package(OpenMP)
