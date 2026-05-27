@@ -59,10 +59,6 @@ C_Status rfft_kernel_cpu(void **inputs, void **outputs) {
   return C_SUCCESS;
 }
 
-#ifdef __cplusplus
-}
-#endif
-
 REGISTER_CPU_KERNEL(rfft, INSIGHT_DTYPE_F32, rfft_kernel_cpu);
 REGISTER_CPU_KERNEL(rfft, INSIGHT_DTYPE_F64, rfft_kernel_cpu);
 
