@@ -1,7 +1,7 @@
 # CMakeLists.txt
 cmake_minimum_required(VERSION 3.15)
 
-# ========== 设置策略以消除警告 ==========
+# ========== Set policies to suppress warnings ==========
 if(POLICY CMP0146)
     cmake_policy(SET CMP0146 NEW)
 endif()
@@ -9,29 +9,44 @@ if(POLICY CMP0104)
     cmake_policy(SET CMP0104 NEW)
 endif()
 
-project(insight VERSION 1.0.0 LANGUAGES CXX CUDA)
+# ========== Project definition without hardcoding CUDA ==========
+# CUDA will be enabled later if available and requested
+project(insight VERSION 1.0.0 LANGUAGES CXX)
 
-# ========== 全局 CUDA 架构设置 ==========
-if(INSIGHT_WITH_CUDA AND NOT CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES "52;61;70;75;80;86;89" CACHE STRING "CUDA architectures")
-endif()
-
-# C++ standard
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# Options
+# ========== Options ==========
 option(INSIGHT_BUILD_TESTS "Build unit tests" ON)
 option(INSIGHT_WITH_CUDA "Enable CUDA backend" ON)
 
 option(INSIGHT_DYNAMIC_CPU_BACKEND "Build CPU backend as shared library (DLL/SO)" ON)
 option(INSIGHT_DYNAMIC_GPU_BACKEND "Build GPU backend as shared library (DLL/SO)" ON)
 
-# Add custom CMake module path
+# ========== CUDA language support (optional) ==========
+if(INSIGHT_WITH_CUDA)
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(CMAKE_CUDA_COMPILER)
+        enable_language(CUDA)
+        message(STATUS "CUDA backend enabled: ${CMAKE_CUDA_COMPILER}")
+    else()
+        message(WARNING "CUDA compiler not found, disabling CUDA backend")
+        set(INSIGHT_WITH_CUDA OFF)
+    endif()
+endif()
+
+# ========== Global CUDA architecture settings ==========
+if(INSIGHT_WITH_CUDA AND NOT CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES "52;61;70;75;80;86;89" CACHE STRING "CUDA architectures")
+endif()
+
+# ========== C++ standard ==========
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# ========== Add custom CMake module path ==========
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# Include auto-fetch function
+# ========== Include auto-fetch function ==========
 include(FetchDependency)
 
 # ========== Directory Definitions ==========
@@ -135,7 +150,7 @@ if(INSIGHT_WITH_CUDA)
     add_subdirectory(backends/cuda)
     if(INSIGHT_DYNAMIC_GPU_BACKEND)
         message(STATUS "CUDA backend: dynamic linkage (DLL/SO)")
-            target_compile_definitions(insight_core PRIVATE INSIGHT_GPU_BACKEND_EXPORTS)
+        target_compile_definitions(insight_core PRIVATE INSIGHT_GPU_BACKEND_EXPORTS)
     else()
         target_link_libraries(insight_core PRIVATE insight_cuda_backend)
         message(STATUS "CUDA backend: static linkage")
@@ -192,7 +207,6 @@ set_target_properties(insight_demo PROPERTIES
 )
 
 # ========== Configuration Summary ==========
-
 if(INSIGHT_DYNAMIC_CPU_BACKEND)
     set(CPU_BACKEND_TYPE "dynamic")
 else()
