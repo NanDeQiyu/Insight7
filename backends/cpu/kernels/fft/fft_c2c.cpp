@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/fft/fft_c2c.cpp
+// backends/cpu/kernels/fft/fft_c2c.cpp
 /**
  * @file fft_c2c.cpp
  * @brief CPU kernel for complex-to-complex FFT.
@@ -20,12 +20,10 @@
  * @return C_SUCCESS on success, C_FAILED on error
  */
 
+#ifdef INSIGHT_USE_FFTW3
+
 #include "common.h"
 #include <string.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 C_Status fft_c2c_kernel_cpu(void **inputs, void **outputs) {
   InsightArray *out = (InsightArray *)outputs[0];
@@ -68,11 +66,9 @@ C_Status fft_c2c_kernel_cpu(void **inputs, void **outputs) {
   return C_SUCCESS;
 }
 
-#ifdef __cplusplus
-}
-#endif
-
 REGISTER_CPU_KERNEL(fft, INSIGHT_DTYPE_F32, fft_c2c_kernel_cpu);
 REGISTER_CPU_KERNEL(fft, INSIGHT_DTYPE_F64, fft_c2c_kernel_cpu);
 REGISTER_CPU_KERNEL(fft, INSIGHT_DTYPE_C32, fft_c2c_kernel_cpu);
 REGISTER_CPU_KERNEL(fft, INSIGHT_DTYPE_C64, fft_c2c_kernel_cpu);
+
+#endif // INSIGHT_USE_FFTW3

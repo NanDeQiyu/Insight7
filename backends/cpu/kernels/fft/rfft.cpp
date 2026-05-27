@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/fft/rfft.cpp
+// backends/cpu/kernels/fft/rfft.cpp
 /**
  * @file rfft.cpp
  * @brief CPU kernel for real-to-complex FFT.
@@ -18,12 +18,10 @@
  * @return C_SUCCESS on success, C_FAILED on error
  */
 
+#ifdef INSIGHT_USE_FFTW3
+
 #include "common.h"
 #include <string.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 C_Status rfft_kernel_cpu(void **inputs, void **outputs) {
   InsightArray *out = (InsightArray *)outputs[0];
@@ -67,3 +65,5 @@ C_Status rfft_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(rfft, INSIGHT_DTYPE_F32, rfft_kernel_cpu);
 REGISTER_CPU_KERNEL(rfft, INSIGHT_DTYPE_F64, rfft_kernel_cpu);
+
+#endif // INSIGHT_USE_FFTW3

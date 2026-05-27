@@ -3,6 +3,7 @@
  * @file common.c
  * @brief Implementation of shared FFT plan cache.
  */
+#ifdef INSIGHT_USE_FFTW3
 
 #include "common.h"
 
@@ -120,3 +121,5 @@ fftwf_plan fft_ensure_plan_f32(int n, int64_t batch, int direction,
   return cache->plan_f32;
 }
 }
+
+#endif

@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/fft/common.h
+// backends/cpu/kernels/fft/common.h
 /**
  * @file common.h
  * @brief Common utilities for CPU FFT kernels.
@@ -8,6 +8,8 @@
 
 #ifndef CPU_FFT_COMMON_H
 #define CPU_FFT_COMMON_H
+
+#ifdef INSIGHT_USE_FFTW3
 
 #include "../../registry/cpu_registry.h"
 #include "insight/c_api/array.h"
@@ -104,5 +106,7 @@ fftwf_plan fft_ensure_plan_f32(int n, int64_t batch, int direction,
 #ifdef __cplusplus
 }
 #endif
+
+#endif // INSIGHT_USE_FFTW3
 
 #endif // CPU_FFT_COMMON_H
