@@ -6,7 +6,24 @@
 #include <gtest/gtest.h>
 
 using namespace ins;
+
 namespace {
+
+// ============================================================================
+// Test Fixture for Unary CPU Tests
+// ============================================================================
+
+class UnaryTestCPU : public ::testing::Test {
+protected:
+  static void SetUpTestSuite() {
+    ins::init({"cpu"});
+    set_device(CPUPlace());
+  }
+
+  static void TearDownTestSuite() {
+    // Optional: cleanup if needed
+  }
+};
 
 // Helper: fill array with sequential values
 template <typename T> void fill_sequential(Array &arr) {
@@ -51,13 +68,14 @@ void expect_bool_equal(const Array &arr, const std::vector<bool> &expected) {
     EXPECT_EQ(data[i], expected[i]);
   }
 }
+
 } // namespace
+
 // ============================================================================
 // Basic math tests
 // ============================================================================
 
-TEST(UnaryTest, Abs) {
-  ins::init();
+TEST_F(UnaryTestCPU, Abs) {
   Array a({2, 3}, DType::I32);
   int32_t *a_data = a.data<int32_t>();
   for (int64_t i = 0; i < 6; ++i) {
@@ -70,7 +88,7 @@ TEST(UnaryTest, Abs) {
   expect_equal<int32_t>(c, expected);
 }
 
-TEST(UnaryTest, Negative) {
+TEST_F(UnaryTestCPU, Negative) {
   Array a({2, 3}, DType::I32);
   fill_sequential<int32_t>(a);
 
@@ -80,7 +98,7 @@ TEST(UnaryTest, Negative) {
   expect_equal<int32_t>(c, expected);
 }
 
-TEST(UnaryTest, Square) {
+TEST_F(UnaryTestCPU, Square) {
   Array a({2, 3}, DType::I32);
   fill_sequential<int32_t>(a);
 
@@ -94,7 +112,7 @@ TEST(UnaryTest, Square) {
 // Exponential and logarithmic tests
 // ============================================================================
 
-TEST(UnaryTest, Exp) {
+TEST_F(UnaryTestCPU, Exp) {
   Array a({2, 3}, DType::F32);
   fill_float_range<float>(a, 0.0f, 0.5f);
 
@@ -106,7 +124,7 @@ TEST(UnaryTest, Exp) {
   }
 }
 
-TEST(UnaryTest, Log) {
+TEST_F(UnaryTestCPU, Log) {
   Array a({2, 3}, DType::F32);
   fill_float_range<float>(a, 1.0f, 1.0f);
 
@@ -122,7 +140,7 @@ TEST(UnaryTest, Log) {
 // Trigonometric tests
 // ============================================================================
 
-TEST(UnaryTest, Sin) {
+TEST_F(UnaryTestCPU, Sin) {
   Array a({2, 3}, DType::F32);
   fill_float_range<float>(a, 0.0f, 0.5f);
 
@@ -134,7 +152,7 @@ TEST(UnaryTest, Sin) {
   }
 }
 
-TEST(UnaryTest, Cos) {
+TEST_F(UnaryTestCPU, Cos) {
   Array a({2, 3}, DType::F32);
   fill_float_range<float>(a, 0.0f, 0.5f);
 
@@ -146,7 +164,7 @@ TEST(UnaryTest, Cos) {
   }
 }
 
-TEST(UnaryTest, Tan) {
+TEST_F(UnaryTestCPU, Tan) {
   Array a({2, 3}, DType::F32);
   fill_float_range<float>(a, 0.1f, 0.2f);
 
@@ -158,7 +176,7 @@ TEST(UnaryTest, Tan) {
   }
 }
 
-TEST(UnaryTest, Tanh) {
+TEST_F(UnaryTestCPU, Tanh) {
   Array a({2, 3}, DType::F32);
   fill_float_range<float>(a, -2.0f, 1.0f);
 
@@ -174,7 +192,7 @@ TEST(UnaryTest, Tanh) {
 // Rounding tests
 // ============================================================================
 
-TEST(UnaryTest, Floor) {
+TEST_F(UnaryTestCPU, Floor) {
   Array a({2, 3}, DType::F32);
   float *a_data = a.data<float>();
   a_data[0] = 1.2f;
@@ -190,7 +208,7 @@ TEST(UnaryTest, Floor) {
   expect_float_equal<float>(c, expected);
 }
 
-TEST(UnaryTest, Ceil) {
+TEST_F(UnaryTestCPU, Ceil) {
   Array a({2, 3}, DType::F32);
   float *a_data = a.data<float>();
   a_data[0] = 1.2f;
@@ -206,7 +224,7 @@ TEST(UnaryTest, Ceil) {
   expect_float_equal<float>(c, expected);
 }
 
-TEST(UnaryTest, Trunc) {
+TEST_F(UnaryTestCPU, Trunc) {
   Array a({2, 3}, DType::F32);
   float *a_data = a.data<float>();
   a_data[0] = 1.2f;
@@ -222,7 +240,7 @@ TEST(UnaryTest, Trunc) {
   expect_float_equal<float>(c, expected);
 }
 
-TEST(UnaryTest, Rint) {
+TEST_F(UnaryTestCPU, Rint) {
   Array a({2, 3}, DType::F32);
   float *a_data = a.data<float>();
   a_data[0] = 1.2f;
@@ -247,7 +265,7 @@ TEST(UnaryTest, Rint) {
 // Sign test
 // ============================================================================
 
-TEST(UnaryTest, Sign) {
+TEST_F(UnaryTestCPU, Sign) {
   Array a({2, 3}, DType::F32);
   float *a_data = a.data<float>();
   a_data[0] = -5.0f;
@@ -267,7 +285,7 @@ TEST(UnaryTest, Sign) {
 // Complex conjugate test
 // ============================================================================
 
-TEST(UnaryTest, Conj) {
+TEST_F(UnaryTestCPU, Conj) {
   Array a({2, 3}, DType::C32);
   std::complex<float> *a_data = a.data<std::complex<float>>();
   for (int64_t i = 0; i < 6; ++i) {
@@ -284,13 +302,12 @@ TEST(UnaryTest, Conj) {
   }
 }
 
-TEST(UnaryTest, ConjReal) {
+TEST_F(UnaryTestCPU, ConjReal) {
   Array a({2, 3}, DType::F32);
   fill_sequential<float>(a);
 
   Array c = conj(a);
 
-  // Conjugate of real numbers should be identity
   const float *data = c.data<float>();
   for (int64_t i = 0; i < 6; ++i) {
     EXPECT_FLOAT_EQ(data[i], static_cast<float>(i));
@@ -301,7 +318,7 @@ TEST(UnaryTest, ConjReal) {
 // Degree/radian conversion tests
 // ============================================================================
 
-TEST(UnaryTest, Deg2Rad) {
+TEST_F(UnaryTestCPU, Deg2Rad) {
   Array a({2, 3}, DType::F32);
   float *a_data = a.data<float>();
   for (int64_t i = 0; i < 6; ++i) {
@@ -316,7 +333,7 @@ TEST(UnaryTest, Deg2Rad) {
   }
 }
 
-TEST(UnaryTest, Rad2Deg) {
+TEST_F(UnaryTestCPU, Rad2Deg) {
   Array a({2, 3}, DType::F32);
   fill_float_range<float>(a, 0.0f, 0.5f);
 
@@ -332,7 +349,7 @@ TEST(UnaryTest, Rad2Deg) {
 // Logical not test
 // ============================================================================
 
-TEST(UnaryTest, LogicalNot) {
+TEST_F(UnaryTestCPU, LogicalNot) {
   Array a({2, 3}, DType::F32);
   float *a_data = a.data<float>();
   a_data[0] = 0.0f;
@@ -352,7 +369,7 @@ TEST(UnaryTest, LogicalNot) {
 // Bitwise not test
 // ============================================================================
 
-TEST(UnaryTest, BitwiseNot) {
+TEST_F(UnaryTestCPU, BitwiseNot) {
   Array a({2, 3}, DType::I32);
   int32_t *a_data = a.data<int32_t>();
   for (int64_t i = 0; i < 6; ++i) {
@@ -371,18 +388,15 @@ TEST(UnaryTest, BitwiseNot) {
 // View (non-contiguous) test
 // ============================================================================
 
-TEST(UnaryTest, ViewAbs) {
+TEST_F(UnaryTestCPU, ViewAbs) {
   Array a({3, 4}, DType::F32);
   fill_float_range<float>(a, -5.0f, 1.0f);
 
-  // Create non-contiguous view via slice (rows 0 and 2)
   Array view = a.slice(0, 0, 3, 2);
   EXPECT_FALSE(view.is_contiguous());
 
   Array c = abs(view);
 
-  // Expected: view row 0: [-5,-4,-3,-2] -> [5,4,3,2]
-  //           view row 1: [3,4,5,6] -> [3,4,5,6]
   const float *data = c.data<float>();
   EXPECT_FLOAT_EQ(data[0], 5.0f);
   EXPECT_FLOAT_EQ(data[1], 4.0f);
@@ -398,8 +412,7 @@ TEST(UnaryTest, ViewAbs) {
 // IsNaN / IsInf / IsFinite tests
 // ============================================================================
 
-TEST(UnaryTest, IsNan) {
-  // Test with float32
+TEST_F(UnaryTestCPU, IsNan) {
   Array a({2, 4}, DType::F32);
   float *a_data = a.data<float>();
   a_data[0] = 1.0f;
@@ -417,7 +430,6 @@ TEST(UnaryTest, IsNan) {
                                 false, false, true,  false};
   expect_bool_equal(c, expected);
 
-  // Test with float64
   Array b({2, 4}, DType::F64);
   double *b_data = b.data<double>();
   b_data[0] = 1.0;
@@ -430,10 +442,8 @@ TEST(UnaryTest, IsNan) {
   b_data[7] = 5.0;
 
   Array d = isnan(b);
-
   expect_bool_equal(d, expected);
 
-  // Test with integer (should always be false)
   Array e({2, 4}, DType::I32);
   int32_t *e_data = e.data<int32_t>();
   for (int64_t i = 0; i < 8; ++i) {
@@ -445,8 +455,7 @@ TEST(UnaryTest, IsNan) {
   expect_bool_equal(f, int_expected);
 }
 
-TEST(UnaryTest, IsInf) {
-  // Test with float32
+TEST_F(UnaryTestCPU, IsInf) {
   Array a({2, 4}, DType::F32);
   float *a_data = a.data<float>();
   a_data[0] = 1.0f;
@@ -464,7 +473,6 @@ TEST(UnaryTest, IsInf) {
                                 false, true, false, false};
   expect_bool_equal(c, expected);
 
-  // Test with float64
   Array b({2, 4}, DType::F64);
   double *b_data = b.data<double>();
   b_data[0] = 1.0;
@@ -477,10 +485,8 @@ TEST(UnaryTest, IsInf) {
   b_data[7] = 5.0;
 
   Array d = isinf(b);
-
   expect_bool_equal(d, expected);
 
-  // Test with integer (should always be false)
   Array e({2, 4}, DType::I32);
   fill_sequential<int32_t>(e);
 
@@ -489,8 +495,7 @@ TEST(UnaryTest, IsInf) {
   expect_bool_equal(f, int_expected);
 }
 
-TEST(UnaryTest, IsFinite) {
-  // Test with float32
+TEST_F(UnaryTestCPU, IsFinite) {
   Array a({2, 5}, DType::F32);
   float *a_data = a.data<float>();
   a_data[0] = 1.0f;
@@ -510,7 +515,6 @@ TEST(UnaryTest, IsFinite) {
                                 true, false, true,  false, true};
   expect_bool_equal(c, expected);
 
-  // Test with float64
   Array b({2, 5}, DType::F64);
   double *b_data = b.data<double>();
   b_data[0] = 1.0;
@@ -525,10 +529,8 @@ TEST(UnaryTest, IsFinite) {
   b_data[9] = 8.0;
 
   Array d = isfinite(b);
-
   expect_bool_equal(d, expected);
 
-  // Test with integer (should always be true)
   Array e({2, 5}, DType::I32);
   int32_t *e_data = e.data<int32_t>();
   for (int64_t i = 0; i < 10; ++i) {
@@ -544,8 +546,7 @@ TEST(UnaryTest, IsFinite) {
 // IsNan with complex numbers
 // ============================================================================
 
-TEST(UnaryTest, IsNanComplex) {
-  // Test with complex64
+TEST_F(UnaryTestCPU, IsNanComplex) {
   Array a({2, 3}, DType::C32);
   std::complex<float> *a_data = a.data<std::complex<float>>();
   a_data[0] = std::complex<float>(1.0f, 2.0f);
@@ -560,7 +561,6 @@ TEST(UnaryTest, IsNanComplex) {
   std::vector<bool> expected = {false, true, true, true, false, false};
   expect_bool_equal(c, expected);
 
-  // Test with complex128
   Array b({2, 3}, DType::C64);
   std::complex<double> *b_data = b.data<std::complex<double>>();
   b_data[0] = std::complex<double>(1.0, 2.0);
@@ -571,12 +571,10 @@ TEST(UnaryTest, IsNanComplex) {
   b_data[5] = std::complex<double>(7.0, 8.0);
 
   Array d = isnan(b);
-
   expect_bool_equal(d, expected);
 }
 
-TEST(UnaryTest, IsInfComplex) {
-  // Test with complex64
+TEST_F(UnaryTestCPU, IsInfComplex) {
   Array a({2, 3}, DType::C32);
   std::complex<float> *a_data = a.data<std::complex<float>>();
   a_data[0] = std::complex<float>(1.0f, 2.0f);
@@ -593,8 +591,7 @@ TEST(UnaryTest, IsInfComplex) {
   expect_bool_equal(c, expected);
 }
 
-TEST(UnaryTest, IsFiniteComplex) {
-  // Test with complex64
+TEST_F(UnaryTestCPU, IsFiniteComplex) {
   Array a({2, 4}, DType::C32);
   std::complex<float> *a_data = a.data<std::complex<float>>();
   a_data[0] = std::complex<float>(1.0f, 2.0f);
@@ -608,7 +605,6 @@ TEST(UnaryTest, IsFiniteComplex) {
 
   Array c = isfinite(a);
 
-  // isfinite is true only if both real and imag are finite
   std::vector<bool> expected = {true,  false, false, true,
                                 false, true,  false, true};
   expect_bool_equal(c, expected);

@@ -36,14 +36,16 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
+          # Install libopenblas-dev which includes LAPACK and LAPACKE
           sudo apt-get install -y \
             libfftw3-dev \
             libopenblas-dev \
-            liblapack-dev \
             liblapacke-dev \
             libomp-dev \
             cmake \
             build-essential
+          # Also ensure libopenblas is linked correctly
+          sudo ldconfig
 
       - name: Configure CMake
         run: |
@@ -55,7 +57,9 @@ jobs:
             -DINSIGHT_USE_FFTW3=ON \
             -DINSIGHT_USE_OPENBLAS=ON \
             -DINSIGHT_BUILD_TESTS=ON \
-            -DINSIGHT_DYNAMIC_CPU_BACKEND=ON
+            -DINSIGHT_DYNAMIC_CPU_BACKEND=ON \
+            -DBLAS_LIBRARIES=/usr/lib/x86_64-linux-gnu/libopenblas.so \
+            -DLAPACK_LIBRARIES=/usr/lib/x86_64-linux-gnu/libopenblas.so
 
       - name: Build
         run: cd build && make -j$(nproc)
@@ -84,11 +88,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libopenblas-dev \
-            liblapack-dev \
             liblapacke-dev \
             libomp-dev \
             cmake \
             build-essential
+          sudo ldconfig
 
       - name: Configure CMake
         run: |
@@ -100,7 +104,9 @@ jobs:
             -DINSIGHT_USE_FFTW3=OFF \
             -DINSIGHT_USE_OPENBLAS=ON \
             -DINSIGHT_BUILD_TESTS=ON \
-            -DINSIGHT_DYNAMIC_CPU_BACKEND=ON
+            -DINSIGHT_DYNAMIC_CPU_BACKEND=ON \
+            -DBLAS_LIBRARIES=/usr/lib/x86_64-linux-gnu/libopenblas.so \
+            -DLAPACK_LIBRARIES=/usr/lib/x86_64-linux-gnu/libopenblas.so
 
       - name: Build
         run: cd build && make -j$(nproc)
