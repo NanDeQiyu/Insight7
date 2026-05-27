@@ -60,27 +60,6 @@ jobs:
       - name: Build
         run: cd build && make -j$(nproc)
       
-      - name: Debug linkage (before tests)
-        run: |
-          cd build
-          echo "=== ldd output ==="
-          ldd backends/cpu/libinsight_cpu_backend.so
-          echo ""
-          echo "=== Check openblas library ==="
-          ls -la /usr/lib/x86_64-linux-gnu/libopenblas*
-          echo ""
-          echo "=== LAPACKE symbols in libopenblas.so ==="
-          nm -D /usr/lib/x86_64-linux-gnu/libopenblas.so 2>&1 | grep LAPACKE || echo "No LAPACKE symbols found"
-          echo ""
-          echo "=== Check lapacke library ==="
-          ls -la /usr/lib/x86_64-linux-gnu/liblapacke*
-          echo ""
-          echo "=== LAPACKE symbols in liblapacke.so ==="
-          nm -D /usr/lib/x86_64-linux-gnu/liblapacke.so 2>&1 | grep LAPACKE || echo "No LAPACKE symbols found"
-          echo ""
-          echo "=== LAPACKE symbols in libinsight_cpu_backend.so ==="
-          nm -D backends/cpu/libinsight_cpu_backend.so 2>&1 | grep LAPACKE || echo "No LAPACKE symbols found"
-      
       - name: Run tests
         run: |
           cd build
