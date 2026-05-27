@@ -1,4 +1,4 @@
-name: CPU Tests
+name: CPU Tests (Full)
 
 on:
   push:
@@ -17,42 +17,34 @@ on:
     branches: [ main, master ]
     paths:
       - 'backends/cpu/**'
-      - 'cmake/**'
       - 'include/**'
       - 'src/**'
       - 'tests/cpu/**'
-      - 'tests/CMakeLists.txt'
-      - 'third_party/**'
       - 'CMakeLists.txt'
-
-env:
-  # 禁用 CUDA 构建
-  INSIGHT_WITH_CUDA: OFF
-  # 启用 OpenBLAS 和 FFTW3
-  INSIGHT_USE_OPENBLAS: ON
-  INSIGHT_USE_FFTW3: ON
+  workflow_dispatch:
 
 jobs:
-  test:
-    name: CPU Tests on Ubuntu
+  # Job 1: Full dependencies (OpenBLAS + FFTW3)
+  full:
+    name: Full (OpenBLAS + FFTW3)
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
-      
+
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libfftw3-dev \
             libopenblas-dev \
+            liblapack-dev \
+            liblapacke-dev \
             libomp-dev \
             cmake \
             build-essential
-      
+
       - name: Configure CMake
         run: |
           mkdir -p build
@@ -64,21 +56,147 @@ jobs:
             -DINSIGHT_USE_OPENBLAS=ON \
             -DINSIGHT_BUILD_TESTS=ON \
             -DINSIGHT_DYNAMIC_CPU_BACKEND=ON
-      
+
       - name: Build
-        run: |
-          cd build
-          make -j$(nproc)
-      
-      - name: Run CPU tests
-        run: |
-          cd build
-          ctest --output-on-failure -j$(nproc)
-      
-      - name: Upload test logs (on failure)
+        run: cd build && make -j$(nproc)
+
+      - name: Run tests
+        run: cd build && ctest --output-on-failure -j$(nproc)
+
+      - name: Upload logs (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs
+          name: test-logs-full
+          path: build/Testing/Temporary/
+
+  # Job 2: No FFTW3 (fallback to internal implementation)
+  no-fftw:
+    name: No FFTW3 (internal fallback)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libopenblas-dev \
+            liblapack-dev \
+            liblapacke-dev \
+            libomp-dev \
+            cmake \
+            build-essential
+
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=OFF \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=ON \
+            -DINSIGHT_DYNAMIC_CPU_BACKEND=ON
+
+      - name: Build
+        run: cd build && make -j$(nproc)
+
+      - name: Run tests
+        run: cd build && ctest --output-on-failure -j$(nproc)
+
+      - name: Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-no-fftw
+          path: build/Testing/Temporary/
+
+  # Job 3: No OpenBLAS (fallback to internal implementation)
+  no-openblas:
+    name: No OpenBLAS (internal fallback)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfftw3-dev \
+            libomp-dev \
+            cmake \
+            build-essential
+
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=OFF \
+            -DINSIGHT_BUILD_TESTS=ON \
+            -DINSIGHT_DYNAMIC_CPU_BACKEND=ON
+
+      - name: Build
+        run: cd build && make -j$(nproc)
+
+      - name: Run tests
+        run: cd build && ctest --output-on-failure -j$(nproc)
+
+      - name: Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-no-openblas
+          path: build/Testing/Temporary/
+
+  # Job 4: Minimal dependencies (no FFTW3, no OpenBLAS)
+  minimal:
+    name: Minimal (no FFTW3, no OpenBLAS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libomp-dev \
+            cmake \
+            build-essential
+
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=OFF \
+            -DINSIGHT_USE_OPENBLAS=OFF \
+            -DINSIGHT_BUILD_TESTS=ON \
+            -DINSIGHT_DYNAMIC_CPU_BACKEND=ON
+
+      - name: Build
+        run: cd build && make -j$(nproc)
+
+      - name: Run tests
+        run: cd build && ctest --output-on-failure -j$(nproc)
+
+      - name: Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-minimal
           path: build/Testing/Temporary/
           
