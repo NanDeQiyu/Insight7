@@ -36,7 +36,6 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          # Install libopenblas-dev which includes LAPACK and LAPACKE
           sudo apt-get install -y \
             libfftw3-dev \
             libopenblas-dev \
@@ -44,7 +43,6 @@ jobs:
             libomp-dev \
             cmake \
             build-essential
-          # Also ensure libopenblas is linked correctly
           sudo ldconfig
 
       - name: Configure CMake
@@ -65,7 +63,10 @@ jobs:
         run: cd build && make -j$(nproc)
 
       - name: Run tests
-        run: cd build && ctest --output-on-failure -j$(nproc)
+        run: |
+          cd build
+          export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+          ctest --output-on-failure -j$(nproc)
 
       - name: Upload logs (on failure)
         if: failure()
@@ -112,7 +113,10 @@ jobs:
         run: cd build && make -j$(nproc)
 
       - name: Run tests
-        run: cd build && ctest --output-on-failure -j$(nproc)
+        run: |
+          cd build
+          export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+          ctest --output-on-failure -j$(nproc)
 
       - name: Upload logs (on failure)
         if: failure()
