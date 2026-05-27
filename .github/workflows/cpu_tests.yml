@@ -1,0 +1,84 @@
+name: CPU Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'backends/cpu/**'
+      - 'cmake/**'
+      - 'include/**'
+      - 'src/**'
+      - 'tests/cpu/**'
+      - 'tests/CMakeLists.txt'
+      - 'third_party/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/cpu_tests.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'backends/cpu/**'
+      - 'cmake/**'
+      - 'include/**'
+      - 'src/**'
+      - 'tests/cpu/**'
+      - 'tests/CMakeLists.txt'
+      - 'third_party/**'
+      - 'CMakeLists.txt'
+
+env:
+  # 禁用 CUDA 构建
+  INSIGHT_WITH_CUDA: OFF
+  # 启用 OpenBLAS 和 FFTW3
+  INSIGHT_USE_OPENBLAS: ON
+  INSIGHT_USE_FFTW3: ON
+
+jobs:
+  test:
+    name: CPU Tests on Ubuntu
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfftw3-dev \
+            libopenblas-dev \
+            libomp-dev \
+            cmake \
+            build-essential
+      
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=ON \
+            -DINSIGHT_DYNAMIC_CPU_BACKEND=ON
+      
+      - name: Build
+        run: |
+          cd build
+          make -j$(nproc)
+      
+      - name: Run CPU tests
+        run: |
+          cd build
+          ctest --output-on-failure -j$(nproc)
+      
+      - name: Upload test logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: build/Testing/Temporary/
+          
