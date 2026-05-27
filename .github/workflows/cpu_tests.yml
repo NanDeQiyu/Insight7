@@ -59,21 +59,8 @@ jobs:
 
       - name: Build
         run: cd build && make -j$(nproc)
-
-      - name: Run tests
-        run: |
-          cd build
-          export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-          ctest --output-on-failure -j$(nproc)
-
-      - name: Upload logs (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-logs-full
-          path: build/Testing/Temporary/
-
-      - name: Debug linkage
+      
+      - name: Debug linkage (before tests)
         run: |
           cd build
           echo "=== ldd output ==="
@@ -93,6 +80,19 @@ jobs:
           echo ""
           echo "=== LAPACKE symbols in libinsight_cpu_backend.so ==="
           nm -D backends/cpu/libinsight_cpu_backend.so 2>&1 | grep LAPACKE || echo "No LAPACKE symbols found"
+      
+      - name: Run tests
+        run: |
+          cd build
+          export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+          ctest --output-on-failure -j$(nproc)
+
+      - name: Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-full
+          path: build/Testing/Temporary/
 
   # Job 2: No FFTW3 (fallback to internal implementation)
   no-fftw:
