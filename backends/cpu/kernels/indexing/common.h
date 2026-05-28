@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/common.h
+// backends/cpu/kernels/indexing/common.h
 /**
  * @file common.h
  * @brief Common utilities for CPU indexing kernels.

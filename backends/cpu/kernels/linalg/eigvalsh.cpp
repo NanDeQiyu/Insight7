@@ -11,7 +11,7 @@
 #include <cstring>
 
 static void eigvalsh_f32(const float *src, float *vals, int n, int uplo) {
-  // 复制到列主序
+  // Copy to column major order
   float *a = (float *)malloc(n * n * sizeof(float));
   if (!a) {
     cpu_set_last_error("eigvalsh: memory allocation failed");
@@ -24,9 +24,9 @@ static void eigvalsh_f32(const float *src, float *vals, int n, int uplo) {
   }
 
   char uplo_char = uplo ? 'U' : 'L';
-  char jobz = 'N'; // 只计算特征值，不计算特征向量
+  char jobz = 'N'; // Only eigenvalues ​​are calculated, eigenvectors are not calculated
 
-  // LAPACKE 内部自动管理 workspace
+  // LAPACKE automatically manages workspace internally
   int info = LAPACKE_ssyev(LAPACK_COL_MAJOR, jobz, uplo_char, n, a, n, vals);
 
   if (info != 0) {

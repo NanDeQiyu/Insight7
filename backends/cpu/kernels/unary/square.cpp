@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/square.cpp
+// backends/cpu/kernels/unary/square.cpp
 #include "common.h"
 #include <complex>
 

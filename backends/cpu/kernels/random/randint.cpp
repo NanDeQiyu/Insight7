@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/randint.cpp
+// backends/cpu/kernels/random/randint.cpp
 #include "common.h"
 
 #ifdef __cplusplus

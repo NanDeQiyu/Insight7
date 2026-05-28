@@ -36,7 +36,7 @@ TEST_F(SignalTest, UnwrapWithJumps) {
   std::vector<double> data = {0.0, 0.1, 3.2, 3.3, 6.4, 6.5};
   Array a = to_array(data);
   Array u = unwrap(a);
-  // 默认阈值 π，3.2 不会触发跳变
+  // Default threshold π, 3.2 will not trigger a transition
   const double *u_data = u.data<double>();
   EXPECT_NEAR(u_data[0], 0.0, 1e-6);
   EXPECT_NEAR(u_data[1], 0.1, 1e-6);
@@ -59,12 +59,12 @@ TEST_F(SignalTest, Unwrap2DAxis1) {
   Array u = unwrap(m, 1);
   EXPECT_EQ(u.shape(), Shape({2, 4}));
   const double *u_data = u.data<double>();
-  // 第一行：单调递增，不变
+  // The first line: monotonically increasing, unchanged
   EXPECT_NEAR(u_data[0], 0.0, 1e-6);
   EXPECT_NEAR(u_data[1], M_PI_2, 1e-6);
   EXPECT_NEAR(u_data[2], M_PI, 1e-6);
   EXPECT_NEAR(u_data[3], 3.0 * M_PI_2, 1e-6);
-  // 第二行可能有调整
+  // There may be adjustments to the second line
   EXPECT_NEAR(u_data[4], 0.1, 1e-6);
   EXPECT_NEAR(u_data[5], M_PI_2, 1e-6);
   EXPECT_NEAR(u_data[6], 3.2, 1e-6);
@@ -84,7 +84,7 @@ TEST_F(SignalTest, UnwrapCustomParams) {
   Array a = to_array(data);
   Array u = unwrap(a, -1, 0.3, 1.0);
   const double *u_data = u.data<double>();
-  // 阈值 0.3，周期 1.0，检测跳变并修正
+  // Threshold 0.3, period 1.0, detect jumps and correct
   EXPECT_NEAR(u_data[0], 0.0, 1e-6);
   EXPECT_NEAR(u_data[1], -0.5, 1e-6);
   EXPECT_NEAR(u_data[2], -1.0, 1e-6);
@@ -101,7 +101,7 @@ TEST_F(SignalTest, UnwrapNegativeAxis) {
 }
 
 TEST_F(SignalTest, UnwrapContinuity) {
-  // 创建连续相位，然后取模 2π，验证 unwrap 能恢复
+  // Create a continuous phase, then take modulo 2π to verify that unwrap can recover
   int n = 20;
   std::vector<double> original(n);
   std::vector<double> wrapped(n);
@@ -159,7 +159,7 @@ TEST_F(SignalTest, Convolve) {
   Array same = ins::convolve(a, v, "same");
   const float *same_data = same.data<float>();
   EXPECT_EQ(same.numel(), 3);
-  // 对齐 NumPy 行为：返回 [1, 3, 5]
+  // Alignment NumPy behavior: returns [1, 3, 5]
   EXPECT_NEAR(same_data[0], 1.0f, 1e-5);
   EXPECT_NEAR(same_data[1], 3.0f, 1e-5);
   EXPECT_NEAR(same_data[2], 5.0f, 1e-5);

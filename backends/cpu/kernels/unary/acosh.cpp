@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/acosh.cpp
+// backends/cpu/kernels/unary/acosh.cpp
 #include "common.h"
 #include <cmath>
 

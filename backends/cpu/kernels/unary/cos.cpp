@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/cos.cpp
+// backends/cpu/kernels/unary/cos.cpp
 #include "common.h"
 #include <cmath>
 

@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/not_equal.cpp
+// backends/cpu/kernels/elementwise/not_equal.cpp
 /**
  * @file not_equal.cpp
  * @brief CPU kernel for Inequality operation.

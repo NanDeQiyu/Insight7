@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/max.cpp
+// backends/cpu/kernels/reduction/max.cpp
 /**
  * @file max.cpp
  * @brief CPU kernel for Max reduction.

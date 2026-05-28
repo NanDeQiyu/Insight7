@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/randn.cpp
+// backends/cpu/kernels/random/randn.cpp
 /**
  * @file randn.cpp
  * @brief CPU kernel for Normal distribution.

@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/cummin.cpp
+// backends/cpu/kernels/reduction/cummin.cpp
 /**
  * @file cummin.cpp
  * @brief CPU kernel for cumulative minimum operation.

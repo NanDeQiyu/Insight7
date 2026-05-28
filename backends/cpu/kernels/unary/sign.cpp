@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/sign.cpp
+// backends/cpu/kernels/unary/sign.cpp
 #include "common.h"
 #include <complex>
 

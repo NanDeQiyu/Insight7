@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/linalg/outer.cpp
+// backends/cpu/kernels/linalg/outer.cpp
 /**
  * @file outer.cpp
  * @brief CPU kernel for outer product of two 1D vectors.

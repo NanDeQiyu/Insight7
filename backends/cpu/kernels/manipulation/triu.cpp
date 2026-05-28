@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/manipulation/triu.cpp
+// backends/cpu/kernels/manipulation/triu.cpp
 /**
  * @file triu.cpp
  * @brief CPU kernel for triu operation (upper triangle).

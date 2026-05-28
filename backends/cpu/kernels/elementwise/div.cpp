@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/div.cpp
+// backends/cpu/kernels/elementwise/div.cpp
 /**
  * @file div.cpp
  * @brief CPU kernel for Division operation.

@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/negative.cpp
+// backends/cpu/kernels/unary/negative.cpp
 #include "common.h"
 #include <complex>
 

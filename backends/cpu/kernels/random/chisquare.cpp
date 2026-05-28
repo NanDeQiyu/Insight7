@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/chisquare.cpp
+// backends/cpu/kernels/random/chisquare.cpp
 #include "common.h"
 
 #ifdef __cplusplus

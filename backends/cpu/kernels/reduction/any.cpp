@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/any.cpp
+// backends/cpu/kernels/reduction/any.cpp
 /**
  * @file any.cpp
  * @brief CPU kernel for Any reduction.

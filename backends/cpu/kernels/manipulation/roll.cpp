@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/manipulation/roll.cpp
+// backends/cpu/kernels/manipulation/roll.cpp
 /**
  * @file roll.cpp
  * @brief CPU kernel for roll operation.

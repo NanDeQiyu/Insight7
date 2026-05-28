@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/bincount.cpp
+// backends/cpu/kernels/reduction/bincount.cpp
 /**
  * @file bincount.cpp
  * @brief CPU kernel for bincount (unweighted).

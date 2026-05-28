@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/linalg/inv.cpp
+// backends/cpu/kernels/linalg/inv.cpp
 /**
  * @file inv.cpp
  * @brief CPU kernel for matrix inverse using LAPACK.

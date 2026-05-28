@@ -36,7 +36,7 @@ C_Status contiguous_copy_cpu(void **inputs, void **outputs) {
   int64_t total = in->numel;
   int ndim = in->ndim;
 
-  // 一维数组和标量直接 memcpy
+  // One-dimensional arrays and scalars directly memcpy
   if (ndim <= 1 || in->offset == 0) {
     bool is_contiguous_in = true;
     int64_t expected_stride = 1;
@@ -53,7 +53,7 @@ C_Status contiguous_copy_cpu(void **inputs, void **outputs) {
     }
   }
 
-  // 非连续数组逐元素复制
+  // Copy non-contiguous array element by element
   for (int64_t linear = 0; linear < total; ++linear) {
     int64_t in_offset = in->offset;
     int64_t tmp = linear;

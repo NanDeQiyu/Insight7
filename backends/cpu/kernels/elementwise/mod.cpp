@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/mod.cpp
+// backends/cpu/kernels/elementwise/mod.cpp
 /**
  * @file mod.cpp
  * @brief CPU kernel for modulo operation.

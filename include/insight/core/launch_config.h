@@ -10,11 +10,11 @@ public:
   int shmSize;
   cudaStream_t stream;
 
-  // 默认构造函数
+  // default constructor
   LaunchConfig()
       : blocks(1, 1, 1), threads(256, 1, 1), shmSize(0), stream(nullptr) {}
 
-  // 自动计算 blocks（一维）
+  // Automatically calculate blocks (one-dimensional)
   LaunchConfig(int n, cudaStream_t stream = nullptr)
       : threads(256, 1, 1), shmSize(0), stream(stream) {
     if (n <= 0) {
@@ -25,7 +25,7 @@ public:
     }
   }
 
-  // 指定 threads（一维）
+  // Specify threads (one dimension)
   LaunchConfig(int n, int threads_per_block, cudaStream_t stream = nullptr)
       : threads(threads_per_block, 1, 1), shmSize(0), stream(stream) {
     if (threads_per_block <= 0) {
@@ -39,7 +39,7 @@ public:
     }
   }
 
-  // 指定 threads 和 shared memory（一维）
+  // Specify threads and shared memory (one-dimensional)
   LaunchConfig(int n, int threads_per_block, int shm_size,
                cudaStream_t stream = nullptr)
       : threads(threads_per_block, 1, 1), shmSize(shm_size), stream(stream) {
@@ -54,12 +54,12 @@ public:
     }
   }
 
-  // 新增：二维构造函数
+  // New: 2D constructor
   LaunchConfig(dim3 grid, dim3 block, int shm_size = 0,
                cudaStream_t stream = nullptr)
       : blocks(grid), threads(block), shmSize(shm_size), stream(stream) {}
 
-  // 兼容老代码的 set 方法（一维）
+  // Set method compatible with old code (one-dimensional)
   void set(int blocks, int threads, int shmSize, cudaStream_t stream) {
     if (threads <= 0) {
       throw std::invalid_argument("threads must be positive");
@@ -70,7 +70,7 @@ public:
     this->stream = stream;
   }
 
-  // 新增：二维 set 方法
+  // New: 2D set method
   void set(dim3 blocks, dim3 threads, int shmSize, cudaStream_t stream) {
     this->blocks = blocks;
     this->threads = threads;

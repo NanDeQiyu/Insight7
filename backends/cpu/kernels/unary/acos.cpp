@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/acos.cpp
+// backends/cpu/kernels/unary/acos.cpp
 #include "common.h"
 #include <cmath>
 

@@ -28,7 +28,7 @@ static void cholesky_f64(const double *src, double *dst, int n, int lower) {
     return;
   }
 
-  // 提取下三角或上三角
+  // Extract lower triangle or upper triangle
   if (lower) {
     for (int i = 0; i < n; ++i) {
       for (int j = 0; j < n; ++j) {
@@ -92,7 +92,7 @@ C_Status cholesky_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
-  // 确保输入输出连续
+  // Ensure input and output are continuous
   if (!cpu_ensure_contiguous(x) || !cpu_ensure_contiguous(out)) {
     return C_FAILED;
   }
@@ -103,7 +103,7 @@ C_Status cholesky_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
-  // 清除之前的错误信息
+  // Clear previous error messages
   cpu_set_last_error("");
 
   if (x->dtype == INSIGHT_DTYPE_F32) {
@@ -112,7 +112,7 @@ C_Status cholesky_kernel_cpu(void **inputs, void **outputs) {
     cholesky_f64((double *)x->data, (double *)out->data, n, lower);
   }
 
-  // 检查是否有错误发生
+  // Check if any errors occurred
   const char *err = cpu_get_last_error();
   if (err && err[0] != '\0') {
 

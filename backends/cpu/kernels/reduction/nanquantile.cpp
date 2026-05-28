@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/nanquantile.cpp
+// backends/cpu/kernels/reduction/nanquantile.cpp
 /**
  * @file nanquantile.cpp
  * @brief CPU kernel for quantile calculation ignoring NaN values.

@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/take.cpp
+// backends/cpu/kernels/indexing/take.cpp
 /**
  * @file take.cpp
  * @brief CPU kernel for take operation.

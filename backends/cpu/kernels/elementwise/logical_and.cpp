@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/logical_and.cpp
+// backends/cpu/kernels/elementwise/logical_and.cpp
 /**
  * @file logical_and.cpp
  * @brief CPU kernel for Logical AND operation.

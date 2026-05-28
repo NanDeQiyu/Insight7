@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/manipulation/flip.cpp
+// backends/cpu/kernels/manipulation/flip.cpp
 /**
  * @file flip.cpp
  * @brief CPU kernel for flip operation.

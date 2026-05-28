@@ -14,7 +14,7 @@ typedef struct {
   int64_t numel;
 } InsightShape;
 
-// 查询
+// Query
 int64_t insight_shape_dim(const InsightShape *shape,
                           int32_t axis); // support negative indexing
 int64_t insight_shape_numel(const InsightShape *shape);

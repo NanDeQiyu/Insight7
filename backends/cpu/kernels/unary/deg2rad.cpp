@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/deg2rad.cpp
+// backends/cpu/kernels/unary/deg2rad.cpp
 #include "common.h"
 #include <cmath>
 

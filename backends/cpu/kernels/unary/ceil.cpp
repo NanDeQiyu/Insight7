@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/ceil.cpp
+// backends/cpu/kernels/unary/ceil.cpp
 #include "common.h"
 #include <cmath>
 

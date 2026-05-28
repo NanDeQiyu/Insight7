@@ -187,18 +187,18 @@ void init(const std::vector<std::string> &backends) {
 #endif
       }
     } else {
-      // GPU 后端：必须动态加载
+      // GPU backend: must be loaded dynamically
       if (!get_device_interface(DeviceKind::GPU)) {
         std::string lib_name = "insight_" + backend + "_backend";
         load_backend_plugin(DeviceKind::GPU, lib_name.c_str());
       } else {
-        // 已经有 GPU 后端了，说明重复加载
+        // There is already a GPU backend, which means repeated loading
         INS_THROW("GPU backend already loaded, cannot load another: ", backend);
       }
     }
   }
 
-  // 检查所有要求的后端是否都成功加载
+  // Check that all required backends are loaded successfully
   for (const auto &backend : backends) {
     if (backend == "cpu" && !get_device_interface(DeviceKind::CPU)) {
       INS_THROW("Failed to load CPU backend");

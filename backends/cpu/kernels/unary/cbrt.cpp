@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/cbrt.cpp
+// backends/cpu/kernels/unary/cbrt.cpp
 #include "common.h"
 #include <cmath>
 

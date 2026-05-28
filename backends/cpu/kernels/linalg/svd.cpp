@@ -15,7 +15,7 @@ static void svd_f32(const float *src, float *u, float *s, float *vt, int m,
 
   int min_mn = m < n ? m : n;
 
-  // 定义变量
+  // Define variables
   char jobu = full ? 'A' : 'S';
   char jobvt = full ? 'A' : 'S';
   int ldu = m;

@@ -68,7 +68,7 @@ public:
   explicit Array(std::complex<float> value);
   explicit Array(std::complex<double> value);
 
-  // 拷贝构造函数
+  // copy constructor
   Array(const Array &other)
       : layout_(other.layout_), shape_(other.shape_), place_(other.place_),
         strides_(other.strides_) {

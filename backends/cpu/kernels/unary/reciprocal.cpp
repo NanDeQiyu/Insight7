@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/reciprocal.cpp
+// backends/cpu/kernels/unary/reciprocal.cpp
 #include "common.h"
 #include <complex>
 

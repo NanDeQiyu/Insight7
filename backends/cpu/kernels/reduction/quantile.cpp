@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/quantile.cpp
+// backends/cpu/kernels/reduction/quantile.cpp
 /**
  * @file quantile.cpp
  * @brief CPU kernel for quantile calculation.

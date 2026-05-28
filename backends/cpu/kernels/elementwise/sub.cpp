@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/sub.cpp
+// backends/cpu/kernels/elementwise/sub.cpp
 /**
  * @file sub.cpp
  * @brief CPU kernel for Subtraction operation.

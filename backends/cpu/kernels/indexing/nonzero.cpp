@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/nonzero.cpp
+// backends/cpu/kernels/indexing/nonzero.cpp
 /**
  * @file nonzero.cpp
  * @brief CPU kernel for nonzero operation.
@@ -155,7 +155,7 @@ static void nonzero_fill_impl(const T *src, int64_t *dst, int64_t total,
   }
 }
 
-// 宏：生成类型分发代码
+// Macro: Generate type distribution code
 #define NONZERO_DISPATCH(CTYPE)                                                \
   do {                                                                         \
     nonzero_count_impl<CTYPE>((const CTYPE *)x->data, total, ndim, dims,       \
@@ -277,7 +277,7 @@ C_Status nonzero_kernel_cpu(void **inputs, void **outputs) {
     break;
   }
   case INSIGHT_DTYPE_BF16: {
-    // 类似 F16，使用 is_zero_bf16
+    // Like F16, use is_zero_bf16
     const uint16_t *src = (const uint16_t *)x->data;
     nz_count = 0;
     for (int64_t linear = 0; linear < total; ++linear) {
@@ -294,7 +294,7 @@ C_Status nonzero_kernel_cpu(void **inputs, void **outputs) {
       if (!is_zero_bf16(src[offset]))
         ++nz_count;
     }
-    // 填充逻辑类似...
+    // The filling logic is similar...
     if (nz_count > 0) {
       int64_t out_dims[2] = {ndim, nz_count};
       allocate_output(out, sizeof(int64_t), INSIGHT_DTYPE_I64, 2, out_dims,
@@ -377,7 +377,7 @@ C_Status nonzero_kernel_cpu(void **inputs, void **outputs) {
     break;
   }
   case INSIGHT_DTYPE_F8_E5M2: {
-    // 类似 F8_E4M3
+    // Similar to F8_E4M3
     const uint8_t *src = (const uint8_t *)x->data;
     nz_count = 0;
     for (int64_t linear = 0; linear < total; ++linear) {

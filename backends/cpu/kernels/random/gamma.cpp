@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/gamma.cpp
+// backends/cpu/kernels/random/gamma.cpp
 #include "common.h"
 
 #ifdef __cplusplus

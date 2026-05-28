@@ -388,7 +388,7 @@ TEST_F(LinalgTest, Cholesky3x3) {
 // ============================================================================
 
 TEST_F(LinalgTest, QR3x3) {
-  // F64 测试
+  // F64 test
   {
     Array A = create_matrix_f64(3, 3, {12, -51, 4, 6, 167, -68, -4, 24, -41});
     auto [Q, R] = qr(A, "reduced");
@@ -404,7 +404,7 @@ TEST_F(LinalgTest, QR3x3) {
     EXPECT_NEAR(qtq_data[8], 1.0, 1e-5);
   }
 
-  // F32 测试
+  // F32 test
   {
     Array A = create_matrix_f32(
         3, 3,
@@ -424,7 +424,7 @@ TEST_F(LinalgTest, QR3x3) {
 }
 
 TEST_F(LinalgTest, QR3x2) {
-  // F64 测试
+  // F64 test
   {
     Array A = create_matrix_f64(3, 2, {1, 2, 3, 4, 5, 6});
     auto [Q, R] = qr(A, "reduced");
@@ -435,7 +435,7 @@ TEST_F(LinalgTest, QR3x2) {
     EXPECT_TRUE(check_matrix_equal(A, QR, 1e-5));
   }
 
-  // F32 测试
+  // F32 test
   {
     Array A = create_matrix_f32(3, 2, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
     auto [Q, R] = qr(A, "reduced");
@@ -447,9 +447,9 @@ TEST_F(LinalgTest, QR3x2) {
   }
 }
 
-// 可选：随机矩阵测试（同时测试两种类型）
+// Optional: Random Matrix Test (test both types simultaneously)
 TEST_F(LinalgTest, QRSquareRandom) {
-  // F64 测试
+  // F64 test
   {
     Array A = randn({4, 4}, DType::F64);
     auto [Q, R] = qr(A, "complete");
@@ -469,7 +469,7 @@ TEST_F(LinalgTest, QRSquareRandom) {
     EXPECT_TRUE(check_matrix_equal(A, QR, 1e-5));
   }
 
-  // F32 测试
+  // F32 test
   {
     Array A = randn({4, 4}, DType::F32);
     auto [Q, R] = qr(A, "complete");

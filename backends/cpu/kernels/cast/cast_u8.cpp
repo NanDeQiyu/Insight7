@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/cast/cast_u8.cpp
+// backends/cpu/kernels/cast/cast_u8.cpp
 /**
  * @file cast_u8.cpp
  * @brief CPU kernel for casting from u8 to all types.

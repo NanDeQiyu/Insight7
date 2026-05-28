@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/linalg/matmul.cpp
+// backends/cpu/kernels/linalg/matmul.cpp
 /**
  * @file matmul.cpp
  * @brief CPU kernel for matrix multiplication.

@@ -222,7 +222,7 @@ TEST_F(ElementwiseTestCPU, Equal) {
   float *b_data = b.data<float>();
   for (int64_t i = 0; i < 6; ++i) {
     a_data[i] = static_cast<float>(i);
-    b_data[i] = static_cast<float>(i); // 完全相同
+    b_data[i] = static_cast<float>(i); // exactly the same
   }
 
   Array c = equal(a, b);
@@ -238,7 +238,7 @@ TEST_F(ElementwiseTestCPU, NotEqual) {
   float *b_data = b.data<float>();
   for (int64_t i = 0; i < 6; ++i) {
     a_data[i] = static_cast<float>(i);
-    b_data[i] = static_cast<float>(i + 1); // 完全不同
+    b_data[i] = static_cast<float>(i + 1); // completely different
   }
 
   Array c = not_equal(a, b);
@@ -277,7 +277,7 @@ TEST_F(ElementwiseTestCPU, GreaterEqual) {
   float *b_data = b.data<float>();
   for (int64_t i = 0; i < 6; ++i) {
     a_data[i] = static_cast<float>(i);
-    b_data[i] = static_cast<float>(i); // a >= b 全部 true
+    b_data[i] = static_cast<float>(i); // a >= b all true
   }
 
   Array c = greater_equal(a, b);
@@ -293,7 +293,7 @@ TEST_F(ElementwiseTestCPU, LessEqual) {
   float *b_data = b.data<float>();
   for (int64_t i = 0; i < 6; ++i) {
     a_data[i] = static_cast<float>(i);
-    b_data[i] = static_cast<float>(i); // a <= b 全部 true
+    b_data[i] = static_cast<float>(i); // a <= b all true
   }
 
   Array c = less_equal(a, b);
@@ -568,8 +568,8 @@ TEST_F(ElementwiseTestCPU, ViewAdd) {
   Array a({3, 4}, DType::F32);
   fill_sequential<float>(a);
 
-  // 使用步长2的切片，产生非连续视图
-  Array view = a.slice(0, 0, 3, 2); // 取行0和行2，跳过了行1
+  // Use slicing with stride 2, resulting in a non-contiguous view
+  Array view = a.slice(0, 0, 3, 2); // Take row 0 and row 2, skipping row 1
   EXPECT_FALSE(view.is_contiguous());
 
   Array b({2, 4}, DType::F32);

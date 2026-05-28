@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/pow.cpp
+// backends/cpu/kernels/elementwise/pow.cpp
 /**
  * @file pow.cpp
  * @brief CPU kernel for power operation.

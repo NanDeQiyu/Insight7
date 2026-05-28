@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/put_along_axis.cpp
+// backends/cpu/kernels/indexing/put_along_axis.cpp
 /**
  * @file put_along_axis.cpp
  * @brief CPU kernel for put_along_axis operation.
@@ -28,30 +28,30 @@ put_along_axis_impl(T *dst, const int64_t *idx_data, const T *val_data,
                     int64_t idx_ndim, const int64_t *idx_dims,
                     const int64_t *idx_strides, int axis, int64_t val_size) {
 
-  // 计算 idx 的坐标
+  // Calculate the coordinates of idx
   int64_t coord[INSIGHT_MAX_NDIM];
 
   for (int64_t linear = 0; linear < total_indices; ++linear) {
-    // 用 idx 的形状解码坐标
+    // Decode coordinates with shape of idx
     int64_t tmp = linear;
     for (int d = idx_ndim - 1; d >= 0; --d) {
       coord[d] = tmp % idx_dims[d];
       tmp /= idx_dims[d];
     }
 
-    // 从 indices 中取出位置
+    // Get the position from indices
     int64_t pos = idx_data[linear];
     if (pos < 0)
       pos += out_dims[axis];
 
-    // 计算输出偏移：用 pos 替换 axis 上的坐标，其他维度用 coord 中的值
-    // 注意：coord 是 idx 的坐标，idx 的形状可能小于 out，非 axis 维度需要广播
+    // Calculate the output offset: replace the coordinates on axis with pos, and use the values ​​in coord for other dimensions.
+    // Note: coord is the coordinate of idx. The shape of idx may be smaller than out. Non-axis dimensions need to be broadcast.
     int64_t out_offset = 0;
     for (int d = 0; d < out_ndim; ++d) {
       if (d == axis) {
         out_offset += pos * out_strides[d];
       } else {
-        // 对于非 axis 维度，如果 idx 有该维度，用 coord 中的值，否则用 0
+        // For non-axis dimensions, if idx has this dimension, use the value in coord, otherwise use 0
         int64_t c = 0;
         if (d < idx_ndim) {
           c = coord[d];
@@ -99,7 +99,7 @@ C_Status put_along_axis_kernel_cpu(void **inputs, void **outputs) {
   int64_t *idx_data = (int64_t *)idx->data;
   int64_t val_size = val->numel;
 
-  // 边界检查
+  // Boundary checking
   for (int64_t i = 0; i < total_indices; ++i) {
     int64_t pos = idx_data[i];
     if (pos < 0)

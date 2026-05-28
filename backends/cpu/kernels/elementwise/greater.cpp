@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/greater.cpp
+// backends/cpu/kernels/elementwise/greater.cpp
 /**
  * @file greater.cpp
  * @brief CPU kernel for Greater Than operation.

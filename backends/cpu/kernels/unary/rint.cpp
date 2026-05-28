@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/rint.cpp
+// backends/cpu/kernels/unary/rint.cpp
 #include "common.h"
 #include <cmath>
 

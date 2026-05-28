@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/cast/cast_u64.cpp
+// backends/cpu/kernels/cast/cast_u64.cpp
 /**
  * @file cast_u64.cpp
  * @brief CPU kernel for casting from u64 to all types.

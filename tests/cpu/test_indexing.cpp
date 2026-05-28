@@ -198,7 +198,7 @@ TEST_F(IndexingTest, Where2Arg) {
   Array cond = to_array(std::vector<bool>{true, false, true, false});
   Array nz = where(cond);
   EXPECT_EQ(nz.numel(), 2);
-  const int64_t *data = nz.data<int64_t>(); // data为空指针
+  const int64_t *data = nz.data<int64_t>(); // data is a null pointer
   EXPECT_EQ(data[0], 0);
   EXPECT_EQ(data[1], 2);
 }

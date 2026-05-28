@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/bitwise_and.cpp
+// backends/cpu/kernels/elementwise/bitwise_and.cpp
 /**
  * @file bitwise_and.cpp
  * @brief CPU kernel for Bitwise AND operation.

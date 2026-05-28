@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/compress.cpp
+// backends/cpu/kernels/indexing/compress.cpp
 /**
  * @file compress.cpp
  * @brief CPU kernel for compress operation.
@@ -9,7 +9,7 @@
 #include "common.h"
 #include <complex>
 
-// 通用模板实现
+// Universal template implementation
 template <typename T>
 static C_Status compress_impl(InsightArray *out, InsightArray *x,
                               InsightArray *cond, int axis) {
@@ -29,14 +29,14 @@ static C_Status compress_impl(InsightArray *out, InsightArray *x,
   int64_t keep_count = out->dims[axis];
   const bool *cond_data = (const bool *)cond->data;
 
-  // 1. 构建正向映射：condition_index -> output_index
+  // 1. Build forward mapping: condition_index -> output_index
   int64_t *fwd_map = (int64_t *)malloc(axis_dim * sizeof(int64_t));
   if (!fwd_map) {
     cpu_set_last_error("compress: memory allocation failed");
     return C_FAILED;
   }
 
-  // 2. 构建反向映射：output_index -> condition_index (O(1) 查找)
+  // 2. Build reverse mapping: output_index -> condition_index (O(1) search)
   int64_t *rev_map = (int64_t *)malloc(keep_count * sizeof(int64_t));
   if (!rev_map) {
     free(fwd_map);
@@ -64,17 +64,17 @@ static C_Status compress_impl(InsightArray *out, InsightArray *x,
     int64_t indices[INSIGHT_MAX_NDIM];
     cpu_linear_to_indices(linear, ndim, dims, indices);
 
-    // 计算输出 offset
+    // Calculate output offset
     int64_t dst_offset = out->offset;
     for (int d = 0; d < ndim; ++d) {
       dst_offset += indices[d] * out_strides[d];
     }
 
-    // 计算输入 offset
+    // Calculate input offset
     int64_t src_offset = x->offset;
     for (int d = 0; d < ndim; ++d) {
       if (d == axis) {
-        // O(1) 查找：从 output index 得到 condition index
+        // O(1) search: get condition index from output index
         int64_t orig_idx = rev_map[indices[d]];
         src_offset += orig_idx * x_strides[d];
       } else {
@@ -90,7 +90,7 @@ static C_Status compress_impl(InsightArray *out, InsightArray *x,
   return C_SUCCESS;
 }
 
-// 类型分发宏
+// Type distribution macro
 #define COMPRESS_CASE(DTYPE, CTYPE)                                            \
   case DTYPE:                                                                  \
     return compress_impl<CTYPE>(out, x, cond, axis);
@@ -110,19 +110,19 @@ C_Status compress_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
-  // 确保 condition 是 bool 类型
+  // Make sure condition is of type bool
   if (cond->dtype != INSIGHT_DTYPE_BOOL) {
     cpu_set_last_error("compress: condition must be bool");
     return C_FAILED;
   }
 
-  // 确保 condition 是 1D
+  // Make sure condition is 1D
   if (cond->ndim != 1) {
     cpu_set_last_error("compress: condition must be 1D");
     return C_FAILED;
   }
 
-  // 确保 condition 长度等于 axis 维度
+  // Make sure the condition length is equal to the axis dimension
   if (cond->dims[0] != x->dims[axis]) {
     cpu_set_last_error("compress: condition length must match axis dimension");
     return C_FAILED;
@@ -154,7 +154,7 @@ C_Status compress_kernel_cpu(void **inputs, void **outputs) {
 }
 #endif
 
-// 注册所有类型
+// Register all types
 REGISTER_CPU_KERNEL(compress, INSIGHT_DTYPE_BOOL, compress_kernel_cpu);
 REGISTER_CPU_KERNEL(compress, INSIGHT_DTYPE_U8, compress_kernel_cpu);
 REGISTER_CPU_KERNEL(compress, INSIGHT_DTYPE_I8, compress_kernel_cpu);

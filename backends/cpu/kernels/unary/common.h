@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/common.h
+// backends/cpu/kernels/unary/common.h
 /**
  * @file common.h
  * @brief Common utilities for CPU unary kernels.

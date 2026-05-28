@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/exponential.cpp
+// backends/cpu/kernels/random/exponential.cpp
 #include "common.h"
 
 #ifdef __cplusplus

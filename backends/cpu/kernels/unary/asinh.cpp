@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/asinh.cpp
+// backends/cpu/kernels/unary/asinh.cpp
 #include "common.h"
 #include <cmath>
 

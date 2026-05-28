@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/fft/irfft.cpp
+// backends/cpu/kernels/fft/irfft.cpp
 /**
  * @file irfft.cpp
  * @brief CPU kernel for inverse real FFT (complex-to-real).

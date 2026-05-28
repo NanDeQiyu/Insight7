@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/log1p.cpp
+// backends/cpu/kernels/unary/log1p.cpp
 #include "common.h"
 #include <cmath>
 

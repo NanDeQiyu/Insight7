@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/lexsort.cpp
+// backends/cpu/kernels/indexing/lexsort.cpp
 /**
  * @file lexsort.cpp
  * @brief CPU kernel for lexsort operation.

@@ -19,7 +19,7 @@ static int rank_f64(const double *src, int m, int n, double tol) {
     cpu_set_last_error("matrix_rank: memory allocation failed");
     return 0;
   }
-  // 行主序 → 列主序 (LAPACK 要求)
+  // row major → column major (LAPACK required)
   for (int i = 0; i < m; ++i) {
     for (int j = 0; j < n; ++j) {
       a[i + j * m] = src[i * n + j];
@@ -41,7 +41,7 @@ static int rank_f64(const double *src, int m, int n, double tol) {
     return 0;
   }
 
-  // 使用 LAPACKE_dgesvd 计算奇异值
+  // Compute singular values ​​using LAPACKE_dgesvd
   int info = LAPACKE_dgesvd(LAPACK_COL_MAJOR, 'N', 'N', m, n, a, m, s, NULL, m,
                             NULL, n, superb);
 
@@ -56,7 +56,7 @@ static int rank_f64(const double *src, int m, int n, double tol) {
   double max_s = s[0];
   double actual_tol;
   if (tol < 0) {
-    // 使用 LAPACK 推荐的容差公式
+    // Use LAPACK recommended tolerance formulas
     actual_tol = max_s * std::max(m, n) * DBL_EPSILON;
   } else {
     actual_tol = tol;
@@ -82,7 +82,7 @@ static int rank_f32(const float *src, int m, int n, double tol) {
     cpu_set_last_error("matrix_rank: memory allocation failed");
     return 0;
   }
-  // 行主序 → 列主序 (LAPACK 要求)
+  // row major → column major (LAPACK required)
   for (int i = 0; i < m; ++i) {
     for (int j = 0; j < n; ++j) {
       a[i + j * m] = src[i * n + j];
@@ -104,7 +104,7 @@ static int rank_f32(const float *src, int m, int n, double tol) {
     return 0;
   }
 
-  // 使用 LAPACKE_sgesvd 计算奇异值
+  // Compute singular values ​​using LAPACKE_sgesvd
   int info = LAPACKE_sgesvd(LAPACK_COL_MAJOR, 'N', 'N', m, n, a, m, s, NULL, m,
                             NULL, n, superb);
 
@@ -119,7 +119,7 @@ static int rank_f32(const float *src, int m, int n, double tol) {
   float max_s = s[0];
   float actual_tol;
   if (tol < 0) {
-    // 使用 LAPACK 推荐的容差公式
+    // Use LAPACK recommended tolerance formulas
     actual_tol = max_s * std::max(m, n) * FLT_EPSILON;
   } else {
     actual_tol = (float)tol;

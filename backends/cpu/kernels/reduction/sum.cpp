@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/sum.cpp
+// backends/cpu/kernels/reduction/sum.cpp
 /**
  * @file sum.cpp
  * @brief CPU kernel for Sum reduction.

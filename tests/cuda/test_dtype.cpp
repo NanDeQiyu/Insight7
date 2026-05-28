@@ -5,7 +5,7 @@
 
 using namespace ins;
 
-// ========== DType 大小测试 ==========
+// ========== DType size test ==========
 TEST(DTypeTest, Size) {
   EXPECT_EQ(dtype_size(DType::BOOL), sizeof(bool));
   EXPECT_EQ(dtype_size(DType::U8), sizeof(uint8_t));
@@ -26,11 +26,11 @@ TEST(DTypeTest, Size) {
   EXPECT_EQ(dtype_size(DType::U64), sizeof(uint64_t));
   EXPECT_EQ(dtype_size(DType::UNKNOWN), 0);
 
-  // 验证边界
+  // Validation boundaries
   EXPECT_EQ(dtype_size(static_cast<DType>(99)), 0);
 }
 
-// ========== DType 名称测试 ==========
+// ========== DType name test ==========
 TEST(DTypeTest, Name) {
   EXPECT_STREQ(dtype_name(DType::UNKNOWN), "unknown");
   EXPECT_STREQ(dtype_name(DType::BOOL), "bool");
@@ -51,11 +51,11 @@ TEST(DTypeTest, Name) {
   EXPECT_STREQ(dtype_name(DType::U32), "uint32");
   EXPECT_STREQ(dtype_name(DType::U64), "uint64");
 
-  // 验证边界
+  // Validation boundaries
   EXPECT_STREQ(dtype_name(static_cast<DType>(99)), "unknown");
 }
 
-// ========== dtype_from_name 测试 ==========
+// ========== dtype_from_name test ==========
 TEST(DTypeTest, FromName) {
   EXPECT_EQ(dtype_from_name("unknown"), DType::UNKNOWN);
   EXPECT_EQ(dtype_from_name("bool"), DType::BOOL);
@@ -76,13 +76,13 @@ TEST(DTypeTest, FromName) {
   EXPECT_EQ(dtype_from_name("uint32"), DType::U32);
   EXPECT_EQ(dtype_from_name("uint64"), DType::U64);
 
-  // 无效名称
+  // Invalid name
   EXPECT_EQ(dtype_from_name("invalid_type"), DType::UNKNOWN);
 }
 
-// ========== DType 浮点判断测试 ==========
+// ========== DType floating point judgment test ==========
 TEST(DTypeTest, IsFloatingPoint) {
-  // 浮点类型应该返回 true
+  // Floating point types should return true
   EXPECT_TRUE(is_floating_point(DType::F16));
   EXPECT_TRUE(is_floating_point(DType::BF16));
   EXPECT_TRUE(is_floating_point(DType::F32));
@@ -90,11 +90,11 @@ TEST(DTypeTest, IsFloatingPoint) {
   EXPECT_TRUE(is_floating_point(DType::F8_E4M3));
   EXPECT_TRUE(is_floating_point(DType::F8_E5M2));
 
-  // 复数类型不算浮点（is_complex 单独判断）
+  // Complex number types are not counted as floating point (is_complex is judged separately)
   EXPECT_FALSE(is_floating_point(DType::C32));
   EXPECT_FALSE(is_floating_point(DType::C64));
 
-  // 整数类型返回 false
+  // Returns false for integer types
   EXPECT_FALSE(is_floating_point(DType::BOOL));
   EXPECT_FALSE(is_floating_point(DType::U8));
   EXPECT_FALSE(is_floating_point(DType::I8));
@@ -109,9 +109,9 @@ TEST(DTypeTest, IsFloatingPoint) {
   EXPECT_FALSE(is_floating_point(static_cast<DType>(99)));
 }
 
-// ========== DType 整数判断测试 ==========
+// ========== DType integer judgment test ==========
 TEST(DTypeTest, IsInteger) {
-  // 整数类型返回 true
+  // Returns true for integer types
   EXPECT_TRUE(is_integer(DType::U8));
   EXPECT_TRUE(is_integer(DType::I8));
   EXPECT_TRUE(is_integer(DType::I16));
@@ -121,10 +121,10 @@ TEST(DTypeTest, IsInteger) {
   EXPECT_TRUE(is_integer(DType::U32));
   EXPECT_TRUE(is_integer(DType::U64));
 
-  // BOOL 不是整数（按 NumPy 习惯）
+  // BOOL is not an integer (according to NumPy convention)
   EXPECT_FALSE(is_integer(DType::BOOL));
 
-  // 浮点类型返回 false
+  // Floating point types return false
   EXPECT_FALSE(is_integer(DType::F16));
   EXPECT_FALSE(is_integer(DType::BF16));
   EXPECT_FALSE(is_integer(DType::F32));
@@ -132,14 +132,14 @@ TEST(DTypeTest, IsInteger) {
   EXPECT_FALSE(is_integer(DType::F8_E4M3));
   EXPECT_FALSE(is_integer(DType::F8_E5M2));
 
-  // 复数类型返回 false
+  // Plural types return false
   EXPECT_FALSE(is_integer(DType::C32));
   EXPECT_FALSE(is_integer(DType::C64));
 
   EXPECT_FALSE(is_integer(DType::UNKNOWN));
 }
 
-// ========== DType 复数判断测试 ==========
+// ========== DType Plural Judgment Test ==========
 TEST(DTypeTest, IsComplex) {
   EXPECT_TRUE(is_complex(DType::C32));
   EXPECT_TRUE(is_complex(DType::C64));
@@ -153,9 +153,9 @@ TEST(DTypeTest, IsComplex) {
   EXPECT_FALSE(is_complex(DType::UNKNOWN));
 }
 
-// ========== DType 有符号判断测试 ==========
+// ========== DType signed judgment test ==========
 TEST(DTypeTest, IsSigned) {
-  // 有符号类型
+  // signed type
   EXPECT_TRUE(is_signed(DType::I8));
   EXPECT_TRUE(is_signed(DType::I16));
   EXPECT_TRUE(is_signed(DType::I32));
@@ -169,19 +169,19 @@ TEST(DTypeTest, IsSigned) {
   EXPECT_TRUE(is_signed(DType::C32));
   EXPECT_TRUE(is_signed(DType::C64));
 
-  // 无符号类型
+  // unsigned type
   EXPECT_FALSE(is_signed(DType::U8));
   EXPECT_FALSE(is_signed(DType::U16));
   EXPECT_FALSE(is_signed(DType::U32));
   EXPECT_FALSE(is_signed(DType::U64));
 
-  // BOOL 视为无符号
+  // BOOL is treated as unsigned
   EXPECT_FALSE(is_signed(DType::BOOL));
 
   EXPECT_FALSE(is_signed(DType::UNKNOWN));
 }
 
-// ========== 类型转换测试 (static_cast 验证) ==========
+// ========== Type conversion test (static_cast verification) ==========
 TEST(DTypeTest, CastToInt) {
   EXPECT_EQ(static_cast<int>(DType::UNKNOWN), 0);
   EXPECT_EQ(static_cast<int>(DType::BOOL), 1);
@@ -204,22 +204,22 @@ TEST(DTypeTest, CastToInt) {
   EXPECT_EQ(static_cast<int>(DType::DTYPE_COUNT), 18);
 }
 
-// ========== 枚举值与 C API 一致性测试 ==========
+// ========== Enumeration value and C API consistency test ==========
 TEST(DTypeTest, CAPICompatibility) {
-  // 验证 C API 的字符串返回与 C++ 一致
+  // Verify that the C API's string returns are consistent with C++
   EXPECT_STREQ(insight_dtype_name(static_cast<int32_t>(DType::F32)), "float32");
   EXPECT_STREQ(insight_dtype_name(static_cast<int32_t>(DType::I64)), "int64");
   EXPECT_STREQ(insight_dtype_name(static_cast<int32_t>(DType::BOOL)), "bool");
   EXPECT_STREQ(insight_dtype_name(static_cast<int32_t>(DType::C64)),
                "complex128");
 
-  // 验证大小
+  // Verify size
   EXPECT_EQ(insight_dtype_size(static_cast<int32_t>(DType::F32)),
             sizeof(float));
   EXPECT_EQ(insight_dtype_size(static_cast<int32_t>(DType::C64)),
             sizeof(std::complex<double>));
 
-  // 验证类型判断
+  // Verification type judgment
   EXPECT_EQ(insight_dtype_is_float(static_cast<int32_t>(DType::F32)), 1);
   EXPECT_EQ(insight_dtype_is_float(static_cast<int32_t>(DType::I32)), 0);
   EXPECT_EQ(insight_dtype_is_int(static_cast<int32_t>(DType::I32)), 1);

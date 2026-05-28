@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/bitwise_not.cpp
+// backends/cpu/kernels/unary/bitwise_not.cpp
 #include "common.h"
 
 #ifdef __cplusplus

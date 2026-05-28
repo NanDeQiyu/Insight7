@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/min.cpp
+// backends/cpu/kernels/reduction/min.cpp
 /**
  * @file min.cpp
  * @brief CPU kernel for Min reduction.

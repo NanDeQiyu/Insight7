@@ -14,11 +14,11 @@ extern "C" {
 
 static void solve_f32(const float *A, const float *B, float *X, int n,
                       int nrhs) {
-  // 将 A 从行主序转换为列主序（LAPACK 期望列主序）
+  // Convert A from row major to column major (LAPACK expects column major)
   float *a = (float *)malloc(n * n * sizeof(float));
   cpu_rowmajor_to_colmajor_f32(A, a, n, n);
 
-  // 将 B 从行主序转换为列主序
+  // Convert B from row major to column major
   float *b = (float *)malloc(n * nrhs * sizeof(float));
   cpu_rowmajor_to_colmajor_f32(B, b, n, nrhs);
 
@@ -26,7 +26,7 @@ static void solve_f32(const float *A, const float *B, float *X, int n,
   int info;
   sgesv_(&n, &nrhs, a, &n, ipiv, b, &n, &info);
 
-  // 将结果从列主序转换回行主序
+  // Convert results from column major back to row major
   cpu_colmajor_to_rowmajor_f32(b, X, n, nrhs);
 
   free(a);
@@ -39,11 +39,11 @@ static void solve_f32(const float *A, const float *B, float *X, int n,
 
 static void solve_f64(const double *A, const double *B, double *X, int n,
                       int nrhs) {
-  // 将 A 从行主序转换为列主序（LAPACK 期望列主序）
+  // Convert A from row major to column major (LAPACK expects column major)
   double *a = (double *)malloc(n * n * sizeof(double));
   cpu_rowmajor_to_colmajor_f64(A, a, n, n);
 
-  // 将 B 从行主序转换为列主序
+  // Convert B from row major to column major
   double *b = (double *)malloc(n * nrhs * sizeof(double));
   cpu_rowmajor_to_colmajor_f64(B, b, n, nrhs);
 
@@ -51,7 +51,7 @@ static void solve_f64(const double *A, const double *B, double *X, int n,
   int info;
   dgesv_(&n, &nrhs, a, &n, ipiv, b, &n, &info);
 
-  // 将结果从列主序转换回行主序
+  // Convert results from column major back to row major
   cpu_colmajor_to_rowmajor_f64(b, X, n, nrhs);
 
   free(a);

@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/unique.cpp
+// backends/cpu/kernels/indexing/unique.cpp
 /**
  * @file unique.cpp
  * @brief CPU kernel for unique operation.
