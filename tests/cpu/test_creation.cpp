@@ -48,6 +48,15 @@ TEST_F(CreationTest, FullInt) {
   }
 }
 
+TEST_F(CreationTest, FullFloat64) {
+  Array a = full({2, 2}, 2.718281828, DType::F64);
+  EXPECT_EQ(a.dtype(), DType::F64);
+  const double *data = a.data<double>();
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_NEAR(data[i], 2.718281828, 1e-9);
+  }
+}
+
 // ========== eye ==========
 
 TEST_F(CreationTest, Eye) {
@@ -88,6 +97,17 @@ TEST_F(CreationTest, EyeRectangular) {
   EXPECT_FLOAT_EQ(data[2], 0.0f);
   EXPECT_FLOAT_EQ(data[3], 0.0f);
   EXPECT_FLOAT_EQ(data[5], 0.0f);
+}
+
+TEST_F(CreationTest, EyeNegativeOffset) {
+  Array a = eye(3, 3, -1);
+  const float *data = a.data<float>();
+  // Expected: [[0,0,0],[1,0,0],[0,1,0]]
+  EXPECT_FLOAT_EQ(data[3], 1.0f); // (1,0)
+  EXPECT_FLOAT_EQ(data[7], 1.0f); // (2,1)
+  EXPECT_FLOAT_EQ(data[0], 0.0f);
+  EXPECT_FLOAT_EQ(data[4], 0.0f);
+  EXPECT_FLOAT_EQ(data[8], 0.0f);
 }
 
 // ========== arange ==========
@@ -131,6 +151,17 @@ TEST_F(CreationTest, ArangeFloat) {
   EXPECT_NEAR(data[4], 0.8f, 1e-6);
 }
 
+TEST_F(CreationTest, ArangeFloat64) {
+  Array a = arange(0.0, 1.0, 0.25, DType::F64);
+  EXPECT_EQ(a.dtype(), DType::F64);
+  const double *data = a.data<double>();
+  EXPECT_EQ(a.numel(), 4);
+  EXPECT_NEAR(data[0], 0.0, 1e-12);
+  EXPECT_NEAR(data[1], 0.25, 1e-12);
+  EXPECT_NEAR(data[2], 0.5, 1e-12);
+  EXPECT_NEAR(data[3], 0.75, 1e-12);
+}
+
 // ========== linspace ==========
 
 TEST_F(CreationTest, Linspace) {
@@ -159,6 +190,15 @@ TEST_F(CreationTest, LinspaceFloat64) {
   EXPECT_NEAR(data[4], 1.0, 1e-12);
 }
 
+TEST_F(CreationTest, LinspaceNegativeRange) {
+  Array a = linspace(-1, 1, 5);
+  const float *data = a.data<float>();
+  EXPECT_EQ(a.numel(), 5);
+  EXPECT_NEAR(data[0], -1.0f, 1e-6);
+  EXPECT_NEAR(data[2], 0.0f, 1e-6);
+  EXPECT_NEAR(data[4], 1.0f, 1e-6);
+}
+
 // ========== logspace ==========
 
 TEST_F(CreationTest, Logspace) {
@@ -179,6 +219,25 @@ TEST_F(CreationTest, LogspaceBase2) {
   EXPECT_NEAR(data[1], 2.0f, 1e-6);
   EXPECT_NEAR(data[2], 4.0f, 1e-6);
   EXPECT_NEAR(data[3], 8.0f, 1e-6);
+}
+
+TEST_F(CreationTest, LogspaceFloat64) {
+  Array a = logspace(0, 1, 3, 10.0, DType::F64);
+  EXPECT_EQ(a.dtype(), DType::F64);
+  const double *data = a.data<double>();
+  EXPECT_EQ(a.numel(), 3);
+  // base=10, start=0, stop=1, n=3: step=0.5
+  // [10^0, 10^0.5, 10^1] = [1, sqrt(10), 10]
+  EXPECT_NEAR(data[0], 1.0, 1e-12);
+  EXPECT_NEAR(data[1], std::sqrt(10.0), 1e-12);
+  EXPECT_NEAR(data[2], 10.0, 1e-12);
+}
+
+TEST_F(CreationTest, LogspaceSingle) {
+  Array a = logspace(2, 2, 1, 10.0);
+  const float *data = a.data<float>();
+  EXPECT_EQ(a.numel(), 1);
+  EXPECT_NEAR(data[0], 100.0f, 1e-6); // 10^2
 }
 
 // ========== to_array ==========
