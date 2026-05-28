@@ -28,7 +28,8 @@ Array unwrap(const Array &p, int axis, double discont, double period) {
     ax += ndim;
   INS_CHECK(ax >= 0 && ax < ndim, "unwrap: axis out of range");
 
-  // If the axis dimension is less than 2, the difference cannot be calculated and the original array is returned directly.
+  // If the axis dimension is less than 2, the difference cannot be calculated
+  // and the original array is returned directly.
   int64_t axis_size = p.shape().dim(ax);
   if (axis_size < 2) {
     return p.copy();

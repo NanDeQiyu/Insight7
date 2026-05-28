@@ -101,7 +101,8 @@ TEST_F(SignalTest, UnwrapNegativeAxis) {
 }
 
 TEST_F(SignalTest, UnwrapContinuity) {
-  // Create a continuous phase, then take modulo 2π to verify that unwrap can recover
+  // Create a continuous phase, then take modulo 2π to verify that unwrap can
+  // recover
   int n = 20;
   std::vector<double> original(n);
   std::vector<double> wrapped(n);

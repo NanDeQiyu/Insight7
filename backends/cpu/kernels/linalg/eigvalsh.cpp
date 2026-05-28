@@ -24,7 +24,8 @@ static void eigvalsh_f32(const float *src, float *vals, int n, int uplo) {
   }
 
   char uplo_char = uplo ? 'U' : 'L';
-  char jobz = 'N'; // Only eigenvalues ​​are calculated, eigenvectors are not calculated
+  char jobz = 'N'; // Only eigenvalues ​​are calculated, eigenvectors are
+                   // not calculated
 
   // LAPACKE automatically manages workspace internally
   int info = LAPACKE_ssyev(LAPACK_COL_MAJOR, jobz, uplo_char, n, a, n, vals);

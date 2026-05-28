@@ -343,7 +343,8 @@ TEST_F(ManipulationTest, RollAlongAxis) {
   std::vector<float> expected = {4, 5, 6, 7, 0, 1, 2, 3};
   expect_float_equal<float>(b, expected);
 
-  // shift=2 scrolls two lines and returns the 2-line array to its original position
+  // shift=2 scrolls two lines and returns the 2-line array to its original
+  // position
   Array c = roll(a, 2, 0);
   expect_float_equal<float>(c, {0, 1, 2, 3, 4, 5, 6, 7});
 }

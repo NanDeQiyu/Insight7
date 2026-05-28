@@ -90,7 +90,8 @@ TEST(DTypeTest, IsFloatingPoint) {
   EXPECT_TRUE(is_floating_point(DType::F8_E4M3));
   EXPECT_TRUE(is_floating_point(DType::F8_E5M2));
 
-  // Complex number types are not counted as floating point (is_complex is judged separately)
+  // Complex number types are not counted as floating point (is_complex is
+  // judged separately)
   EXPECT_FALSE(is_floating_point(DType::C32));
   EXPECT_FALSE(is_floating_point(DType::C64));
 

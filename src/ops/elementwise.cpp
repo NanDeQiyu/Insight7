@@ -40,7 +40,8 @@ static Array binary_op(const Array &a, const Array &b,
   // 5. Allocate output array
   Array out(a1.shape(), out_dtype, target_place);
 
-  // 6. Call the backend kernel (do not force continuousization, let the backend handle strides)
+  // 6. Call the backend kernel (do not force continuousization, let the backend
+  // handle strides)
   ops().launch(kernel_name, target_place, out_dtype,
                {a1.layout_ptr(), b1.layout_ptr()}, {out.layout_ptr()});
 
@@ -52,7 +53,8 @@ static Array binary_op(const Array &a, const Array &b,
 // ============================================================================
 template <typename KernelName>
 static Array cmp_op(const Array &a, const Array &b, KernelName &&kernel_name) {
-  // The comparison operation needs to unify the type before comparison, but the output is bool
+  // The comparison operation needs to unify the type before comparison, but the
+  // output is bool
   DType common_dtype = promote_types(a.dtype(), b.dtype());
 
   // Convert to unified type
@@ -76,7 +78,8 @@ static Array cmp_op(const Array &a, const Array &b, KernelName &&kernel_name) {
   // The output is bool
   Array out(a1.shape(), DType::BOOL, target_place);
 
-  // Distribute the kernel with common_dtype (the backend selects the implementation based on the input type)
+  // Distribute the kernel with common_dtype (the backend selects the
+  // implementation based on the input type)
   ops().launch(kernel_name, target_place, common_dtype,
                {a1.layout_ptr(), b1.layout_ptr()}, {out.layout_ptr()});
 
@@ -95,7 +98,8 @@ Array mul(const Array &a, const Array &b) { return binary_op(a, b, "mul"); }
 Array div(const Array &a, const Array &b) { return binary_op(a, b, "div"); }
 
 // ============================================================================
-// Power operation (special processing: converting integer exponent to floating point to avoid precision problems)
+// Power operation (special processing: converting integer exponent to floating
+// point to avoid precision problems)
 // ============================================================================
 Array pow(const Array &a, const Array &b) {
   DType out_dtype = promote_types(a.dtype(), b.dtype());
