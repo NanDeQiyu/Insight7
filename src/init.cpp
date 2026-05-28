@@ -98,8 +98,12 @@ static const char *backend_extension() { return ".so"; }
 static void load_backend_plugin(DeviceKind kind, const char *lib_name) {
   // Build full path with platform-specific extension
   char lib_path[512];
+#ifdef _WIN32
+  snprintf(lib_path, sizeof(lib_path), "%s%s", lib_name, backend_extension());
+#else
   snprintf(lib_path, sizeof(lib_path), "lib%s%s", lib_name,
            backend_extension());
+#endif
 
   LibHandle lib = load_library(lib_path);
 
