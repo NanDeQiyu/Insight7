@@ -5,6 +5,9 @@
  */
 
 #include "common.h"
+
+#ifdef INSIGHT_USE_OPENBLAS
+
 extern "C" {
 void inv_f32(const float *src, float *dst, int n);
 void inv_f64(const double *src, double *dst, int n);
@@ -118,3 +121,5 @@ C_Status pinv_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(pinv, INSIGHT_DTYPE_F32, pinv_kernel_cpu);
 REGISTER_CPU_KERNEL(pinv, INSIGHT_DTYPE_F64, pinv_kernel_cpu);
+
+#endif // INSIGHT_USE_OPENBLAS
