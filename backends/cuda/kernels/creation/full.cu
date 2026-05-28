@@ -23,8 +23,7 @@
  * @param val Value to fill
  * @param n Number of elements
  */
-template <typename T>
-__global__ void full_kernel(T *dst, T val, int64_t n) {
+template <typename T> __global__ void full_kernel(T *dst, T val, int64_t n) {
   int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < n) {
     dst[i] = val;
@@ -37,7 +36,8 @@ extern "C" {
  * @brief CPU entry point for the full kernel.
  *
  * Fills the output array with a constant value.
- * The fill value is passed as double* in inputs[1] and cast to the output dtype.
+ * The fill value is passed as double* in inputs[1] and cast to the output
+ * dtype.
  *
  * @param inputs  [0] = unused, [1] = double* fill_value
  * @param outputs [0] = InsightArray* result
@@ -95,17 +95,20 @@ C_Status full_kernel_gpu(void **inputs, void **outputs) {
   }
   case INSIGHT_DTYPE_U16: {
     uint16_t val = static_cast<uint16_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<uint16_t *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(static_cast<uint16_t *>(out->data), val,
+                                     n);
     break;
   }
   case INSIGHT_DTYPE_U32: {
     uint32_t val = static_cast<uint32_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<uint32_t *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(static_cast<uint32_t *>(out->data), val,
+                                     n);
     break;
   }
   case INSIGHT_DTYPE_U64: {
     uint64_t val = static_cast<uint64_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<uint64_t *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(static_cast<uint64_t *>(out->data), val,
+                                     n);
     break;
   }
   case INSIGHT_DTYPE_F32: {
@@ -119,15 +122,16 @@ C_Status full_kernel_gpu(void **inputs, void **outputs) {
     break;
   }
   case INSIGHT_DTYPE_C32: {
-    cuFloatComplex val = make_cuFloatComplex(static_cast<float>(fill_val), 0.0f);
-    full_kernel<<<blocks, threads>>>(
-        static_cast<cuFloatComplex *>(out->data), val, n);
+    cuFloatComplex val =
+        make_cuFloatComplex(static_cast<float>(fill_val), 0.0f);
+    full_kernel<<<blocks, threads>>>(static_cast<cuFloatComplex *>(out->data),
+                                     val, n);
     break;
   }
   case INSIGHT_DTYPE_C64: {
     cuDoubleComplex val = make_cuDoubleComplex(fill_val, 0.0);
-    full_kernel<<<blocks, threads>>>(
-        static_cast<cuDoubleComplex *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(static_cast<cuDoubleComplex *>(out->data),
+                                     val, n);
     break;
   }
   default:

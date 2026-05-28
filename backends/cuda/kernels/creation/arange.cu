@@ -76,8 +76,8 @@ C_Status arange_kernel_gpu(void **inputs, void **outputs) {
     break;
   }
   case INSIGHT_DTYPE_F32: {
-    arange_kernel<<<blocks, threads>>>(static_cast<float *>(out->data), n, start,
-                                       step);
+    arange_kernel<<<blocks, threads>>>(static_cast<float *>(out->data), n,
+                                       start, step);
     break;
   }
   case INSIGHT_DTYPE_F64: {

@@ -6,8 +6,8 @@
  * Provides thread/block configuration helpers for 1D element-wise kernels.
  */
 #pragma once
-#include <cuda_runtime.h>
 #include <cstdint>
+#include <cuda_runtime.h>
 
 /**
  * @brief Get the number of threads per block for creation kernels.

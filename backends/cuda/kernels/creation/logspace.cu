@@ -59,8 +59,7 @@ C_Status logspace_kernel_gpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
   if (!inputs[1] || !inputs[2] || !inputs[3]) {
-    gpu_set_last_error(
-        "logspace_kernel_gpu: start, stop, or base is null");
+    gpu_set_last_error("logspace_kernel_gpu: start, stop, or base is null");
     return C_FAILED;
   }
 

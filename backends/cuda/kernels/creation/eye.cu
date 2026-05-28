@@ -42,8 +42,7 @@ template <typename T> __global__ void eye_zero_kernel(T *dst, int64_t n) {
  * @param k Diagonal offset (0 = main diagonal, >0 = upper, <0 = lower)
  */
 template <typename T>
-__global__ void eye_diag_kernel(T *dst, int64_t rows, int64_t cols,
-                                int64_t k) {
+__global__ void eye_diag_kernel(T *dst, int64_t rows, int64_t cols, int64_t k) {
   int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < rows) {
     int64_t j = i + k;
@@ -75,7 +74,7 @@ __global__ void eye_zero_c32_kernel(cuFloatComplex *dst, int64_t n) {
  * @param k Diagonal offset
  */
 __global__ void eye_diag_c32_kernel(cuFloatComplex *dst, int64_t rows,
-                                   int64_t cols, int64_t k) {
+                                    int64_t cols, int64_t k) {
   int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < rows) {
     int64_t j = i + k;
@@ -107,7 +106,7 @@ __global__ void eye_zero_c64_kernel(cuDoubleComplex *dst, int64_t n) {
  * @param k Diagonal offset
  */
 __global__ void eye_diag_c64_kernel(cuDoubleComplex *dst, int64_t rows,
-                                   int64_t cols, int64_t k) {
+                                    int64_t cols, int64_t k) {
   int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < rows) {
     int64_t j = i + k;
@@ -160,36 +159,36 @@ C_Status eye_kernel_gpu(void **inputs, void **outputs) {
     break;
   }
   case INSIGHT_DTYPE_U8: {
-    eye_zero_kernel<<<blocks_zero, threads>>>(
-        static_cast<uint8_t *>(out->data), total);
-    eye_diag_kernel<<<blocks_diag, threads>>>(
-        static_cast<uint8_t *>(out->data), rows, cols, k);
+    eye_zero_kernel<<<blocks_zero, threads>>>(static_cast<uint8_t *>(out->data),
+                                              total);
+    eye_diag_kernel<<<blocks_diag, threads>>>(static_cast<uint8_t *>(out->data),
+                                              rows, cols, k);
     break;
   }
   case INSIGHT_DTYPE_I8: {
-    eye_zero_kernel<<<blocks_zero, threads>>>(
-        static_cast<int8_t *>(out->data), total);
+    eye_zero_kernel<<<blocks_zero, threads>>>(static_cast<int8_t *>(out->data),
+                                              total);
     eye_diag_kernel<<<blocks_diag, threads>>>(static_cast<int8_t *>(out->data),
                                               rows, cols, k);
     break;
   }
   case INSIGHT_DTYPE_I16: {
-    eye_zero_kernel<<<blocks_zero, threads>>>(
-        static_cast<int16_t *>(out->data), total);
+    eye_zero_kernel<<<blocks_zero, threads>>>(static_cast<int16_t *>(out->data),
+                                              total);
     eye_diag_kernel<<<blocks_diag, threads>>>(static_cast<int16_t *>(out->data),
                                               rows, cols, k);
     break;
   }
   case INSIGHT_DTYPE_I32: {
-    eye_zero_kernel<<<blocks_zero, threads>>>(
-        static_cast<int32_t *>(out->data), total);
+    eye_zero_kernel<<<blocks_zero, threads>>>(static_cast<int32_t *>(out->data),
+                                              total);
     eye_diag_kernel<<<blocks_diag, threads>>>(static_cast<int32_t *>(out->data),
                                               rows, cols, k);
     break;
   }
   case INSIGHT_DTYPE_I64: {
-    eye_zero_kernel<<<blocks_zero, threads>>>(
-        static_cast<int64_t *>(out->data), total);
+    eye_zero_kernel<<<blocks_zero, threads>>>(static_cast<int64_t *>(out->data),
+                                              total);
     eye_diag_kernel<<<blocks_diag, threads>>>(static_cast<int64_t *>(out->data),
                                               rows, cols, k);
     break;
