@@ -17,7 +17,7 @@ Array unwrap(const Array &p, int axis, double discont, double period) {
   INS_CHECK(p.dtype() == DType::F32 || p.dtype() == DType::F64,
             "unwrap: only float32/64 supported");
 
-  // 标量直接返回
+  // Scalar returned directly
   if (p.numel() == 1) {
     return p.copy();
   }
@@ -28,20 +28,21 @@ Array unwrap(const Array &p, int axis, double discont, double period) {
     ax += ndim;
   INS_CHECK(ax >= 0 && ax < ndim, "unwrap: axis out of range");
 
-  // 如果 axis 维度小于 2，无法计算差分，直接返回原数组
+  // If the axis dimension is less than 2, the difference cannot be calculated
+  // and the original array is returned directly.
   int64_t axis_size = p.shape().dim(ax);
   if (axis_size < 2) {
     return p.copy();
   }
 
-  // 计算差分
+  // Calculate the difference
   Array diff_p = diff(p, 1, ax);
 
-  // 检测跳变
+  // Detect transitions
   Array jumps =
       greater_than(abs(diff_p), full(diff_p.shape(), discont, diff_p.dtype()));
 
-  // 修正符号
+  // correction sign
   Array correction_step = where(
       jumps,
       where(greater_than(diff_p, full(diff_p.shape(), discont, diff_p.dtype())),
@@ -49,10 +50,10 @@ Array unwrap(const Array &p, int axis, double discont, double period) {
             full(diff_p.shape(), period, diff_p.dtype())),
       zeros_like(diff_p));
 
-  // 累积修正量
+  // Cumulative correction amount
   Array cumulative = cumsum(correction_step, ax);
 
-  // 在前面补 0
+  // prepend 0
   std::vector<int64_t> pad_width(ndim * 2, 0);
   pad_width[ax * 2] = 1;
   pad_width[ax * 2 + 1] = 0;

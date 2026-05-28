@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/nanmin.cpp
+// backends/cpu/kernels/reduction/nanmin.cpp
 /**
  * @file nanmin.cpp
  * @brief CPU kernel for nanmin reduction (minimum ignoring NaN).

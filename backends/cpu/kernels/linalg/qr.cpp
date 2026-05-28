@@ -163,7 +163,7 @@ static void qr_f64_lapack(const double *src, double *q, double *r, int m, int n,
   int k = m < n ? m : n;
   int ld = m;
 
-  // 复制到列主序
+  // Copy to column major order
   double *a = (double *)malloc(m * n * sizeof(double));
   if (!a) {
     cpu_set_last_error("qr: memory allocation failed");
@@ -182,7 +182,7 @@ static void qr_f64_lapack(const double *src, double *q, double *r, int m, int n,
     return;
   }
 
-  // QR 分解 (LAPACKE 会自动管理 workspace)
+  // QR decomposition (LAPACKE will automatically manage the workspace)
   int info = LAPACKE_dgeqrf(LAPACK_COL_MAJOR, m, n, a, ld, tau);
   if (info != 0) {
     cpu_set_last_error("qr: LAPACK dgeqrf failed");
@@ -191,14 +191,14 @@ static void qr_f64_lapack(const double *src, double *q, double *r, int m, int n,
     return;
   }
 
-  // 提取 R (上三角)
+  // Extract R (upper triangle)
   for (int i = 0; i < k; ++i) {
     for (int j = 0; j < n; ++j) {
       r[i * n + j] = (j >= i) ? a[i + j * ld] : 0.0;
     }
   }
 
-  // 生成 Q
+  // Generate Q
   int q_cols = (mode == 0) ? m : k;
   info = LAPACKE_dorgqr(LAPACK_COL_MAJOR, m, q_cols, k, a, ld, tau);
   if (info != 0) {
@@ -208,7 +208,7 @@ static void qr_f64_lapack(const double *src, double *q, double *r, int m, int n,
     return;
   }
 
-  // 输出 Q (列主序转行主序)
+  // Output Q (convert from column-major order to row-major order)
   for (int i = 0; i < m; ++i) {
     for (int j = 0; j < q_cols; ++j) {
       q[i * q_cols + j] = a[i + j * ld];

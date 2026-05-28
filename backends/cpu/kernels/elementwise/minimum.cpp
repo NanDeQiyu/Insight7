@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/minimum.cpp
+// backends/cpu/kernels/elementwise/minimum.cpp
 /**
  * @file minimum.cpp
  * @brief CPU kernel for Minimum operation.

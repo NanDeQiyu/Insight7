@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/rand.cpp
+// backends/cpu/kernels/random/rand.cpp
 /**
  * @file rand.cpp
  * @brief CPU kernel for Uniform distribution.

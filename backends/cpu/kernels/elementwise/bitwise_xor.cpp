@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/bitwise_xor.cpp
+// backends/cpu/kernels/elementwise/bitwise_xor.cpp
 /**
  * @file bitwise_xor.cpp
  * @brief CPU kernel for Bitwise XOR operation.

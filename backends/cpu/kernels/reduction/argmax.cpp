@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/argmax.cpp
+// backends/cpu/kernels/reduction/argmax.cpp
 /**
  * @file argmax.cpp
  * @brief CPU kernel for ArgMax reduction.

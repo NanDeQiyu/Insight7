@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/cummax.cpp
+// backends/cpu/kernels/reduction/cummax.cpp
 /**
  * @file cummax.cpp
  * @brief CPU kernel for cumulative maximum operation.

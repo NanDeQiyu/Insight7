@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/logical_xor.cpp
+// backends/cpu/kernels/elementwise/logical_xor.cpp
 /**
  * @file logical_xor.cpp
  * @brief CPU kernel for Logical XOR operation.

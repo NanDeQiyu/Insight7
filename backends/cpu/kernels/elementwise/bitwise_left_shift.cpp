@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/bitwise_left_shift.cpp
+// backends/cpu/kernels/elementwise/bitwise_left_shift.cpp
 /**
  * @file bitwise_left_shift.cpp
  * @brief CPU kernel for Bitwise Left Shift operation.

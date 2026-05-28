@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/argpartition.cpp
+// backends/cpu/kernels/indexing/argpartition.cpp
 /**
  * @file argpartition.cpp
  * @brief CPU kernel for argpartition operation.
@@ -53,7 +53,7 @@ argpartition_nd_impl(const T *src, int64_t *dst, int64_t ndim,
       batch_size *= dims[i];
   }
 
-  // 预计算每个批次的基地址
+  // Precompute base address for each batch
   std::vector<int64_t> batch_offsets(batch_size);
   for (int64_t batch = 0; batch < batch_size; ++batch) {
     int64_t base_offset = 0;

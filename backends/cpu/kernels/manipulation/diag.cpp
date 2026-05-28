@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/manipulation/diag.cpp
+// backends/cpu/kernels/manipulation/diag.cpp
 /**
  * @file diag.cpp
  * @brief CPU kernel for diag operation.

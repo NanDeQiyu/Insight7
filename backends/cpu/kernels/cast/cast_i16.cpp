@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/cast/cast_i16.cpp
+// backends/cpu/kernels/cast/cast_i16.cpp
 /**
  * @file cast_i16.cpp
  * @brief CPU kernel for casting from i16 to all types.

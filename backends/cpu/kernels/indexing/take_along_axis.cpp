@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/take_along_axis.cpp
+// backends/cpu/kernels/indexing/take_along_axis.cpp
 /**
  * @file take_along_axis.cpp
  * @brief CPU kernel for take_along_axis operation.
@@ -10,7 +10,7 @@
 #include "common.h"
 #include <complex>
 
-// 通用模板实现
+// Universal template implementation
 template <typename T>
 static C_Status take_along_axis_impl(InsightArray *out, InsightArray *x,
                                      InsightArray *idx, int axis) {
@@ -57,7 +57,7 @@ static C_Status take_along_axis_impl(InsightArray *out, InsightArray *x,
       continue;
     }
 
-    // 输入 offset：加上 x->offset 处理视图
+    // Enter offset: add x->offset to handle the view
     int64_t src_offset = x->offset;
     for (int d = 0; d < ndim; ++d) {
       if (d == axis) {
@@ -97,7 +97,7 @@ C_Status take_along_axis_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
-  // 确保 idx 是 int64 类型
+  // Make sure idx is of type int64
   if (idx->dtype != INSIGHT_DTYPE_I64) {
     cpu_set_last_error("take_along_axis: indices must be int64");
     return C_FAILED;

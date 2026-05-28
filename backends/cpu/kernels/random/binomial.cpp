@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/binomial.cpp
+// backends/cpu/kernels/random/binomial.cpp
 #include "common.h"
 
 #ifdef __cplusplus

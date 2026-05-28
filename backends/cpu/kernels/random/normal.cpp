@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/normal.cpp
+// backends/cpu/kernels/random/normal.cpp
 #include "common.h"
 
 #ifdef __cplusplus

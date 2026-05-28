@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/common.h
+// backends/cpu/kernels/elementwise/common.h
 /**
  * @file common.h
  * @brief Common utilities for CPU elementwise kernels.

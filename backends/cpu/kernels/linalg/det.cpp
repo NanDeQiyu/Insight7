@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/linalg/det.cpp
+// backends/cpu/kernels/linalg/det.cpp
 /**
  * @file det.cpp
  * @brief CPU kernel for determinant of a square matrix using LAPACK (CLAPACK).

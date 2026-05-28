@@ -337,13 +337,14 @@ TEST_F(ManipulationTest, RollAlongAxis) {
   Array a({2, 4}, DType::F32);
   fill_sequential<float>(a, 0); // [[0,1,2,3], [4,5,6,7]]
 
-  // shift=1 向下滚动一行
+  // shift=1 scroll down one line
   Array b = roll(a, 1, 0);
   // Expected: [[4,5,6,7], [0,1,2,3]]
   std::vector<float> expected = {4, 5, 6, 7, 0, 1, 2, 3};
   expect_float_equal<float>(b, expected);
 
-  // shift=2 滚动两行，2行数组回到原位
+  // shift=2 scrolls two lines and returns the 2-line array to its original
+  // position
   Array c = roll(a, 2, 0);
   expect_float_equal<float>(c, {0, 1, 2, 3, 4, 5, 6, 7});
 }

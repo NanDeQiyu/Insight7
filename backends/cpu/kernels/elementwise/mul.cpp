@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/mul.cpp
+// backends/cpu/kernels/elementwise/mul.cpp
 /**
  * @file mul.cpp
  * @brief CPU kernel for Multiplication operation.

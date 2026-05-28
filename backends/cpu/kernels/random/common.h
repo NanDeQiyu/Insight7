@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/common.h
+// backends/cpu/kernels/random/common.h
 /**
  * @file common.h
  * @brief Common utilities for CPU random kernels.

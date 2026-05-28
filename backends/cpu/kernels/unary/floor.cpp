@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/floor.cpp
+// backends/cpu/kernels/unary/floor.cpp
 #include "common.h"
 #include <cmath>
 

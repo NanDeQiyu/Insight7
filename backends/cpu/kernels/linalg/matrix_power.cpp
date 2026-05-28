@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/linalg/matrix_power.cpp
+// backends/cpu/kernels/linalg/matrix_power.cpp
 /**
  * @file matrix_power.cpp
  * @brief CPU kernel for integer power of a square matrix.

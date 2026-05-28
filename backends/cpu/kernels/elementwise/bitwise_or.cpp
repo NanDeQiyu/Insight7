@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/bitwise_or.cpp
+// backends/cpu/kernels/elementwise/bitwise_or.cpp
 /**
  * @file bitwise_or.cpp
  * @brief CPU kernel for Bitwise OR operation.

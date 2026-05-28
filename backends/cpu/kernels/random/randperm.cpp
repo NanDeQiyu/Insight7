@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/randperm.cpp
+// backends/cpu/kernels/random/randperm.cpp
 /**
  * @file randperm.cpp
  * @brief CPU kernel for random permutation.

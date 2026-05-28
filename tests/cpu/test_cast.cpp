@@ -223,11 +223,11 @@ TEST_F(CastTestCPU, C32ToAll) {
   fill_complex_sequential<float>(
       src); // (0,0), (1,2), (2,4), (3,6), (4,8), (5,10)
 
-  // C32 -> F32 (取实部)
+  // C32 -> F32 (take the real part)
   Array f32 = src.to(DType::F32);
   expect_float_values<float>(f32, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
 
-  // C32 -> BOOL (非零实部或虚部为true)
+  // C32 -> BOOL (non-zero real or imaginary part is true)
   Array bool_arr = src.to(DType::BOOL);
   expect_bool_values(bool_arr, {false, true, true, true, true, true});
 
@@ -250,7 +250,7 @@ TEST_F(CastTestCPU, C64ToAll) {
                                    static_cast<double>(i * 2));
   }
 
-  // C64 -> F64 (取实部)
+  // C64 -> F64 (take the real part)
   Array f64 = src.to(DType::F64);
   expect_float_values<double>(f64, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0});
 

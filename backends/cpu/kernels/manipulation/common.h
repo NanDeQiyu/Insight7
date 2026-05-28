@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/manipulation/common.h
+// backends/cpu/kernels/manipulation/common.h
 /**
  * @file common.h
  * @brief Common utilities for CPU manipulation kernels.

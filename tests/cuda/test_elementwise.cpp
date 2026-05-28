@@ -670,7 +670,7 @@ TEST_F(ElementwiseTestGPU, ViewAdd) {
   Array a({3, 4}, DType::F32, GPUPlace(0));
   fill_sequential_gpu<float>(a);
 
-  Array view = a.slice(0, 0, 3, 2); // 取行0和行2，跳过了行1
+  Array view = a.slice(0, 0, 3, 2); // Take row 0 and row 2, skipping row 1
   EXPECT_FALSE(view.is_contiguous());
 
   Array b({2, 4}, DType::F32, GPUPlace(0));

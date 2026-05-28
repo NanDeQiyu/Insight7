@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/partition.cpp
+// backends/cpu/kernels/indexing/partition.cpp
 /**
  * @file partition.cpp
  * @brief CPU kernel for partition operation.
@@ -45,7 +45,7 @@ static void partition_nd_impl(const T *src, T *dst, int64_t ndim,
                               const int64_t *dst_strides, int axis,
                               int64_t kth) {
 
-  // 计算 axis 维度的步长
+  // Calculate the step size of the axis dimension
   int64_t axis_stride = 1;
   for (int d = axis + 1; d < ndim; ++d) {
     axis_stride *= dims[d];
@@ -58,7 +58,7 @@ static void partition_nd_impl(const T *src, T *dst, int64_t ndim,
       batch_size *= dims[i];
   }
 
-  // 预计算每个批次的基地址
+  // Precompute base address for each batch
   std::vector<int64_t> batch_offsets(batch_size);
   for (int64_t batch = 0; batch < batch_size; ++batch) {
     int64_t base_offset = 0;
@@ -74,7 +74,7 @@ static void partition_nd_impl(const T *src, T *dst, int64_t ndim,
   }
 
   for (int64_t batch = 0; batch < batch_size; ++batch) {
-    // 收集这个 slice 的数据
+    // Collect the data for this slice
     std::vector<T> slice_data(axis_size);
     int64_t base_offset = 0;
     int64_t tmp = batch;
@@ -91,11 +91,11 @@ static void partition_nd_impl(const T *src, T *dst, int64_t ndim,
       slice_data[i] = src[src_offset];
     }
 
-    // 分区
+    // Partition
     std::nth_element(slice_data.begin(), slice_data.begin() + kth,
                      slice_data.end());
 
-    // 写回
+    // write back
     for (int64_t i = 0; i < axis_size; ++i) {
       int64_t dst_offset = batch_offsets[batch] + i * dst_strides[axis];
       dst[dst_offset] = slice_data[i];

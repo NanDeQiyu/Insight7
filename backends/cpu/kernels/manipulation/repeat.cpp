@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/manipulation/repeat.cpp
+// backends/cpu/kernels/manipulation/repeat.cpp
 /**
  * @file repeat.cpp
  * @brief CPU kernel for repeat operation.

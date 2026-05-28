@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/nanvar.cpp
+// backends/cpu/kernels/reduction/nanvar.cpp
 /**
  * @file nanvar.cpp
  * @brief CPU kernel for nanvar reduction (variance ignoring NaN).

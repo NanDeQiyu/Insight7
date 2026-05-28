@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/cast/common.h
+// backends/cpu/kernels/cast/common.h
 /**
  * @file common.h
  * @brief Common utilities for CPU cast kernels.

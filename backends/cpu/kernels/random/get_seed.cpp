@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/get_seed.cpp
+// backends/cpu/kernels/random/get_seed.cpp
 /**
  * @file get_seed.cpp
  * @brief CPU kernel for getting random seed.

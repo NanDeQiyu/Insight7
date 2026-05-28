@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/equal.cpp
+// backends/cpu/kernels/elementwise/equal.cpp
 /**
  * @file equal.cpp
  * @brief CPU kernel for Equality operation.

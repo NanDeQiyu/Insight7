@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/put.cpp
+// backends/cpu/kernels/indexing/put.cpp
 /**
  * @file put.cpp
  * @brief CPU kernel for put operation.

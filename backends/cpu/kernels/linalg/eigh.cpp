@@ -12,7 +12,7 @@
 
 static void eigh_f32(const float *src, float *vals, float *vecs, int n,
                      int uplo) {
-  // 复制到列主序
+  // Copy to column major order
   float *a = (float *)malloc(n * n * sizeof(float));
   if (!a) {
     cpu_set_last_error("eigh: memory allocation failed");
@@ -25,9 +25,9 @@ static void eigh_f32(const float *src, float *vals, float *vecs, int n,
   }
 
   char uplo_char = uplo ? 'U' : 'L';
-  char jobz = 'V'; // 计算特征值和特征向量
+  char jobz = 'V'; // Calculate eigenvalues ​​and eigenvectors
 
-  // LAPACKE 内部自动管理 workspace
+  // LAPACKE automatically manages workspace internally
   int info = LAPACKE_ssyev(LAPACK_COL_MAJOR, jobz, uplo_char, n, a, n, vals);
 
   if (info != 0) {
@@ -36,7 +36,7 @@ static void eigh_f32(const float *src, float *vals, float *vecs, int n,
     return;
   }
 
-  // 输出特征向量（列主序转行主序）
+  // Output feature vector (convert from column major order to row major order)
   for (int i = 0; i < n; ++i) {
     for (int j = 0; j < n; ++j) {
       vecs[i * n + j] = a[i + j * n];

@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/tan.cpp
+// backends/cpu/kernels/unary/tan.cpp
 #include "common.h"
 #include <cmath>
 

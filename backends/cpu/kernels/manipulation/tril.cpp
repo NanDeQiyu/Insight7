@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/manipulation/tril.cpp
+// backends/cpu/kernels/manipulation/tril.cpp
 /**
  * @file tril.cpp
  * @brief CPU kernel for tril operation (lower triangle).

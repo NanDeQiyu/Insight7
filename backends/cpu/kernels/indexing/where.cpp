@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/where.cpp
+// backends/cpu/kernels/indexing/where.cpp
 /**
  * @file where.cpp
  * @brief CPU kernel for where operation.

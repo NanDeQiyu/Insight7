@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/exp.cpp
+// backends/cpu/kernels/unary/exp.cpp
 #include "common.h"
 #include <cmath>
 

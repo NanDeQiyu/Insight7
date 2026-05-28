@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/scatter_reduce.cpp
+// backends/cpu/kernels/indexing/scatter_reduce.cpp
 /**
  * @file scatter_reduce.cpp
  * @brief CPU kernel for scatter_reduce operation.

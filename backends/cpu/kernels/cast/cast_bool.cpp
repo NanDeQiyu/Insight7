@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/cast/cast_bool.cpp
+// backends/cpu/kernels/cast/cast_bool.cpp
 /**
  * @file cast_bool.cpp
  * @brief CPU kernel for casting from bool to all types.

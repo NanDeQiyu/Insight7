@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/common.h
+// backends/cpu/kernels/reduction/common.h
 /**
  * @file common.h
  * @brief Common utilities for CPU reduction kernels.

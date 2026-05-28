@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/searchsorted.cpp
+// backends/cpu/kernels/indexing/searchsorted.cpp
 /**
  * @file searchsorted.cpp
  * @brief CPU kernel for searchsorted operation.

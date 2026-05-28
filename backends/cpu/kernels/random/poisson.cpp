@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/random/poisson.cpp
+// backends/cpu/kernels/random/poisson.cpp
 #include "common.h"
 
 #ifdef __cplusplus

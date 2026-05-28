@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/nansum.cpp
+// backends/cpu/kernels/reduction/nansum.cpp
 /**
  * @file nansum.cpp
  * @brief CPU kernel for nansum reduction (sum ignoring NaN).

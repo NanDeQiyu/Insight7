@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/trunc.cpp
+// backends/cpu/kernels/unary/trunc.cpp
 #include "common.h"
 #include <cmath>
 

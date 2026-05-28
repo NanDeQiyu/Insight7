@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/count_nonzero.cpp
+// backends/cpu/kernels/reduction/count_nonzero.cpp
 /**
  * @file count_nonzero.cpp
  * @brief CPU kernel for count_nonzero reduction.

@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/linalg/trace.cpp
+// backends/cpu/kernels/linalg/trace.cpp
 /**
  * @file trace.cpp
  * @brief CPU kernel for trace of a square matrix.

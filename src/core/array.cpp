@@ -118,13 +118,13 @@ C_Status insight_array_create_view(InsightArray *dst, const InsightArray *src,
     return C_FAILED;
   }
 
-  // 允许 ndim == 0（标量视图）
+  // Allow ndim == 0 (scalar view)
   if (ndim < 0 || ndim > INSIGHT_MAX_NDIM) {
     insight_set_last_error("insight_array_create_view: ndim out of range");
     return C_FAILED;
   }
 
-  // 只有当 ndim > 0 时才需要 dims 和 strides
+  // dims and strides are only required if ndim > 0
   if (ndim > 0 && (!dims || !strides)) {
     insight_set_last_error("insight_array_create_view: dims and strides must "
                            "be non-null when ndim > 0");
@@ -149,7 +149,7 @@ C_Status insight_array_create_view(InsightArray *dst, const InsightArray *src,
     dst->numel *= dims[i];
   }
 
-  // 标量时 strides 设置为 1
+  // scalar when strides is set to 1
   if (ndim == 0) {
     dst->strides[0] = 1;
   }
@@ -220,27 +220,27 @@ Array::Array(const Shape &shape, DType dtype, const Place &place)
 }
 
 Array::Array(InsightArray *layout) {
-  // 复制 layout 内容
+  // Copy layout content
   layout_ = *layout;
   if (layout_.ref_count) {
     ++(*layout_.ref_count);
   }
 
-  // 从 layout 构建 shape_
+  // Build shape_ from layout
   std::vector<int64_t> dims(layout_.ndim);
   for (int i = 0; i < layout_.ndim; ++i) {
     dims[i] = layout_.dims[i];
   }
   shape_ = Shape(dims);
 
-  // 从 layout 构建 strides_
+  // Build strides_ from layout
   std::vector<int64_t> strides_vec(layout_.ndim);
   for (int i = 0; i < layout_.ndim; ++i) {
     strides_vec[i] = layout_.strides[i];
   }
   strides_ = Strides(strides_vec);
 
-  // 从 layout 构建 place_
+  // Build place_ from layout
   place_ = Place(layout_.device_type == INSIGHT_DEVICE_CPU ? DeviceKind::CPU
                                                            : DeviceKind::GPU,
                  layout_.device_id);

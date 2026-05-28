@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/cumprod.cpp
+// backends/cpu/kernels/reduction/cumprod.cpp
 /**
  * @file cumprod.cpp
  * @brief CPU kernel for product operation.

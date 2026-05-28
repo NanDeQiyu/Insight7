@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/logical_not.cpp
+// backends/cpu/kernels/unary/logical_not.cpp
 #include "common.h"
 #include <complex>
 

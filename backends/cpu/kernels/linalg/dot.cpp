@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/linalg/dot.cpp
+// backends/cpu/kernels/linalg/dot.cpp
 /**
  * @file dot.cpp
  * @brief CPU kernel for dot product of two 1D vectors.

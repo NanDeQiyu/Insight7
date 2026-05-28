@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/less.cpp
+// backends/cpu/kernels/elementwise/less.cpp
 /**
  * @file less.cpp
  * @brief CPU kernel for Less Than operation.

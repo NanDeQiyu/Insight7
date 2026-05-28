@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/logical_or.cpp
+// backends/cpu/kernels/elementwise/logical_or.cpp
 /**
  * @file logical_or.cpp
  * @brief CPU kernel for Logical OR operation.

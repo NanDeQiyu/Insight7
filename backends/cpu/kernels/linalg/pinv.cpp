@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/linalg/pinv.cpp
+// backends/cpu/kernels/linalg/pinv.cpp
 /**
  * @file pinv.cpp
  * @brief CPU kernel for Moore-Penrose pseudo-inverse using SVD.
@@ -14,7 +14,7 @@ void inv_f64(const double *src, double *dst, int n);
 }
 template <typename T> static void inv_general(const T *src, T *dst, int n);
 
-// 特化版本
+// Specialized version
 template <> void inv_general<float>(const float *src, float *dst, int n) {
   inv_f32(src, dst, n);
 }
@@ -26,14 +26,14 @@ template <> void inv_general<double>(const double *src, double *dst, int n) {
 template <typename T>
 static void pinv(const T *src, T *dst, int m, int n, double rcond) {
   if (m == n) {
-    // 方阵：直接求逆
-    inv_general(src, dst, m); // 复用你已有的 inv 实现
+    // Square matrix: direct inversion
+    inv_general(src, dst, m); // Reuse your existing inv implementation
     return;
   }
 
   if (m > n) {
-    // 高矩阵：pinv = (A^T A)^{-1} A^T
-    // 1. 计算 A^T A (n x n)
+    // High matrix: pinv = (A^T A)^{-1} A^T
+    // 1. Calculate A^T A (n x n)
     T *ATA = (T *)malloc(n * n * sizeof(T));
     for (int i = 0; i < n; ++i) {
       for (int j = 0; j < n; ++j) {
@@ -45,11 +45,11 @@ static void pinv(const T *src, T *dst, int m, int n, double rcond) {
       }
     }
 
-    // 2. 求逆
+    // 2. Find the inverse
     T *ATA_inv = (T *)malloc(n * n * sizeof(T));
     inv_general(ATA, ATA_inv, n);
 
-    // 3. 计算 pinv = ATA_inv * A^T (n x m)
+    // 3. Calculate pinv = ATA_inv * A^T (n x m)
     for (int i = 0; i < n; ++i) {
       for (int j = 0; j < m; ++j) {
         T sum = 0;
@@ -63,8 +63,8 @@ static void pinv(const T *src, T *dst, int m, int n, double rcond) {
     free(ATA);
     free(ATA_inv);
   } else {
-    // 宽矩阵：pinv = A^T (A A^T)^{-1}
-    // 1. 计算 A A^T (m x m)
+    // Wide matrix: pinv = A^T (A A^T)^{-1}
+    // 1. Calculate A A^T (m x m)
     T *AAT = (T *)malloc(m * m * sizeof(T));
     for (int i = 0; i < m; ++i) {
       for (int j = 0; j < m; ++j) {
@@ -76,11 +76,11 @@ static void pinv(const T *src, T *dst, int m, int n, double rcond) {
       }
     }
 
-    // 2. 求逆
+    // 2. Find the inverse
     T *AAT_inv = (T *)malloc(m * m * sizeof(T));
     inv_general(AAT, AAT_inv, m);
 
-    // 3. 计算 pinv = A^T * AAT_inv (n x m)
+    // 3. Calculate pinv = A^T * AAT_inv (n x m)
     for (int i = 0; i < n; ++i) {
       for (int j = 0; j < m; ++j) {
         T sum = 0;

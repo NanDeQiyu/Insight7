@@ -12,7 +12,7 @@
 
 static void lstsq_f64(const double *A, const double *B, double *X, int m, int n,
                       int nrhs) {
-  // 复制 A 到列主序
+  // Copy A to column major order
   double *a = (double *)malloc(m * n * sizeof(double));
   if (!a) {
     cpu_set_last_error("lstsq: memory allocation failed");
@@ -24,7 +24,7 @@ static void lstsq_f64(const double *A, const double *B, double *X, int m, int n,
     }
   }
 
-  // 复制 B 到列主序，并扩展行数到 max(m, n)
+  // Copy B to column major and extend the number of rows to max(m, n)
   int b_rows = (m > n) ? m : n;
   double *b = (double *)malloc(b_rows * nrhs * sizeof(double));
   if (!b) {
@@ -39,7 +39,7 @@ static void lstsq_f64(const double *A, const double *B, double *X, int m, int n,
     }
   }
 
-  // LAPACKE_dgels 内部自动管理 workspace
+  // LAPACKE_dgels internal automatic management workspace
   int info = LAPACKE_dgels(LAPACK_COL_MAJOR, 'N', m, n, nrhs, a, m, b, b_rows);
 
   if (info != 0) {
@@ -49,7 +49,7 @@ static void lstsq_f64(const double *A, const double *B, double *X, int m, int n,
     return;
   }
 
-  // 提取解 (前 n 行)
+  // Extract solution (first n rows)
   for (int i = 0; i < n; ++i) {
     for (int j = 0; j < nrhs; ++j) {
       X[i * nrhs + j] = b[i + j * b_rows];

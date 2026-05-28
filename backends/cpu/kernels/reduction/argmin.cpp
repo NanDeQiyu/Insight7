@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/argmin.cpp
+// backends/cpu/kernels/reduction/argmin.cpp
 /**
  * @file argmin.cpp
  * @brief CPU kernel for ArgMin reduction.

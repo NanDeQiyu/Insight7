@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/sqrt.cpp
+// backends/cpu/kernels/unary/sqrt.cpp
 #include "common.h"
 #include <cmath>
 

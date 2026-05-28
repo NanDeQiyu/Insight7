@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/indices.cpp
+// backends/cpu/kernels/indexing/indices.cpp
 /**
  * @file indices.cpp
  * @brief CPU kernel for indices operation.

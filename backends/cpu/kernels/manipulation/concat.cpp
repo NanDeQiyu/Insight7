@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/manipulation/concat.cpp
+// backends/cpu/kernels/manipulation/concat.cpp
 /**
  * @file concat.cpp
  * @brief CPU kernel for concatenation operation.

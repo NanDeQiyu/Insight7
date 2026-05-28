@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/cast/cast_c32.cpp
+// backends/cpu/kernels/cast/cast_c32.cpp
 /**
  * @file cast_c32.cpp
  * @brief CPU kernel for casting from c32 to all types.

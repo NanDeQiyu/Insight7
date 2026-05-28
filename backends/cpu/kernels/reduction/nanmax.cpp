@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/nanmax.cpp
+// backends/cpu/kernels/reduction/nanmax.cpp
 /**
  * @file nanmax.cpp
  * @brief CPU kernel for nanmax reduction (maximum ignoring NaN).

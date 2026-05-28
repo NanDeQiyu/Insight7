@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/masked_select.cpp
+// backends/cpu/kernels/indexing/masked_select.cpp
 /**
  * @file masked_select.cpp
  * @brief CPU kernel for masked_select operation.

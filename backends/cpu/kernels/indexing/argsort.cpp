@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/argsort.cpp
+// backends/cpu/kernels/indexing/argsort.cpp
 /**
  * @file argsort.cpp
  * @brief CPU kernel for argsort operation.

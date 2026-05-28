@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/cumsum.cpp
+// backends/cpu/kernels/reduction/cumsum.cpp
 /**
  * @file cumsum.cpp
  * @brief CPU kernel for cumulative sum operation.

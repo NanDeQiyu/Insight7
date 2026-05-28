@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/add.cpp
+// backends/cpu/kernels/elementwise/add.cpp
 /**
  * @file add.cpp
  * @brief CPU kernel for Addition operation.

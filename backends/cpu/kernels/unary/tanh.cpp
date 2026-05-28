@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/tanh.cpp
+// backends/cpu/kernels/unary/tanh.cpp
 #include "common.h"
 #include <cmath>
 

@@ -164,7 +164,7 @@ std::string format_array_recursive(const T *data, const Shape &shape, int dim,
   for (size_t i = 0; i < elements.size(); ++i) {
     if (i > 0) {
       oss << ",";
-      // 只有最外层且维度 >= 3 时，才添加空行
+      // Empty rows are added only when the outermost layer and dimension >= 3
       if (dim == 0 && ndim >= 3) {
         oss << "\n\n";
       } else {

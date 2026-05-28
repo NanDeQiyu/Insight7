@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/indexing/topk.cpp
+// backends/cpu/kernels/indexing/topk.cpp
 /**
  * @file topk.cpp
  * @brief CPU kernel for topk operation.

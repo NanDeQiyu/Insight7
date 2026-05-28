@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/elementwise/maximum.cpp
+// backends/cpu/kernels/elementwise/maximum.cpp
 /**
  * @file maximum.cpp
  * @brief CPU kernel for Maximum operation.

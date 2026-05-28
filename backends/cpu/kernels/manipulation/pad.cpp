@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/manipulation/pad.cpp
+// backends/cpu/kernels/manipulation/pad.cpp
 /**
  * @file pad.cpp
  * @brief CPU kernel for pad operation.

@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/unary/atan.cpp
+// backends/cpu/kernels/unary/atan.cpp
 #include "common.h"
 #include <cmath>
 

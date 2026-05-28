@@ -1,4 +1,4 @@
-﻿// backends/cpu/kernels/reduction/prod.cpp
+// backends/cpu/kernels/reduction/prod.cpp
 /**
  * @file prod.cpp
  * @brief CPU kernel for Product reduction.
