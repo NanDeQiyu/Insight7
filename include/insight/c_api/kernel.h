@@ -49,17 +49,18 @@ InsightKernel insight_find_kernel(const char *op_name, int32_t device_type,
 /**
  * @brief Launch a kernel with automatic CPU fallback.
  *
- * First attempts to find and execute the kernel on the requested device.
- * If the kernel returns C_FALLBACK, all data is transferred to CPU,
- * the CPU kernel is invoked, and data is transferred back to the original
- * device. If no kernel is found on either device, C_FAILED is returned.
+ * First attempts the kernel on the requested device. If it returns
+ * C_FALLBACK (and the device is GPU), all InsightArray data is
+ * transferred to CPU, the CPU kernel is invoked, and results are
+ * transferred back. Input/output counts are derived by scanning
+ * the NULL-terminated arrays.
  *
  * @param op_name     Operator name
  * @param device_type Preferred device type
  * @param dtype       Data type
- * @param inputs      NULL-terminated array of input array pointers
- * @param outputs     NULL-terminated array of output array pointers
- * @return C_SUCCESS, C_FALLBACK (if even CPU fails), or error code
+ * @param inputs      NULL-terminated array of input pointers
+ * @param outputs     NULL-terminated array of output pointers
+ * @return C_SUCCESS or error code
  */
 C_Status insight_kernel_launch(const char *op_name, int32_t device_type,
                                int32_t dtype, void **inputs, void **outputs);
