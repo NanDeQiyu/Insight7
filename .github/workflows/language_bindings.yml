@@ -111,7 +111,8 @@ jobs:
 
       - name: Test Lua binding
         run: |
-          export LUA_CPATH="build/bindings/lua/?.so;bindings/lua/?/init.lua;;"
+          export LUA_PATH="bindings/lua/?/init.lua;;"
+          export LUA_CPATH="build/bindings/lua/?.so;;"
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
           luajit tests/bindings/test_lua_binding.lua
 

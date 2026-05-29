@@ -56,6 +56,99 @@ static std::vector<Array> table_to_arrays(sol::table t) {
   return v;
 }
 
+// ── Strict Lua table → Array conversion ──────────────────────────────
+
+// Validate a Lua table element: must be number, boolean, or table.
+// nil, string, function, userdata, thread → error.
+static void validate_element(sol::object obj, const std::string &path) {
+  auto t = obj.get_type();
+  if (t == sol::type::lua_nil) {
+    throw std::runtime_error("nil found at " + path +
+                             ": nil values are not allowed");
+  }
+  if (t == sol::type::string) {
+    throw std::runtime_error("string found at " + path +
+                             ": only numbers and booleans are allowed");
+  }
+  if (t == sol::type::function) {
+    throw std::runtime_error("function found at " + path +
+                             ": only numbers and booleans are allowed");
+  }
+  if (t == sol::type::userdata || t == sol::type::lightuserdata) {
+    throw std::runtime_error("userdata found at " + path +
+                             ": only numbers and booleans are allowed");
+  }
+  if (t == sol::type::thread) {
+    throw std::runtime_error("thread found at " + path +
+                             ": only numbers and booleans are allowed");
+  }
+}
+
+// Recursively infer shape from a nested Lua table.
+// Throws on ragged nesting or illegal element types.
+static void infer_lua_shape(sol::table t, std::vector<int64_t> &shape,
+                            int depth, const std::string &path) {
+  if (depth >= INSIGHT_MAX_NDIM) {
+    throw std::runtime_error(
+        "Table nesting exceeds maximum supported dimensions (" +
+        std::to_string(INSIGHT_MAX_NDIM) + ") at " + path);
+  }
+  int64_t len = static_cast<int64_t>(t.size());
+  if (depth >= static_cast<int>(shape.size())) {
+    shape.push_back(len);
+  } else if (shape[depth] != len) {
+    throw std::runtime_error("Ragged nested table at " + path +
+                             ": dimension " + std::to_string(depth) +
+                             " has inconsistent sizes (" +
+                             std::to_string(shape[depth]) + " vs " +
+                             std::to_string(len) + ")");
+  }
+  for (int64_t i = 1; i <= len; i++) {
+    sol::object item = t[i];
+    std::string child_path = path + "[" + std::to_string(i) + "]";
+    validate_element(item, child_path);
+    if (item.get_type() == sol::type::table) {
+      infer_lua_shape(item.as<sol::table>(), shape, depth + 1, child_path);
+    }
+  }
+}
+
+// Flatten a validated nested Lua table into doubles.
+static void flatten_lua_table(sol::table t, std::vector<double> &out) {
+  for (size_t i = 1; i <= t.size(); i++) {
+    sol::object item = t[i];
+    if (item.get_type() == sol::type::table) {
+      flatten_lua_table(item.as<sol::table>(), out);
+    } else if (item.is<bool>()) {
+      out.push_back(item.as<bool>() ? 1.0 : 0.0);
+    } else {
+      out.push_back(item.as<double>());
+    }
+  }
+}
+
+// Public API: convert a Lua table (nested or flat) to an Array.
+// Strict validation: only number/bool/table allowed. nil/string/etc → error.
+static Array from_lua_table(sol::table t) {
+  if (t.size() == 0) {
+    return Array(Shape({0}), DType::F64, CPUPlace());
+  }
+  std::vector<int64_t> shape;
+  std::string path = "root";
+  infer_lua_shape(t, shape, 0, path);
+  std::vector<double> data;
+  flatten_lua_table(t, data);
+  int64_t expected = 1;
+  for (auto d : shape)
+    expected *= d;
+  if (static_cast<int64_t>(data.size()) != expected) {
+    throw std::runtime_error("Shape/data size mismatch");
+  }
+  Array result(Shape(shape), DType::F64, CPUPlace());
+  std::memcpy(result.data(), data.data(), data.size() * sizeof(double));
+  return result;
+}
+
 // Helper: Array __tostring
 static std::string array_tostring(const Array &a) {
   if (!a.defined())
@@ -91,6 +184,36 @@ static std::string array_tostring(const Array &a) {
   s += (a.place().is_gpu() ? "gpu" : "cpu");
   s += ">";
   return s;
+}
+
+// Convert a Lua 1-based slice spec string to C++ 0-based.
+// Positive numbers are decremented by 1; negative numbers and colons unchanged.
+// Example: "1:3" → "0:2", "2,1:-1" → "1,0:-1", "::-1" → "::-1"
+static std::string lua_spec_to_cpp(const std::string &spec) {
+  std::string out;
+  for (size_t i = 0; i < spec.size(); i++) {
+    char c = spec[i];
+    if (c == ':' || c == ',') {
+      out += c;
+    } else if (c == '-' || (c >= '0' && c <= '9')) {
+      size_t start = i;
+      if (c == '-')
+        i++;
+      while (i < spec.size() && spec[i] >= '0' && spec[i] <= '9')
+        i++;
+      std::string num = spec.substr(start, i - start);
+      int val = std::stoi(num);
+      if (val > 0) {
+        out += std::to_string(val - 1);
+      } else {
+        out += num;
+      }
+      i--;
+    } else {
+      out += c;
+    }
+  }
+  return out;
 }
 
 // ============================================================================
@@ -187,9 +310,20 @@ extern "C" int luaopen__insight(lua_State *L) {
       [](const Array &a, const Place &p, DType dt) { return a.to(p, dt); });
   array_type["copy"] = &Array::copy;
 
-  // String slicing: a[":,1:-1"]
+  // String slicing: a[":,1:-1"] (Lua 1-based → auto-convert to 0-based)
+  // Integer indexing: a[1] → first element, a[3] → third element
   array_type[sol::meta_function::index] = sol::overload(
-      [](const Array &a, const std::string &spec) { return a[spec]; },
+      [](const Array &a, const std::string &spec) {
+        return a[lua_spec_to_cpp(spec)];
+      },
+      [](const Array &a, int64_t idx) {
+        // 1-based integer indexing → 0-based
+        if (idx == 0)
+          throw std::runtime_error("Lua arrays are 1-based: index 0 is invalid");
+        if (idx > 0)
+          idx -= 1;
+        return a.at({idx});
+      },
       [](const Array &a, const Slice &s) { return a[s]; });
 
   // Arithmetic metamethods
@@ -230,6 +364,7 @@ extern "C" int luaopen__insight(lua_State *L) {
   // ====================================================================
   // Creation
   // ====================================================================
+  m["from_table"] = &from_lua_table;
   m["zeros"] = [](sol::table shape, sol::optional<DType> dtype,
                   sol::optional<Place> place) {
     return zeros(Shape(table_to_shape(shape)), dtype.value_or(DType::F32),

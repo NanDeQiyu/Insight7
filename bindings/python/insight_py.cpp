@@ -156,6 +156,79 @@ static Array from_numpy(py::array arr) {
   return result;
 }
 
+// Recursively infer shape from a nested Python list
+static void infer_list_shape(py::list lst, std::vector<int64_t> &shape,
+                             int depth) {
+  if (depth >= INSIGHT_MAX_NDIM) {
+    throw std::invalid_argument(
+        "List nesting exceeds maximum supported dimensions (" +
+        std::to_string(INSIGHT_MAX_NDIM) + ")");
+  }
+  int64_t len = static_cast<int64_t>(lst.size());
+  if (depth >= static_cast<int>(shape.size())) {
+    shape.push_back(len);
+  } else if (shape[depth] != len) {
+    throw std::invalid_argument(
+        "Ragged nested list: dimension " + std::to_string(depth) +
+        " has inconsistent sizes (" + std::to_string(shape[depth]) +
+        " vs " + std::to_string(len) + ")");
+  }
+  if (len > 0 && py::isinstance<py::list>(lst[0])) {
+    for (int64_t i = 0; i < len; i++) {
+      if (!py::isinstance<py::list>(lst[i])) {
+        throw std::invalid_argument(
+            "Mixed nesting at dimension " + std::to_string(depth) +
+            ": element " + std::to_string(i) +
+            " is not a list but siblings are");
+      }
+      infer_list_shape(py::reinterpret_borrow<py::list>(lst[i]), shape,
+                        depth + 1);
+    }
+  }
+}
+
+// Flatten a nested Python list into a vector of doubles
+static void flatten_list(py::list lst, std::vector<double> &out) {
+  for (size_t i = 0; i < lst.size(); i++) {
+    py::object item = lst[i];
+    if (py::isinstance<py::list>(item)) {
+      flatten_list(py::reinterpret_borrow<py::list>(item), out);
+    } else {
+      out.push_back(item.cast<double>());
+    }
+  }
+}
+
+static Array from_array_impl(py::object obj) {
+  // If already a numpy array, use from_numpy
+  if (py::isinstance<py::array>(obj)) {
+    return from_numpy(py::reinterpret_borrow<py::array>(obj));
+  }
+  // If a Python list, convert via shape inference + flatten
+  if (py::isinstance<py::list>(obj)) {
+    py::list lst = py::reinterpret_borrow<py::list>(obj);
+    if (lst.size() == 0) {
+      return Array(Shape({0}), DType::F64, CPUPlace());
+    }
+    std::vector<int64_t> shape;
+    infer_list_shape(lst, shape, 0);
+    std::vector<double> data;
+    flatten_list(lst, data);
+    int64_t expected = 1;
+    for (auto d : shape)
+      expected *= d;
+    if (static_cast<int64_t>(data.size()) != expected) {
+      throw std::invalid_argument("Shape/data size mismatch");
+    }
+    Array result(Shape(shape), DType::F64, CPUPlace());
+    std::memcpy(result.data(), data.data(), data.size() * sizeof(double));
+    return result;
+  }
+  throw std::invalid_argument(
+      "from_array expects a list or numpy array, got " +
+      std::string(py::str(obj.get_type())));
+}
+
 static py::array to_numpy(const Array &arr) {
   Array cpu = arr.contiguous().to(CPUPlace());
   DType dt = cpu.dtype();
@@ -413,6 +486,9 @@ PYBIND11_MODULE(_insight, m) {
   m.def(
       "from_numpy", [](py::array arr) { return from_numpy(arr); },
       py::arg("array"), "Create Insight Array from NumPy array");
+  m.def("from_array", &from_array_impl, py::arg("data"),
+        "Create Insight Array from a Python list or NumPy array. "
+        "Nested lists are supported; ragged or mixed-type lists raise errors.");
   m.def("zeros_like", &zeros_like, py::arg("arr"));
   m.def("ones_like", &ones_like, py::arg("arr"));
 

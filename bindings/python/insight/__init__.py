@@ -41,7 +41,7 @@ try:
         init, is_initialized,
         # Creation
         zeros, ones, full, eye, arange, linspace, logspace,
-        from_numpy, zeros_like, ones_like,
+        from_numpy, from_array, zeros_like, ones_like,
         # Elementwise binary
         add, sub, mul, div, pow, mod,
         maximum, minimum,

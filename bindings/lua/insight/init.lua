@@ -47,19 +47,66 @@ local has_stringx, stringx = pcall(require, "pl.stringx")
 --- @class insight
 local M = {}
 
+-- Save native reference for internal use
+M._native = native
+
 -- Re-export all native functions and values
 for k, v in pairs(native) do
     M[k] = v
 end
 
---- Create an array from a Lua table of numbers.
--- @tparam table t Flat table of numbers, e.g. {1, 2, 3, 4}
--- @tparam table dims Shape dimensions, e.g. {2, 2}
--- @tparam DType dtype (optional) Data type, default ins.float32
--- @treturn Array The created array
-function M.from_table(t, dims, dtype)
-    dtype = dtype or M.float32
-    return M.full(dims, 0, dtype)
+--- Create an Array from a nested Lua table.
+-- Strict validation: only number, boolean, and table allowed.
+-- nil, string, function, userdata → error. Max 10 dimensions.
+-- @tparam table t Nested table of numbers/booleans
+-- @treturn Array The created array (float64)
+function M.from_table(t)
+    local function validate(obj, path, depth)
+        if depth > 10 then
+            error("Table nesting exceeds 10 dimensions at " .. path, 3)
+        end
+        local tp = type(obj)
+        if tp == "nil" then
+            error("nil found at " .. path, 3)
+        elseif tp == "string" then
+            error("string found at " .. path, 3)
+        elseif tp == "function" then
+            error("function found at " .. path, 3)
+        elseif tp == "userdata" or tp == "lightuserdata" then
+            error("userdata found at " .. path, 3)
+        elseif tp == "thread" then
+            error("thread found at " .. path, 3)
+        elseif tp ~= "number" and tp ~= "boolean" and tp ~= "table" then
+            error("unexpected type '" .. tp .. "' at " .. path, 3)
+        end
+    end
+
+    local function infer_shape(tbl, shape, depth, path)
+        validate(tbl, path, depth)
+        if type(tbl) ~= "table" then return end
+        local len = #tbl
+        if depth > #shape then
+            shape[#shape + 1] = len
+        elseif shape[depth] ~= len then
+            error("Ragged table at " .. path .. ": dimension " .. depth ..
+                  " inconsistent (" .. shape[depth] .. " vs " .. len .. ")", 3)
+        end
+        for i = 1, len do
+            validate(tbl[i], path .. "[" .. i .. "]", depth)
+            if type(tbl[i]) == "table" then
+                infer_shape(tbl[i], shape, depth + 1, path .. "[" .. i .. "]")
+            end
+        end
+    end
+
+    if type(t) ~= "table" then
+        error("from_table expects a table, got " .. type(t), 2)
+    end
+    if #t == 0 then
+        return M.zeros({0}, M.float64)
+    end
+    infer_shape(t, {}, 1, "root")
+    return M._native.from_table(t)
 end
 
 --- Get the shape of an array as a Lua table.
