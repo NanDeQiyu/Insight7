@@ -60,7 +60,7 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=OFF
 
       - name: Build
-        run: cd build && make -j$(nproc) insight_python insight_core
+        run: cd build && cmake --build . -j$(nproc)
 
       - name: Test Python binding
         run: |
@@ -105,7 +105,7 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=OFF
 
       - name: Build
-        run: cd build && make -j$(nproc) insight_lua insight_core
+        run: cd build && cmake --build . -j$(nproc)
 
       - name: Test Lua binding
         run: |
@@ -153,7 +153,7 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=ON
 
       - name: Build
-        run: cd build && make -j$(nproc) insight_julia insight_core
+        run: cd build && cmake --build . -j$(nproc)
 
       - name: Test Julia binding
         run: |
