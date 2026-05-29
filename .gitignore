@@ -53,3 +53,9 @@ __pycache__/
 # OS specific
 Thumbs.db
 Desktop.ini
+
+# Qwen Code local settings
+.qwen/settings.local.json
+
+# Doxygen output
+docs/

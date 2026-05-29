@@ -1,138 +1,93 @@
 // include/insight/ops/elementwise.h
+/**
+ * @file elementwise.h
+ * @brief Binary elementwise operations on Insight arrays.
+ *
+ * All functions in this file operate elementwise on two input arrays
+ * (with broadcasting) and return a new array.
+ *
+ * @see unary.h for unary elementwise operations
+ * @see reduction.h for reduction operations
+ */
 #pragma once
 #include "insight/core/array.h"
+
+// Backward compatibility: unary functions moved to unary.h
+#include "insight/ops/unary.h"
 
 namespace ins {
 
 // ============================================================================
-// Arithmetic operations
+// Arithmetic operations (binary)
 // ============================================================================
+
+/** @brief Elementwise addition (a + b). Supports broadcasting. */
 Array add(const Array &a, const Array &b);
+/** @brief Elementwise subtraction (a - b). Supports broadcasting. */
 Array sub(const Array &a, const Array &b);
+/** @brief Elementwise multiplication (a * b). Supports broadcasting. */
 Array mul(const Array &a, const Array &b);
+/** @brief Elementwise division (a / b). Supports broadcasting. */
 Array div(const Array &a, const Array &b);
+/** @brief Elementwise power (a ^ b). Supports broadcasting. */
 Array pow(const Array &a, const Array &b);
+/** @brief Elementwise modulo (a % b). Supports broadcasting. */
 Array mod(const Array &a, const Array &b);
 
-// Comparison operations
+// ============================================================================
+// Comparison operations (binary)
+// ============================================================================
+
+/** @brief Elementwise equality (a == b). Returns bool array. */
 Array equal(const Array &a, const Array &b);
+/** @brief Elementwise inequality (a != b). Returns bool array. */
 Array not_equal(const Array &a, const Array &b);
+/** @brief Elementwise greater-than (a > b). Returns bool array. */
 Array greater(const Array &a, const Array &b);
+/** @brief Alias for greater(). */
 Array greater_than(const Array &a, const Array &b);
+/** @brief Elementwise less-than (a < b). Returns bool array. */
 Array less(const Array &a, const Array &b);
+/** @brief Alias for less(). */
 Array less_than(const Array &a, const Array &b);
+/** @brief Elementwise greater-or-equal (a >= b). Returns bool array. */
 Array greater_equal(const Array &a, const Array &b);
+/** @brief Elementwise less-or-equal (a <= b). Returns bool array. */
 Array less_equal(const Array &a, const Array &b);
 
-// Logical operations
-Array logical_and(const Array &a, const Array &b);
-Array logical_or(const Array &a, const Array &b);
-Array logical_xor(const Array &a, const Array &b);
-Array logical_not(const Array &x);
+// ============================================================================
+// Logical operations (binary)
+// ============================================================================
 
-// Bitwise operations
+/** @brief Elementwise logical AND. Returns bool array. */
+Array logical_and(const Array &a, const Array &b);
+/** @brief Elementwise logical OR. Returns bool array. */
+Array logical_or(const Array &a, const Array &b);
+/** @brief Elementwise logical XOR. Returns bool array. */
+Array logical_xor(const Array &a, const Array &b);
+
+// ============================================================================
+// Bitwise operations (binary, integer types only)
+// ============================================================================
+
+/** @brief Elementwise bitwise AND. */
 Array bitwise_and(const Array &a, const Array &b);
+/** @brief Elementwise bitwise OR. */
 Array bitwise_or(const Array &a, const Array &b);
+/** @brief Elementwise bitwise XOR. */
 Array bitwise_xor(const Array &a, const Array &b);
+/** @brief Elementwise bitwise left shift. */
 Array bitwise_left_shift(const Array &a, const Array &b);
+/** @brief Elementwise bitwise right shift. */
 Array bitwise_right_shift(const Array &a, const Array &b);
 
+// ============================================================================
 // Maximum / Minimum
+// ============================================================================
+
+/** @brief Elementwise maximum of two arrays. */
 Array maximum(const Array &a, const Array &b);
+/** @brief Elementwise minimum of two arrays. */
 Array minimum(const Array &a, const Array &b);
-
-// ============================================================================
-// Unary math operations
-// ============================================================================
-
-/// Absolute value
-Array abs(const Array &x);
-
-/// Negative (unary minus)
-Array negative(const Array &x);
-inline Array neg(const Array &x) { return negative(x); }
-
-/// Square (x * x)
-Array square(const Array &x);
-inline Array sqr(const Array &x) { return square(x); }
-
-/// Exponential
-Array exp(const Array &x);
-Array exp2(const Array &x);
-Array expm1(const Array &x);
-
-/// Logarithm
-Array log(const Array &x);
-Array log2(const Array &x);
-Array log10(const Array &x);
-Array log1p(const Array &x);
-
-/// Power / root
-Array sqrt(const Array &x);
-Array cbrt(const Array &x);
-Array reciprocal(const Array &x);
-
-/// Trigonometric
-Array sin(const Array &x);
-Array cos(const Array &x);
-Array tan(const Array &x);
-Array asin(const Array &x);
-Array acos(const Array &x);
-Array atan(const Array &x);
-
-/// Hyperbolic
-Array sinh(const Array &x);
-Array cosh(const Array &x);
-Array tanh(const Array &x);
-Array asinh(const Array &x);
-Array acosh(const Array &x);
-Array atanh(const Array &x);
-
-/// Rounding
-Array floor(const Array &x);
-Array ceil(const Array &x);
-Array trunc(const Array &x);
-Array rint(const Array &x); // round to nearest integer
-
-/// Sign function
-Array sign(const Array &x);
-
-/// Complex conjugate
-Array conj(const Array &x);
-
-/// Degree/radian conversion
-Array deg2rad(const Array &x);
-Array rad2deg(const Array &x);
-
-/// Logical not (returns bool)
-Array logical_not(const Array &x);
-
-/// Bitwise not (integer types only)
-Array bitwise_not(const Array &x);
-inline Array invert(const Array &x) { return bitwise_not(x); }
-
-/**
- * @brief Check if each element is NaN (Not a Number).
- *
- * @param x Input array
- * @return Boolean array where true indicates NaN
- */
-Array isnan(const Array &x);
-
-/**
- * @brief Check if each element is infinite (positive or negative infinity).
- *
- * @param x Input array
- * @return Boolean array where true indicates infinity
- */
-Array isinf(const Array &x);
-
-/**
- * @brief Check if each element is finite (not NaN and not infinity).
- *
- * @param x Input array
- * @return Boolean array where true indicates finite
- */
-Array isfinite(const Array &x);
 
 } // namespace ins

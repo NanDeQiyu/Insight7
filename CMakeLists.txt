@@ -285,6 +285,12 @@ if(INSIGHT_BUILD_DEMOS)
     add_subdirectory(demos)
 endif()
 
+# ========== Language Bindings (Python / Lua / Julia) ==========
+option(INSIGHT_BUILD_BINDINGS "Build language bindings" ON)
+if(INSIGHT_BUILD_BINDINGS)
+    add_subdirectory(bindings)
+endif()
+
 # ========== Unit Tests ==========
 if(INSIGHT_BUILD_TESTS)
     enable_testing()
