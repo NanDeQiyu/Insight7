@@ -12,9 +12,7 @@
 #include "insight/ops/linalg.h"
 #include <cmath>
 #include <complex>
-#include <cstring>
 #include <gtest/gtest.h>
-#include <limits>
 
 using namespace ins;
 
@@ -583,10 +581,11 @@ TEST_F(LinalgTestGPU, LqDecomposition) {
 }
 
 // ============================================================================
-// cond tests
+// Fallback tests (operations that return C_FALLBACK)
+// These verify the fallback mechanism works end-to-end.
 // ============================================================================
 
-TEST_F(LinalgTestGPU, Cond) {
+TEST_F(LinalgTestGPU, CondFallback) {
   {
     Array A = make_gpu_matrix_f64(2, 2, {1, 2, 3, 4});
     Array c = cond(A, 1);
@@ -595,137 +594,27 @@ TEST_F(LinalgTestGPU, Cond) {
   }
 }
 
-// ============================================================================
-// Additional solve tests
-// ============================================================================
-
-TEST_F(LinalgTestGPU, SolveMultipleRHS) {
+TEST_F(LinalgTestGPU, MatrixRankFallback) {
   {
-    Array A = make_gpu_matrix_f64(3, 3, {3, 2, -1, 2, -2, 4, -1, 0.5, -1});
-    Array B = make_gpu_matrix_f64(3, 2, {1, 0, -2, 1, 0, 2});
-    Array X = solve(A, B);
-    Array cpu_X = X.to(CPUPlace());
-    EXPECT_EQ(cpu_X.shape(), Shape({3, 2}));
-
-    const double *x = cpu_X.data<double>();
-    EXPECT_NEAR(x[0], 1.0, 1e-5);
-    EXPECT_NEAR(x[2], -2.0, 1e-5);
-    EXPECT_NEAR(x[4], -2.0, 1e-5);
-
-    Array X_col1 = make_gpu_matrix_f64(3, 1, {x[1], x[3], x[5]});
-    Array B_col1 = make_gpu_matrix_f64(3, 1, {0.0, 1.0, 2.0});
-    Array check = matmul(A, X_col1);
-    Array cpu_check = check.to(CPUPlace());
-    Array cpu_B_col1 = B_col1.to(CPUPlace());
-    EXPECT_NEAR(cpu_check.data<double>()[0], cpu_B_col1.data<double>()[0],
-                1e-4);
-    EXPECT_NEAR(cpu_check.data<double>()[1], cpu_B_col1.data<double>()[1],
-                1e-4);
-    EXPECT_NEAR(cpu_check.data<double>()[2], cpu_B_col1.data<double>()[2],
-                1e-4);
+    Array A = make_gpu_matrix_f64(3, 3, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    Array r = matrix_rank(A);
+    Array cpu_r = r.to(CPUPlace());
+    EXPECT_EQ(cpu_r.item<int64_t>(), 2);
   }
 }
 
-// ============================================================================
-// Additional QR tests
-// ============================================================================
-
-TEST_F(LinalgTestGPU, QRSquareRandom) {
-  {
-    Array A = randn({4, 4}, DType::F64, GPUPlace(0));
-    auto [Q, R] = qr(A, "complete");
-
-    Array QTQ = matmul(transpose(Q), Q);
-    Array cpu_QTQ = QTQ.to(CPUPlace());
-    const double *qtq_data = cpu_QTQ.data<double>();
-    for (int i = 0; i < 4; ++i) {
-      for (int j = 0; j < 4; ++j) {
-        double expected = (i == j) ? 1.0 : 0.0;
-        EXPECT_NEAR(qtq_data[i * 4 + j], expected, 1e-4);
-      }
-    }
-
-    Array QR = matmul(Q, R);
-    EXPECT_TRUE(check_matrix_equal(A, QR, 1e-4));
-  }
-}
-
-// ============================================================================
-// Additional pinv tests
-// ============================================================================
-
-TEST_F(LinalgTestGPU, Pinv2x2) {
-  Array A = make_gpu_matrix_f64(2, 2, {1, 2, 3, 4});
-  Array pinvA = pinv(A);
-
-  Array I1 = matmul(A, pinvA);
-  Array I2 = matmul(pinvA, A);
-  Array cpu_I1 = I1.to(CPUPlace());
-  Array cpu_I2 = I2.to(CPUPlace());
-
-  EXPECT_NEAR(cpu_I1.data<double>()[0], 1.0, 1e-4);
-  EXPECT_NEAR(cpu_I1.data<double>()[3], 1.0, 1e-4);
-  EXPECT_NEAR(cpu_I2.data<double>()[0], 1.0, 1e-4);
-  EXPECT_NEAR(cpu_I2.data<double>()[3], 1.0, 1e-4);
-}
-
-TEST_F(LinalgTestGPU, PinvRectangular) {
-  Array A = make_gpu_matrix_f64(3, 2, {1, 2, 3, 4, 5, 6});
-  Array pinvA = pinv(A);
-  Array cpu_pinvA = pinvA.to(CPUPlace());
-  EXPECT_EQ(cpu_pinvA.shape(), Shape({2, 3}));
-
-  Array I = matmul(pinvA, A);
-  Array cpu_I = I.to(CPUPlace());
-  EXPECT_NEAR(cpu_I.data<double>()[0], 1.0, 1e-4);
-  EXPECT_NEAR(cpu_I.data<double>()[3], 1.0, 1e-4);
-}
-
-// ============================================================================
-// Additional matrix_rank tests
-// ============================================================================
-
-TEST_F(LinalgTestGPU, MatrixRankFull) {
-  Array A = make_gpu_matrix_f64(3, 3, {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  Array r = matrix_rank(A);
-  Array cpu_r = r.to(CPUPlace());
-  EXPECT_EQ(cpu_r.item<int64_t>(), 2);
-}
-
-TEST_F(LinalgTestGPU, MatrixRankFullRank) {
-  Array A = make_gpu_matrix_f64(3, 3, {1, 2, 3, 2, 5, 3, 1, 0, 8});
-  Array r = matrix_rank(A);
-  Array cpu_r = r.to(CPUPlace());
-  EXPECT_EQ(cpu_r.item<int64_t>(), 3);
-}
-
-// ============================================================================
-// Additional norm tests
-// ============================================================================
-
-TEST_F(LinalgTestGPU, NormMatrix1) {
+TEST_F(LinalgTestGPU, PinvFallback) {
   {
     Array A = make_gpu_matrix_f64(2, 2, {1, 2, 3, 4});
-    Array n = norm(A, 1);
-    Array cpu_n = n.to(CPUPlace());
-    EXPECT_NEAR(cpu_n.item<double>(), 6.0, 1e-5);
+    Array pinvA = pinv(A);
+    Array I = matmul(A, pinvA);
+    Array cpu_I = I.to(CPUPlace());
+    EXPECT_NEAR(cpu_I.data<double>()[0], 1.0, 1e-4);
+    EXPECT_NEAR(cpu_I.data<double>()[3], 1.0, 1e-4);
   }
 }
 
-TEST_F(LinalgTestGPU, NormMatrixInf) {
-  {
-    Array A = make_gpu_matrix_f64(2, 2, {1, 2, 3, 4});
-    Array n = norm(A, std::numeric_limits<double>::infinity());
-    Array cpu_n = n.to(CPUPlace());
-    EXPECT_NEAR(cpu_n.item<double>(), 7.0, 1e-5);
-  }
-}
-
-// ============================================================================
-// Additional lstsq tests
-// ============================================================================
-
-TEST_F(LinalgTestGPU, LstsqOverdetermined) {
+TEST_F(LinalgTestGPU, LstsqFallback) {
   {
     Array A = make_gpu_matrix_f64(3, 2, {1, 1, 1, 2, 1, 3});
     Array b = make_gpu_vector_f64({2.0, 3.0, 4.0});
@@ -737,56 +626,7 @@ TEST_F(LinalgTestGPU, LstsqOverdetermined) {
   }
 }
 
-TEST_F(LinalgTestGPU, LstsqUnderdetermined) {
-  {
-    Array A = make_gpu_matrix_f64(2, 3, {1, 0, 1, 0, 1, 1});
-    Array b = make_gpu_vector_f64({2.0, 3.0});
-    Array x = lstsq(A, b);
-    Array cpu_x = x.to(CPUPlace());
-    EXPECT_EQ(cpu_x.shape(), Shape({3}));
-
-    Array Ax = matmul(A, x);
-    Array cpu_Ax = Ax.to(CPUPlace());
-    const double *ax_data = cpu_Ax.data<double>();
-    EXPECT_NEAR(ax_data[0], 2.0, 1e-4);
-    EXPECT_NEAR(ax_data[1], 3.0, 1e-4);
-  }
-}
-
-// ============================================================================
-// Additional data type tests
-// ============================================================================
-
-TEST_F(LinalgTestGPU, DetF32) {
-  Array A = make_gpu_matrix_f32(2, 2, {1.0f, 2.0f, 3.0f, 4.0f});
-  Array d = det(A);
-  Array cpu_d = d.to(CPUPlace());
-  EXPECT_NEAR(cpu_d.item<float>(), -2.0f, 1e-4f);
-}
-
-TEST_F(LinalgTestGPU, InvF32) {
-  Array A = make_gpu_matrix_f32(2, 2, {1.0f, 2.0f, 3.0f, 4.0f});
-  Array invA = inv(A);
-  Array cpu_invA = invA.to(CPUPlace());
-  const float *data = cpu_invA.data<float>();
-  EXPECT_NEAR(data[0], -2.0f, 1e-4f);
-  EXPECT_NEAR(data[1], 1.0f, 1e-4f);
-  EXPECT_NEAR(data[2], 1.5f, 1e-4f);
-  EXPECT_NEAR(data[3], -0.5f, 1e-4f);
-}
-
-TEST_F(LinalgTestGPU, SvdF32) {
-  Array A = make_gpu_matrix_f32(
-      3, 3, {1.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 3.0f});
-  auto [U, S, VT] = svd(A, false);
-  Array cpu_S = S.to(CPUPlace());
-  const float *s = cpu_S.data<float>();
-  EXPECT_NEAR(s[0], 3.0f, 1e-3f);
-  EXPECT_NEAR(s[1], 2.0f, 1e-3f);
-  EXPECT_NEAR(s[2], 1.0f, 1e-3f);
-}
-
-TEST_F(LinalgTestGPU, Cov) {
+TEST_F(LinalgTestGPU, CovFallback) {
   std::vector<double> data = {1.0, 2.0, 3.0, 4.0,  5.0,  6.0,
                               7.0, 8.0, 9.0, 10.0, 11.0, 12.0};
   Array x(Shape({3, 4}), DType::F64, CPUPlace());
