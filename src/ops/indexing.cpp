@@ -243,9 +243,7 @@ Array put_along_axis(const Array &x, const Array &indices, const Array &values,
   }
 
   if (val.numel() == 1) {
-    Shape target_shape =
-        broadcast_shapes_for_indexing(x.shape(), idx.shape(), ax);
-    val = broadcast_to(val, target_shape);
+    val = broadcast_to(val, idx.shape());
   }
 
   Array result = x.copy();
@@ -672,26 +670,27 @@ UniqueResult unique(const Array &x, bool return_indices, bool return_inverse,
                     bool return_counts) {
   Array flattened = x.reshape(Shape({x.numel()}));
 
-  // Create placeholder outputs (will be filled by kernel)
-  Array unique_arr(Shape({0}), x.dtype(), x.place());
+  // Create placeholder outputs (will be filled by kernel via
+  // allocate_gpu_output)
+  Array unique_arr;
   Array indices_arr;
   Array inverse_arr;
   Array counts_arr;
 
-  std::vector<Array> outputs;
-  outputs.push_back(unique_arr);
+  std::vector<void *> output_ptrs;
+  output_ptrs.push_back(unique_arr.layout_ptr());
 
   if (return_indices) {
-    indices_arr = Array(Shape({0}), DType::I64, x.place());
-    outputs.push_back(indices_arr);
+    indices_arr = Array();
+    output_ptrs.push_back(indices_arr.layout_ptr());
   }
   if (return_inverse) {
-    inverse_arr = Array(Shape({0}), DType::I64, x.place());
-    outputs.push_back(inverse_arr);
+    inverse_arr = Array();
+    output_ptrs.push_back(inverse_arr.layout_ptr());
   }
   if (return_counts) {
-    counts_arr = Array(Shape({0}), DType::I64, x.place());
-    outputs.push_back(counts_arr);
+    counts_arr = Array();
+    output_ptrs.push_back(counts_arr.layout_ptr());
   }
 
   // Prepare inputs
@@ -704,24 +703,19 @@ UniqueResult unique(const Array &x, bool return_indices, bool return_inverse,
   inputs.push_back(
       const_cast<void *>(static_cast<const void *>(&return_counts)));
 
-  std::vector<void *> output_ptrs;
-  for (auto &out : outputs) {
-    output_ptrs.push_back(out.layout_ptr());
-  }
-
   ops().launch("unique", x.place(), x.dtype(), inputs, output_ptrs);
 
   UniqueResult result;
-  result.unique = outputs[0];
+  result.unique = Array(unique_arr.layout_ptr());
   size_t idx = 1;
   if (return_indices) {
-    result.indices = outputs[idx++];
+    result.indices = Array(indices_arr.layout_ptr());
   }
   if (return_inverse) {
-    result.inverse = outputs[idx++];
+    result.inverse = Array(inverse_arr.layout_ptr());
   }
   if (return_counts) {
-    result.counts = outputs[idx++];
+    result.counts = Array(counts_arr.layout_ptr());
   }
   return result;
 }

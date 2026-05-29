@@ -27,9 +27,12 @@ __global__ void logical_and_kernel(const T *a, const T *b, bool *out,
   int64_t linear = blockIdx.x * blockDim.x + threadIdx.x;
   if (linear >= meta->numel)
     return;
-  int64_t a_off = elementwise_offset(linear, meta, meta->a_strides);
-  int64_t b_off = elementwise_offset(linear, meta, meta->b_strides);
-  int64_t out_off = elementwise_offset(linear, meta, meta->out_strides);
+  int64_t a_off =
+      meta->a_offset + elementwise_offset(linear, meta, meta->a_strides);
+  int64_t b_off =
+      meta->b_offset + elementwise_offset(linear, meta, meta->b_strides);
+  int64_t out_off =
+      meta->out_offset + elementwise_offset(linear, meta, meta->out_strides);
   out[out_off] = (a[a_off] != T(0)) && (b[b_off] != T(0));
 }
 __global__ void logical_and_c32_kernel(const cuFloatComplex *a,
@@ -38,9 +41,12 @@ __global__ void logical_and_c32_kernel(const cuFloatComplex *a,
   int64_t linear = blockIdx.x * blockDim.x + threadIdx.x;
   if (linear >= meta->numel)
     return;
-  int64_t a_off = elementwise_offset(linear, meta, meta->a_strides);
-  int64_t b_off = elementwise_offset(linear, meta, meta->b_strides);
-  int64_t out_off = elementwise_offset(linear, meta, meta->out_strides);
+  int64_t a_off =
+      meta->a_offset + elementwise_offset(linear, meta, meta->a_strides);
+  int64_t b_off =
+      meta->b_offset + elementwise_offset(linear, meta, meta->b_strides);
+  int64_t out_off =
+      meta->out_offset + elementwise_offset(linear, meta, meta->out_strides);
   bool a_nz = (cuCrealf(a[a_off]) != 0.0f) || (cuCimagf(a[a_off]) != 0.0f);
   bool b_nz = (cuCrealf(b[b_off]) != 0.0f) || (cuCimagf(b[b_off]) != 0.0f);
   out[out_off] = a_nz && b_nz;
@@ -51,9 +57,12 @@ __global__ void logical_and_c64_kernel(const cuDoubleComplex *a,
   int64_t linear = blockIdx.x * blockDim.x + threadIdx.x;
   if (linear >= meta->numel)
     return;
-  int64_t a_off = elementwise_offset(linear, meta, meta->a_strides);
-  int64_t b_off = elementwise_offset(linear, meta, meta->b_strides);
-  int64_t out_off = elementwise_offset(linear, meta, meta->out_strides);
+  int64_t a_off =
+      meta->a_offset + elementwise_offset(linear, meta, meta->a_strides);
+  int64_t b_off =
+      meta->b_offset + elementwise_offset(linear, meta, meta->b_strides);
+  int64_t out_off =
+      meta->out_offset + elementwise_offset(linear, meta, meta->out_strides);
   bool a_nz = (cuCreal(a[a_off]) != 0.0) || (cuCimag(a[a_off]) != 0.0);
   bool b_nz = (cuCreal(b[b_off]) != 0.0) || (cuCimag(b[b_off]) != 0.0);
   out[out_off] = a_nz && b_nz;

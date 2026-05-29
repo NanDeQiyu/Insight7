@@ -24,6 +24,9 @@ struct ElementwiseMetadata {
   int64_t a_strides[INSIGHT_MAX_NDIM];
   int64_t b_strides[INSIGHT_MAX_NDIM];
   int64_t out_strides[INSIGHT_MAX_NDIM];
+  int64_t a_offset;
+  int64_t b_offset;
+  int64_t out_offset;
 };
 
 static inline ElementwiseMetadata *
@@ -36,6 +39,9 @@ alloc_elementwise_metadata(const InsightArray *a, const InsightArray *b,
   ElementwiseMetadata h_meta;
   h_meta.ndim = out->ndim;
   h_meta.numel = out->numel;
+  h_meta.a_offset = a->offset;
+  h_meta.b_offset = b->offset;
+  h_meta.out_offset = out->offset;
 
   int b_ndim = b->ndim;
   int b_offset = h_meta.ndim - b_ndim;
@@ -75,4 +81,10 @@ elementwise_offset(int64_t linear, const ElementwiseMetadata *meta,
     offset += idx * strides[d];
   }
   return offset;
+}
+
+__device__ static inline int64_t
+elementwise_offset_with_base(int64_t linear, const ElementwiseMetadata *meta,
+                             const int64_t *strides, int64_t base_offset) {
+  return base_offset + elementwise_offset(linear, meta, strides);
 }

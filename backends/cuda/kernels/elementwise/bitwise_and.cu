@@ -27,9 +27,12 @@ __global__ void bitwise_and_kernel(const T *a, const T *b, T *out,
   int64_t linear = blockIdx.x * blockDim.x + threadIdx.x;
   if (linear >= meta->numel)
     return;
-  int64_t a_off = elementwise_offset(linear, meta, meta->a_strides);
-  int64_t b_off = elementwise_offset(linear, meta, meta->b_strides);
-  int64_t out_off = elementwise_offset(linear, meta, meta->out_strides);
+  int64_t a_off =
+      meta->a_offset + elementwise_offset(linear, meta, meta->a_strides);
+  int64_t b_off =
+      meta->b_offset + elementwise_offset(linear, meta, meta->b_strides);
+  int64_t out_off =
+      meta->out_offset + elementwise_offset(linear, meta, meta->out_strides);
   out[out_off] = a[a_off] & b[b_off];
 }
 
