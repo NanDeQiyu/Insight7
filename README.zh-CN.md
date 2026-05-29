@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![C++](https://img.shields.io/badge/C++-17/20-blue.svg)](https://isocpp.org/)
 [![CUDA](https://img.shields.io/badge/CUDA-11.7%2B-green.svg)](https://developer.nvidia.com/cuda-toolkit)
-[![Tests](https://img.shields.io/badge/tests-365%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-386%20passed-brightgreen.svg)](tests/)
 
 [![EN](https://img.shields.io/badge/lang-EN-red.svg)](README.md)
 [![简体中文](https://img.shields.io/badge/lang-简体中文-blue.svg)](README.zh-CN.md)
@@ -36,7 +36,7 @@ insight/
 ├── src/ops/                  # 前端算子逻辑
 ├── backends/cpu/             # CPU 后端（OpenMP + FFTW + OpenBLAS）
 ├── backends/cuda/            # CUDA 后端（cuBLAS + cuFFT + Thrust）
-└── tests/                    # 365+ 测试全部通过
+└── tests/                    # 386 测试，16 套件，CPU/CUDA 完全对齐
 ```
 
 ## 快速上手
@@ -95,28 +95,33 @@ int main() {
 
 ## 测试状态
 
-✅ **365 个测试全部通过**（16 个测试套件）
+✅ **386 个测试全部通过** — CPU 与 CUDA 完全对齐（16 个测试套件）
 
 | 套件 | 测试数 | CPU | GPU |
 |------|--------|-----|-----|
-| creation | 10+ | ✅ | ✅ |
-| elementwise | 20+ | ✅ | ✅ |
-| random | 30+ | ✅ | ✅ |
-| reduction | 20 | ✅ | ✅ |
-| unary | 20+ | ✅ | ✅ |
-| indexing | 20+ | ✅ | ✅ |
+| cast | 9 | ✅ | ✅ |
+| complex | 22 | ✅ | ✅ |
+| creation | 27 | ✅ | ✅ |
+| csv | 1 | ✅ | ✅ |
+| dtype | 9 | ✅ | ✅ |
+| elementwise | 28 | ✅ | ✅ |
 | fft | 19 | ✅ | ✅ |
-| linalg | 30+ | ✅ | ✅ |
-| complex | 20 | ✅ | ✅ |
-| operator | 30+ | ✅ | ✅ |
+| indexing | 33 | ✅ | ✅ |
+| linalg | 43 | ✅ | ✅ |
+| manipulation | 42 | ✅ | ✅ |
+| operator | 50 | ✅ | ✅ |
+| print | 11 | ✅ | ✅ |
+| random | 31 | ✅ | ✅ |
+| reduction | 24 | ✅ | ✅ |
 | signal | 10 | ✅ | ✅ |
+| unary | 27 | ✅ | ✅ |
 
 ## 免责声明
 
 > [!IMPORTANT]
 > 本项目代码主要由 **DeepSeek**（深度求索）生成，是 **7 天快速原型开发** 的产物。作者完成了架构整合、测试验证和系统集成。
 >
-> 尽管所有 365+ 测试均稳定通过，且框架展示了工业级的设计模式，但这仍然是一个**概念验证**项目。性能优化仍在进行中，在特定硬件配置或边界条件下可能存在未知 Bug。
+> 尽管所有 386 个测试在 CPU 和 CUDA 上均稳定通过且完全对齐，但这仍然是一个**概念验证**项目。性能优化仍在进行中，在特定硬件配置或边界条件下可能存在未知 Bug。
 >
 > 本项目深度借鉴了 **PaddlePaddle** 的设计哲学（算子注册、设备硬件抽象层），同时受 Torch7 和 NumPy/CuPy 启发。
 
