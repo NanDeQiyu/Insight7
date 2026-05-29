@@ -29,7 +29,7 @@ target_include_directories(insight_cuda_backend
 
 find_package(CUDAToolkit REQUIRED)
 target_link_libraries(insight_cuda_backend
-    PRIVATE CUDA::cudart insight_core
+    PRIVATE CUDA::cudart CUDA::cufft CUDA::curand insight_core
 )
 
 if(INSIGHT_CUDA_USE_THRUST)
