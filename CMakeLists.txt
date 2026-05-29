@@ -160,38 +160,10 @@ else()
     message(STATUS "CUDA backend disabled by user option")
 endif()
 
-# ========== Demo Executable ==========
-add_executable(insight_demo
-    insight.cpp
-)
-
-target_link_libraries(insight_demo PRIVATE insight_core)
-
-target_include_directories(insight_demo
-    PRIVATE
-        ${INSIGHT_INCLUDE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-# ========== Copy backend DLLs next to executable ==========
-if(INSIGHT_DYNAMIC_CPU_BACKEND)
-    add_dependencies(insight_demo insight_cpu_backend)
-    add_custom_command(TARGET insight_demo POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:insight_cpu_backend>"
-            "$<TARGET_FILE_DIR:insight_demo>/$<TARGET_FILE_NAME:insight_cpu_backend>"
-        COMMENT "Copying CPU backend DLL to executable directory"
-    )
-endif()
-
-if(INSIGHT_WITH_CUDA AND INSIGHT_DYNAMIC_GPU_BACKEND)
-    add_dependencies(insight_demo insight_cuda_backend)
-    add_custom_command(TARGET insight_demo POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:insight_cuda_backend>"
-            "$<TARGET_FILE_DIR:insight_demo>/$<TARGET_FILE_NAME:insight_cuda_backend>"
-        COMMENT "Copying GPU backend DLL to executable directory"
-    )
+# ========== Demos ==========
+option(INSIGHT_BUILD_DEMOS "Build demo programs" ON)
+if(INSIGHT_BUILD_DEMOS)
+    add_subdirectory(demos)
 endif()
 
 # ========== Unit Tests ==========
@@ -199,12 +171,6 @@ if(INSIGHT_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
-
-# ========== Output Settings ==========
-set_target_properties(insight_demo PROPERTIES
-    OUTPUT_NAME "insight"
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
 
 # ========== Configuration Summary ==========
 if(INSIGHT_DYNAMIC_CPU_BACKEND)
