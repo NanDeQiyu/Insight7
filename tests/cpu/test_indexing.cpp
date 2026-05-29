@@ -656,3 +656,38 @@ TEST_F(IndexingTest, StringSliceReverse) {
   EXPECT_FLOAT_EQ(b.at({0}).item<float>(), 4.0f);
   EXPECT_FLOAT_EQ(b.at({4}).item<float>(), 0.0f);
 }
+
+TEST_F(IndexingTest, StringSlice3D) {
+  // 2x5x4 array
+  Array a = arange(40, DType::F32, CPUPlace()).reshape({2, 5, 4});
+
+  // arr[:, 1:-1, ::2] → 2x3x2
+  Array b = a[":,1:-1,::2"];
+  EXPECT_EQ(b.shape().dim(0), 2);
+  EXPECT_EQ(b.shape().dim(1), 3);
+  EXPECT_EQ(b.shape().dim(2), 2);
+  // a[0,1,0]=4, a[0,1,2]=6, a[0,2,0]=8, a[0,2,2]=10, a[0,3,0]=12, a[0,3,2]=14
+  EXPECT_FLOAT_EQ(b.at({0, 0, 0}).item<float>(), 4.0f);
+  EXPECT_FLOAT_EQ(b.at({0, 0, 1}).item<float>(), 6.0f);
+  EXPECT_FLOAT_EQ(b.at({0, 1, 0}).item<float>(), 8.0f);
+
+  // arr[1, :, 2] → 1D of size 5 (dim0 and dim2 squeezed)
+  Array c = a["1,:,2"];
+  EXPECT_EQ(c.shape().ndim(), 1);
+  EXPECT_EQ(c.numel(), 5);
+  // a[1,0,2]=22, a[1,1,2]=26, a[1,2,2]=30
+  EXPECT_FLOAT_EQ(c.at({0}).item<float>(), 22.0f);
+  EXPECT_FLOAT_EQ(c.at({1}).item<float>(), 26.0f);
+  EXPECT_FLOAT_EQ(c.at({2}).item<float>(), 30.0f);
+
+  // arr[0, 1, 3] → scalar
+  Array d = a["0,1,3"];
+  EXPECT_EQ(d.numel(), 1);
+  // a[0,1,3] = 0*20 + 1*4 + 3 = 7
+  EXPECT_FLOAT_EQ(d.item<float>(), 7.0f);
+}
+
+TEST_F(IndexingTest, StringSliceInvalidThrows) {
+  Array a = arange(6, DType::F32, CPUPlace()).reshape({2, 3});
+  EXPECT_THROW(a["abc"], std::exception);
+}
