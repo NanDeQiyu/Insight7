@@ -87,44 +87,8 @@ try:
     #   bool, complex64, complex128
 
     # ── Function docstrings (for IDE autocompletion) ──────────────────
-
-    def zeros(shape, dtype=float32, place=None):
-        """Create an array filled with zeros.
-
-        Args:
-            shape: Array dimensions as a list/tuple, e.g. [2, 3].
-            dtype: Data type (default: float32).
-            place: Device placement (default: CPU).
-
-        Returns:
-            Array of zeros with the given shape and dtype.
-
-        Example::
-
-            a = ins.zeros([2, 3], ins.float32)
-        """
-        if place is None:
-            place = CPUPlace()
-        return _zeros(shape, dtype, place)
-
-    def ones(shape, dtype=float32, place=None):
-        """Create an array filled with ones.
-
-        Args:
-            shape: Array dimensions as a list/tuple.
-            dtype: Data type (default: float32).
-            place: Device placement (default: CPU).
-
-        Returns:
-            Array of ones with the given shape and dtype.
-        """
-        if place is None:
-            place = CPUPlace()
-        return _ones(shape, dtype, place)
-
-    # Save original functions before overriding
-    _zeros = zeros
-    _ones = ones
+    # Docstrings are provided via the native module's pybind11 bindings.
+    # No wrapper functions needed — the native functions have proper defaults.
 
 except ImportError as e:
     raise ImportError(
