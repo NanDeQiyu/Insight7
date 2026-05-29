@@ -10,20 +10,40 @@ extracted_at: '2026-05-29T07:30:49.130Z'
 ## 1. `atomicAdd` for Double Precision
 **Error**: `no instance of overloaded function "atomicAdd" matches the argument list (double *, const double)` or `function "atomicAdd" has already been defined`.
 
-**Cause**: `atomicAdd` for `double` is natively supported only on Compute Capability 6.0+. If you define it manually, you might conflict with built-in definitions or get errors if the architecture is too low.
+**Cause**: `atomicAdd` for `double` is natively supported only on Compute Capability 6.0+. On sm_52/sm_61 it's missing. You **cannot** globally redefine `atomicAdd(double*, double)` because it conflicts with the CUDA toolkit's built-in definition.
 
-**Solution**:
-1. **Check Architecture**: Ensure `CMAKE_CUDA_ARCHITECTURES` is set to 60 or higher in `CMakeLists.txt`.
-   ```cmake
-   set(CMAKE_CUDA_ARCHITECTURES 60)
-   ```
-2. **Conditional Definition**: If you must support older architectures, use a conditional definition in a shared header (e.g., `backends/cuda/kernels/common/atomic_helpers.cuh`).
-   ```cpp
-   #if __CUDA_ARCH__ < 600
-   __device__ double atomicAdd(double* address, double val) { ... }
-   #endif
-   ```
-   *Note*: In the current Insight7 setup, simply setting the architecture to 60+ (where available) is preferred to avoid redefinition conflicts.
+**Solution**: Define a named helper `atomicAddDouble` in `backends/cuda/kernels/common/atomic_helpers.cuh` and call it explicitly for double types:
+
+```cpp
+// atomic_helpers.cuh
+#pragma once
+#include <cuda_runtime.h>
+
+__device__ __forceinline__ double atomicAddDouble(double *address, double val) {
+  unsigned long long int *address_as_ull =
+      reinterpret_cast<unsigned long long int *>(address);
+  unsigned long long int old = *address_as_ull, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed,
+                    __double_as_longlong(val + __longlong_as_double(assumed)));
+  } while (assumed != old);
+  return __longlong_as_double(old);
+}
+```
+
+Then in kernels, use `if constexpr` to dispatch:
+```cpp
+if constexpr (std::is_same_v<W, double>) {
+    atomicAddDouble(&dst[bin], weights[idx]);
+} else {
+    atomicAdd(&dst[bin], weights[idx]);
+}
+```
+
+**Important:** Do NOT use `#if __CUDA_ARCH__ < 600` to redefine `atomicAdd` — it causes "already been defined" errors. Always use a distinct function name.
+
+Also check `scatter_reduce.cu` and any other kernel that uses `atomicAdd` with a template type that could be `double`.
 
 ## 2. `void` type incompatible with `void*`
 **Error**: `argument of type "void" is incompatible with parameter of type "void *"` or `a value of type "void" cannot be used to initialize an entity of type "void *"`.

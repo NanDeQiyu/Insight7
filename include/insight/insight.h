@@ -26,6 +26,9 @@
 // I/O utilities
 #include "insight/io/csv.h"
 #include "insight/io/print.h"
+#ifdef INSIGHT_USE_SNDFILE
+#include "insight/io/sndfile.h"
+#endif
 
 // Plugin registry
 #include "insight/core/op_registry.h"

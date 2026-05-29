@@ -118,6 +118,125 @@ else()
     message(STATUS "FFTW3 support disabled")
 endif()
 
+# ========== libsndfile (audio I/O) ==========
+option(INSIGHT_USE_SNDFILE "Use libsndfile for audio file I/O" ON)
+if(INSIGHT_USE_SNDFILE)
+    find_package(LibSndFile QUIET)
+    if(NOT SndFile_FOUND)
+        include(FetchContent)
+        message(STATUS "libsndfile not found on system, fetching from source...")
+
+        # Build codec dependencies first (Ogg -> Vorbis/FLAC/Opus -> libsndfile)
+        FetchContent_Declare(ogg
+            GIT_REPOSITORY "https://github.com/xiph/ogg.git"
+            GIT_TAG        "v1.3.5"
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_Declare(vorbis
+            GIT_REPOSITORY "https://github.com/xiph/vorbis.git"
+            GIT_TAG        "v1.3.7"
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_Declare(FLAC
+            GIT_REPOSITORY "https://github.com/xiph/flac.git"
+            GIT_TAG        "1.4.3"
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_Declare(opus
+            GIT_REPOSITORY "https://github.com/xiph/opus.git"
+            GIT_TAG        "v1.5.2"
+            GIT_SHALLOW    TRUE
+        )
+        set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+        set(INSTALL_CMAKE_PACKAGE_MODULE OFF CACHE BOOL "" FORCE)
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+        set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+        set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(BUILD_DOCS OFF CACHE BOOL "" FORCE)
+        set(INSTALL_MANPAGES OFF CACHE BOOL "" FORCE)
+        set(INSTALL_PKGCONFIG_MODULES OFF CACHE BOOL "" FORCE)
+        set(BUILD_CXXLIBS OFF CACHE BOOL "" FORCE)
+        # Pre-set cache variables using FetchContent naming convention
+        # (source dirs known before MakeAvailable, build dirs use CMAKE_BINARY_DIR)
+        set(_fc_base "${CMAKE_BINARY_DIR}/_deps")
+        set(OGG_INCLUDE_DIR "${_fc_base}/ogg-src/include" CACHE PATH "" FORCE)
+        set(OGG_LIBRARY "${_fc_base}/ogg-build/${CMAKE_STATIC_LIBRARY_PREFIX}ogg${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+        set(Ogg_FOUND TRUE CACHE BOOL "" FORCE)
+        set(OGG_LIBRARIES "${OGG_LIBRARY}" CACHE STRING "" FORCE)
+        set(OGG_INCLUDE_DIRS "${_fc_base}/ogg-src/include" CACHE PATH "" FORCE)
+        set(FLAC_INCLUDE_DIR "${_fc_base}/flac-src/include" CACHE PATH "" FORCE)
+        set(FLAC_LIBRARY "${_fc_base}/flac-build/src/libFLAC/${CMAKE_STATIC_LIBRARY_PREFIX}FLAC${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+        set(FLAC_FOUND TRUE CACHE BOOL "" FORCE)
+        set(FLAC_LIBRARIES "${FLAC_LIBRARY};${OGG_LIBRARY}" CACHE STRING "" FORCE)
+        set(FLAC_INCLUDE_DIRS "${_fc_base}/flac-src/include" CACHE PATH "" FORCE)
+        set(Vorbis_Vorbis_INCLUDE_DIR "${_fc_base}/vorbis-src/include" CACHE PATH "" FORCE)
+        set(Vorbis_Vorbis_LIBRARY "${_fc_base}/vorbis-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vorbis${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+        set(Vorbis_Enc_INCLUDE_DIR "${_fc_base}/vorbis-src/include" CACHE PATH "" FORCE)
+        set(Vorbis_Enc_LIBRARY "${_fc_base}/vorbis-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vorbisenc${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+        set(Vorbis_File_INCLUDE_DIR "${_fc_base}/vorbis-src/include" CACHE PATH "" FORCE)
+        set(Vorbis_File_LIBRARY "${_fc_base}/vorbis-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vorbisfile${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+        set(OPUS_INCLUDE_DIR "${_fc_base}/opus-src/include" CACHE PATH "" FORCE)
+        set(OPUS_LIBRARY "${_fc_base}/opus-build/${CMAKE_STATIC_LIBRARY_PREFIX}opus${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+        # Create imported targets so sndfile can link against them
+        foreach(_spec
+            "Ogg::ogg|OGG_LIBRARY|OGG_INCLUDE_DIRS"
+            "FLAC::FLAC|FLAC_LIBRARY|FLAC_INCLUDE_DIRS"
+            "Vorbis::vorbis|Vorbis_Vorbis_LIBRARY|Vorbis_Vorbis_INCLUDE_DIR"
+            "Vorbis::vorbisenc|Vorbis_Enc_LIBRARY|Vorbis_Enc_INCLUDE_DIR"
+            "Vorbis::vorbisfile|Vorbis_File_LIBRARY|Vorbis_File_INCLUDE_DIR"
+            "Opus::opus|OPUS_LIBRARY|OPUS_INCLUDE_DIR")
+            string(REPLACE "|" ";" _parts "${_spec}")
+            list(GET _parts 0 _target)
+            list(GET _parts 1 _lib_var)
+            list(GET _parts 2 _inc_var)
+            if(NOT TARGET ${_target})
+                add_library(${_target} STATIC IMPORTED)
+                set_target_properties(${_target} PROPERTIES
+                    IMPORTED_LOCATION "${${_lib_var}}"
+                    INTERFACE_INCLUDE_DIRECTORIES "${${_inc_var}}"
+                )
+            endif()
+        endforeach()
+        # Ogg is a dependency of FLAC, Vorbis, and Opus
+        set_target_properties(FLAC::FLAC PROPERTIES INTERFACE_LINK_LIBRARIES Ogg::ogg)
+        set_target_properties(Vorbis::vorbis PROPERTIES INTERFACE_LINK_LIBRARIES Ogg::ogg)
+        set_target_properties(Vorbis::vorbisenc PROPERTIES INTERFACE_LINK_LIBRARIES "Vorbis::vorbis;Ogg::ogg")
+        set_target_properties(Vorbis::vorbisfile PROPERTIES INTERFACE_LINK_LIBRARIES "Vorbis::vorbis;Ogg::ogg")
+        # Ogg needs binary dir for generated config_types.h
+        set_target_properties(Ogg::ogg PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${_fc_base}/ogg-src/include;${_fc_base}/ogg-build/include")
+        # Fetch and build all codec dependencies
+        set(_saved_skip_install ${CMAKE_SKIP_INSTALL_RULES})
+        set(CMAKE_SKIP_INSTALL_RULES ON)
+        FetchContent_MakeAvailable(ogg vorbis FLAC opus)
+        set(CMAKE_SKIP_INSTALL_RULES ${_saved_skip_install})
+        # Opus puts headers in include/ directly, but code expects include/opus/
+        if(NOT EXISTS "${_fc_base}/opus-src/include/opus")
+            file(CREATE_LINK "${_fc_base}/opus-src/include" "${_fc_base}/opus-src/include/opus" SYMBOLIC)
+        endif()
+        FetchContent_Declare(sndfile
+            GIT_REPOSITORY "https://github.com/libsndfile/libsndfile.git"
+            GIT_TAG        "1.2.2"
+            GIT_SHALLOW    TRUE
+        )
+        set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+        set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(ENABLE_EXTERNAL_LIBS ON CACHE BOOL "" FORCE)
+        set(HAVE_EXTERNAL_XIPH_LIBS ON CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(sndfile)
+        set(SndFile_FOUND TRUE)
+    endif()
+    if(TARGET SndFile::sndfile-static)
+        target_link_libraries(insight_core PRIVATE SndFile::sndfile-static)
+    elseif(TARGET SndFile::sndfile)
+        target_link_libraries(insight_core PRIVATE SndFile::sndfile)
+    endif()
+    target_compile_definitions(insight_core PUBLIC INSIGHT_USE_SNDFILE)
+    message(STATUS "libsndfile enabled (with FLAC support)")
+else()
+    message(STATUS "libsndfile support disabled")
+endif()
+
 # ========== Include Directories ==========
 target_include_directories(insight_core
     PUBLIC
@@ -193,6 +312,7 @@ message(STATUS "")
 message(STATUS "  OpenMP:    ${OpenMP_CXX_FOUND}")
 message(STATUS "  OpenBLAS:  ${INSIGHT_USE_OPENBLAS}")
 message(STATUS "  FFTW3:     ${INSIGHT_USE_FFTW3}")
+message(STATUS "  SndFile:   ${INSIGHT_USE_SNDFILE}")
 message(STATUS "  CUDA:      ${INSIGHT_WITH_CUDA}")
 message(STATUS "  Thrust:    ${INSIGHT_USE_THRUST}")
 message(STATUS "  Tests:     ${INSIGHT_BUILD_TESTS}")

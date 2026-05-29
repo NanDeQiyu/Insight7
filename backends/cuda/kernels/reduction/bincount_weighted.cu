@@ -25,9 +25,9 @@ __global__ void bincount_weighted_kernel(W *dst, const T *src, const W *weights,
   if (idx < n) {
     int64_t bin = static_cast<int64_t>(src[idx]);
     if (bin >= 0 && bin < num_bins) {
-      // Use unsigned long long atomicAdd for int64_t, direct atomicAdd for
-      // others
-      if constexpr (std::is_same_v<W, int64_t>) {
+      if constexpr (std::is_same_v<W, double>) {
+        atomicAddDouble(&dst[bin], weights[idx]);
+      } else if constexpr (std::is_same_v<W, int64_t>) {
         atomicAdd(reinterpret_cast<unsigned long long *>(&dst[bin]),
                   static_cast<unsigned long long>(weights[idx]));
       } else if constexpr (std::is_same_v<W, int32_t>) {
