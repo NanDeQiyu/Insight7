@@ -2,7 +2,7 @@
 name: add-language-binding
 description: Add Python/Lua/Julia language bindings for Insight7 using pybind11/sol2/ccall
 source: auto-skill
-extracted_at: '2026-05-29T22:09:26.593Z'
+extracted_at: '2026-05-29T22:30:00.000Z'
 ---
 
 # add-language-binding.md — 语言绑定开发流程
@@ -399,12 +399,20 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get install -y python3-dev python3-numpy python3-pytest ...
       - name: Build
-        run: cd build && make -j$(nproc) insight_python insight_core
+        run: cd build && cmake --build . -j$(nproc)
       - name: Test
         run: python3 -m pytest tests/bindings/ -v
 ```
 
-每个 job 只构建对应语言的 binding（`-DINSIGHT_BUILD_*_BINDING=OFF` 关闭其他）。
+每个 job 必须全量构建（`cmake --build . -j$(nproc)`），不能只挑 binding target：
+```yaml
+# ❌ 错误 — 缺少 vorbis/ogg/flac/opus 等传递依赖
+run: cd build && make -j$(nproc) insight_python insight_core
+# ✅ 正确 — 全量构建确保 libsndfile 的依赖链完整
+run: cd build && cmake --build . -j$(nproc)
+```
+
+**原因**：`insight_core` 依赖 libsndfile，libsndfile 依赖 ogg → vorbis/flac/opus（FetchContent）。只构建 binding target 会跳过这些传递依赖。
 
 ## Doxygen 文档
 
