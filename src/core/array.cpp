@@ -521,16 +521,24 @@ Array Array::operator[](const Slice &slice) const {
                      slice.stop.value_or(shape_.dim(0)), slice.step);
 }
 
-Array Array::operator[](const std::string &spec) const {
-  if (spec.find(':') != std::string::npos) {
-    Slice s = parse_slice(spec);
-    return slice({s});
-  }
-
+// Helper: parse a single dimension spec (":", "1:-1", "5", etc.)
+// Returns either a Slice or an integer index stored as optional<int64_t>.
+// If the spec is a pure integer, index_out is set and slice_out is nullopt.
+// If the spec contains ':', slice_out is set and index_out is nullopt.
+static void parse_dim_spec(const std::string &spec,
+                           std::optional<Slice> &slice_out,
+                           std::optional<int64_t> &index_out) {
   if (spec.empty()) {
-    INS_THROW("Invalid index: empty string");
+    INS_THROW("Invalid index: empty dimension spec");
   }
 
+  if (spec.find(':') != std::string::npos) {
+    slice_out = parse_slice(spec);
+    index_out = std::nullopt;
+    return;
+  }
+
+  // Check if it's a valid integer
   bool is_number = true;
   for (size_t i = 0; i < spec.size(); ++i) {
     char c = spec[i];
@@ -543,11 +551,83 @@ Array Array::operator[](const std::string &spec) const {
   }
 
   if (is_number) {
-    int64_t idx = std::stoll(spec);
-    return at(idx);
+    index_out = std::stoll(spec);
+    slice_out = std::nullopt;
+    return;
   }
 
   INS_THROW("Invalid index/slice syntax: ", spec);
+}
+
+Array Array::operator[](const std::string &spec) const {
+  // Split on commas for multi-dimensional indexing
+  std::vector<std::string> parts;
+  std::string part;
+  for (char c : spec) {
+    if (c == ',') {
+      parts.push_back(part);
+      part.clear();
+    } else {
+      part += c;
+    }
+  }
+  parts.push_back(part);
+
+  // Parse each dimension
+  std::vector<Slice> slices;
+  bool any_slice = false;
+
+  for (const auto &p : parts) {
+    std::optional<Slice> s;
+    std::optional<int64_t> idx;
+    parse_dim_spec(p, s, idx);
+
+    if (s.has_value()) {
+      slices.push_back(s.value());
+      any_slice = true;
+    } else {
+      // Integer index: convert to a slice that selects a single element
+      // We'll apply at() for pure integer indexing below
+      slices.push_back(Slice(idx.value(), idx.value() + 1, 1));
+    }
+  }
+
+  // If all dimensions are integer indices, use at() with all indices at once
+  if (!any_slice) {
+    std::vector<int64_t> indices;
+    for (const auto &p : parts) {
+      indices.push_back(std::stoll(p));
+    }
+    return at(indices);
+  }
+
+  // Apply multi-dimensional slice
+  int ndim = shape_.ndim();
+  INS_CHECK(static_cast<int>(slices.size()) <= ndim,
+            "Too many slice dimensions: got ", slices.size(), ", array has ",
+            ndim, " dimensions");
+
+  // Build full slice list (missing trailing dims = Slice::all())
+  std::vector<Slice> full_slices(slices);
+  while (static_cast<int>(full_slices.size()) < ndim) {
+    full_slices.push_back(Slice::all());
+  }
+
+  // Apply multi-dimensional slice in one call
+  // (Slice objects preserve optional nullopt for correct reverse-slice
+  // defaults)
+  Array result = this->slice(full_slices);
+
+  // Squeeze dimensions that were integer-indexed (not slices)
+  for (int i = static_cast<int>(parts.size()) - 1; i >= 0; --i) {
+    const auto &p = parts[i];
+    if (p.find(':') == std::string::npos) {
+      // This was an integer index, squeeze dimension i
+      result = result.squeeze(i);
+    }
+  }
+
+  return result;
 }
 
 // ========== View Operations ==========
