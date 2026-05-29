@@ -97,11 +97,10 @@ static void infer_lua_shape(sol::table t, std::vector<int64_t> &shape,
   if (depth >= static_cast<int>(shape.size())) {
     shape.push_back(len);
   } else if (shape[depth] != len) {
-    throw std::runtime_error("Ragged nested table at " + path +
-                             ": dimension " + std::to_string(depth) +
-                             " has inconsistent sizes (" +
-                             std::to_string(shape[depth]) + " vs " +
-                             std::to_string(len) + ")");
+    throw std::runtime_error(
+        "Ragged nested table at " + path + ": dimension " +
+        std::to_string(depth) + " has inconsistent sizes (" +
+        std::to_string(shape[depth]) + " vs " + std::to_string(len) + ")");
   }
   for (int64_t i = 1; i <= len; i++) {
     sol::object item = t[i];
@@ -319,7 +318,8 @@ extern "C" int luaopen__insight(lua_State *L) {
       [](const Array &a, int64_t idx) {
         // 1-based integer indexing → 0-based
         if (idx == 0)
-          throw std::runtime_error("Lua arrays are 1-based: index 0 is invalid");
+          throw std::runtime_error(
+              "Lua arrays are 1-based: index 0 is invalid");
         if (idx > 0)
           idx -= 1;
         return a.at({idx});

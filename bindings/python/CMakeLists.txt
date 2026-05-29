@@ -31,7 +31,11 @@ add_custom_command(TARGET insight_python POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:insight_python>
         "${CMAKE_BINARY_DIR}/bindings/python/$<TARGET_FILE_NAME:insight_python>"
-    COMMENT "Copying insight Python module to bindings/python/"
+    # Also copy to the wrapper package directory so `import insight` works
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:insight_python>
+        "${CMAKE_SOURCE_DIR}/bindings/python/insight/$<TARGET_FILE_NAME:insight_python>"
+    COMMENT "Copying insight Python module"
 )
 
 message(STATUS "Python bindings enabled (pybind11, Python ${Python3_VERSION})")

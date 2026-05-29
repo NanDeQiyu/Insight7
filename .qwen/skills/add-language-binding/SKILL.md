@@ -389,19 +389,13 @@ build = {
 
 `.github/workflows/language_bindings.yml` — 三个独立 job (python/lua/julia)：
 
+**必须安装 `liblapacke-dev`**（linalg kernel 依赖 lapacke.h）：
 ```yaml
-jobs:
-  python:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { submodules: recursive }
-      - name: Install dependencies
-        run: sudo apt-get install -y python3-dev python3-numpy python3-pytest ...
-      - name: Build
-        run: cd build && cmake --build . -j$(nproc)
-      - name: Test
-        run: python3 -m pytest tests/bindings/ -v
+- name: Install dependencies
+  run: |
+    sudo apt-get install -y \
+      libfftw3-dev libopenblas-dev liblapacke-dev libomp-dev \
+      cmake build-essential
 ```
 
 每个 job 必须全量构建（`cmake --build . -j$(nproc)`），不能只挑 binding target：
@@ -412,7 +406,24 @@ run: cd build && make -j$(nproc) insight_python insight_core
 run: cd build && cmake --build . -j$(nproc)
 ```
 
-**原因**：`insight_core` 依赖 libsndfile，libsndfile 依赖 ogg → vorbis/flac/opus（FetchContent）。只构建 binding target 会跳过这些传递依赖。
+**Lua 测试路径**必须分开设置 `LUA_PATH`（.lua）和 `LUA_CPATH`（.so）：
+```yaml
+- name: Test Lua binding
+  run: |
+    export LUA_PATH="bindings/lua/?/init.lua;;"
+    export LUA_CPATH="build/bindings/lua/?.so;;"
+    export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
+    luajit tests/bindings/test_lua_binding.lua
+```
+
+**Python 测试路径**必须包含 wrapper 和 build 两个目录：
+```yaml
+- name: Test Python binding
+  run: |
+    export PYTHONPATH=bindings/python:build/bindings/python
+    export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
+    python3 -m pytest tests/bindings/ -v
+```
 
 ## Doxygen 文档
 
@@ -444,3 +455,97 @@ LuaJIT 使用 Penlight 需设置 `package.path`：
 ```
 /home/aistudio/.luarocks/share/lua/5.1/?.lua
 ```
+
+## `from_array` / `from_table`（list/table → Array）
+
+### Python `from_array`
+
+支持 Python list、嵌套 list、numpy ndarray。递归推断 shape，展平为 double。
+
+**严格校验**：
+- ragged list → error（`[[1,2],[3,4,5]]`）
+- string/None 混入 → error
+- 超过 10 维 → error（`INSIGHT_MAX_NDIM`）
+
+```cpp
+// 推断 shape（递归）
+static void infer_list_shape(py::list lst, std::vector<int64_t> &shape, int depth) {
+    if (depth >= INSIGHT_MAX_NDIM) throw std::invalid_argument("...");
+    // ...
+}
+```
+
+### Lua `from_table`
+
+**在 wrapper 层用纯 Lua 实现**（不要在 C++ 绑定中注册 `from_table` 直接给用户调）。
+
+原因：sol2 函数被复制到普通 Lua table 后，`sol::table` 参数转换失效。
+```cpp
+// ❌ 这样注册的函数被 wrapper 复制后，传 table 参数会变成 nil
+m["from_table"] = &from_lua_table;
+```
+
+正确做法：wrapper 中用纯 Lua 做校验，最后调 `M._native.from_table(t)`：
+```lua
+function M.from_table(t)
+    -- 纯 Lua 校验：type(t), #t, 递归检查嵌套
+    infer_shape(t, {}, 1, "root")
+    return M._native.from_table(t)  -- C++ 只负责转 Array
+end
+```
+
+**合法元素类型**：number, boolean, table
+**非法元素类型**：nil, string, function, userdata, thread → error
+**纯 boolean table 合法**：`{true, false, true}` → `{1.0, 0.0, 1.0}`
+**Max 10 维**（`INSIGHT_MAX_NDIM = 10`）
+
+## Lua 1-based 索引转换
+
+Lua 数组是 1-based，Insight C++ 是 0-based。需要在 Lua 绑定层自动转换。
+
+### 整数索引
+
+```cpp
+array_type[sol::meta_function::index] = sol::overload(
+    [](const Array &a, int64_t idx) {
+        if (idx == 0) throw std::runtime_error("Lua arrays are 1-based: index 0 is invalid");
+        if (idx > 0) idx -= 1;  // 1-based → 0-based
+        return a.at({idx});
+    },
+    // ...
+);
+```
+
+### 字符串切片
+
+切片字符串中的正整数需要 -1 转换，负数保持不变：
+```cpp
+static std::string lua_spec_to_cpp(const std::string &spec) {
+    // "1:3" → "0:2", "2,1:-1" → "1,0:-1", "::-1" → "::-1"
+    // 规则：正数 -1，负数/零不变
+}
+```
+
+### Julia 1-based 索引
+
+Julia 的 `ccall` 接口传的是 C 级别索引，wrapper 层需要做 -1 转换。
+
+## `LUA_PATH` vs `LUA_CPATH`
+
+**必须分开设置**，不能混用：
+- `LUA_PATH`：搜索 `.lua` 文件（wrapper）
+- `LUA_CPATH`：搜索 `.so` 文件（原生模块）
+
+```bash
+# ❌ 错误 — LUA_CPATH 不会搜索 .lua
+export LUA_CPATH="build/bindings/lua/?.so;bindings/lua/?/init.lua;;"
+# ✅ 正确
+export LUA_PATH="bindings/lua/?/init.lua;;"
+export LUA_CPATH="build/bindings/lua/?.so;;"
+```
+
+## sol2 函数复制陷阱
+
+sol2 注册的函数被复制到普通 Lua table 后，`sol::table`、`sol::optional` 等 sol2 特殊类型的参数转换会失效（传入变成 nil）。
+
+**解决方案**：需要接受 `sol::table` 参数的函数，在 wrapper 层用纯 Lua 实现，不要依赖 C++ 绑定。

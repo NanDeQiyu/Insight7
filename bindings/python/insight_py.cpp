@@ -170,19 +170,19 @@ static void infer_list_shape(py::list lst, std::vector<int64_t> &shape,
   } else if (shape[depth] != len) {
     throw std::invalid_argument(
         "Ragged nested list: dimension " + std::to_string(depth) +
-        " has inconsistent sizes (" + std::to_string(shape[depth]) +
-        " vs " + std::to_string(len) + ")");
+        " has inconsistent sizes (" + std::to_string(shape[depth]) + " vs " +
+        std::to_string(len) + ")");
   }
   if (len > 0 && py::isinstance<py::list>(lst[0])) {
     for (int64_t i = 0; i < len; i++) {
       if (!py::isinstance<py::list>(lst[i])) {
-        throw std::invalid_argument(
-            "Mixed nesting at dimension " + std::to_string(depth) +
-            ": element " + std::to_string(i) +
-            " is not a list but siblings are");
+        throw std::invalid_argument("Mixed nesting at dimension " +
+                                    std::to_string(depth) + ": element " +
+                                    std::to_string(i) +
+                                    " is not a list but siblings are");
       }
       infer_list_shape(py::reinterpret_borrow<py::list>(lst[i]), shape,
-                        depth + 1);
+                       depth + 1);
     }
   }
 }
@@ -224,9 +224,8 @@ static Array from_array_impl(py::object obj) {
     std::memcpy(result.data(), data.data(), data.size() * sizeof(double));
     return result;
   }
-  throw std::invalid_argument(
-      "from_array expects a list or numpy array, got " +
-      std::string(py::str(obj.get_type())));
+  throw std::invalid_argument("from_array expects a list or numpy array, got " +
+                              std::string(py::str(obj.get_type())));
 }
 
 static py::array to_numpy(const Array &arr) {

@@ -2,9 +2,7 @@
 #
 # Lua/LuaJIT bindings via sol2 (header-only).
 
-# Find LuaJIT
-set(LUAJIT_DIR "$ENV{HOME}/public/luajit" CACHE PATH "LuaJIT installation directory")
-
+# Find LuaJIT — search system paths first, then ~/public/luajit
 find_library(LUAJIT_LIB
     NAMES luajit-5.1 luajit
     HINTS "${LUAJIT_DIR}/lib"
@@ -13,6 +11,7 @@ find_library(LUAJIT_LIB
 find_path(LUAJIT_INCLUDE_DIR
     NAMES lua.h
     HINTS "${LUAJIT_DIR}/include/luajit-2.1"
+    PATHS /usr/include/luajit-2.1 /usr/local/include/luajit-2.1
 )
 
 if(NOT LUAJIT_LIB OR NOT LUAJIT_INCLUDE_DIR)
