@@ -46,3 +46,10 @@ add_insight_demo(demo_basic_ops   basic_ops.cpp)
 add_insight_demo(demo_linalg      linalg_demo.cpp)
 add_insight_demo(demo_fft         fft_demo.cpp)
 add_insight_demo(demo_gpu_transfer gpu_transfer.cpp)
+
+if(INSIGHT_USE_SNDFILE)
+    add_insight_demo(demo_sndfile sndfile_demo.cpp)
+    target_compile_definitions(demo_sndfile PRIVATE
+        AUDIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../audio"
+    )
+endif()

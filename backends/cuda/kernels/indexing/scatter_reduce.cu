@@ -17,7 +17,11 @@ __global__ void scatter_add_kernel(T *x, const int64_t *indices,
   if (idx < n) {
     int64_t batch = idx / index_size;
     int64_t i = idx % index_size;
-    atomicAdd(&x[batch * index_size + indices[i]], values[idx]);
+    if constexpr (std::is_same_v<T, double>) {
+      atomicAddDouble(&x[batch * index_size + indices[i]], values[idx]);
+    } else {
+      atomicAdd(&x[batch * index_size + indices[i]], values[idx]);
+    }
   }
 }
 
