@@ -568,3 +568,126 @@ TEST_F(IndexingTest, InterpUnsortedXp) {
   EXPECT_NEAR(data[1], 25.0, 1e-6);
   EXPECT_NEAR(data[2], 35.0, 1e-6);
 }
+
+// ========== String-based slicing (operator[]) ==========
+
+TEST_F(IndexingTest, StringSlice1D) {
+  Array a = arange(10, DType::F32, CPUPlace()); // [0,1,2,...,9]
+  Array b = a[":5"];
+  EXPECT_EQ(b.numel(), 5);
+  EXPECT_FLOAT_EQ(b.at({0}).item<float>(), 0.0f);
+  EXPECT_FLOAT_EQ(b.at({4}).item<float>(), 4.0f);
+
+  Array c = a["2:"];
+  EXPECT_EQ(c.numel(), 8);
+  EXPECT_FLOAT_EQ(c.at({0}).item<float>(), 2.0f);
+
+  Array d = a["1:8:2"];
+  EXPECT_EQ(d.numel(), 4);
+  EXPECT_FLOAT_EQ(d.at({0}).item<float>(), 1.0f);
+  EXPECT_FLOAT_EQ(d.at({1}).item<float>(), 3.0f);
+  EXPECT_FLOAT_EQ(d.at({2}).item<float>(), 5.0f);
+  EXPECT_FLOAT_EQ(d.at({3}).item<float>(), 7.0f);
+}
+
+TEST_F(IndexingTest, StringSliceInteger) {
+  Array a = arange(10, DType::F32, CPUPlace());
+  Array b = a["3"];
+  EXPECT_EQ(b.numel(), 1);
+  EXPECT_FLOAT_EQ(b.item<float>(), 3.0f);
+
+  Array c = a["-1"];
+  EXPECT_FLOAT_EQ(c.item<float>(), 9.0f);
+}
+
+TEST_F(IndexingTest, StringSliceMultiDim) {
+  // 4x5 array
+  Array a = arange(20, DType::F32, CPUPlace()).reshape({4, 5});
+
+  // arr[:, 1:-1] → 4x3
+  Array b = a[":,1:-1"];
+  EXPECT_EQ(b.shape().dim(0), 4);
+  EXPECT_EQ(b.shape().dim(1), 3);
+  EXPECT_FLOAT_EQ(b.data<float>()[0], 1.0f); // a[0,1]
+  EXPECT_FLOAT_EQ(b.data<float>()[1], 2.0f); // a[0,2]
+  EXPECT_FLOAT_EQ(b.data<float>()[2], 3.0f); // a[0,3]
+
+  // arr[1:3, :] → 2x5
+  Array c = a["1:3,:"];
+  EXPECT_EQ(c.shape().dim(0), 2);
+  EXPECT_EQ(c.shape().dim(1), 5);
+  EXPECT_FLOAT_EQ(c.data<float>()[0], 5.0f); // a[1,0]
+}
+
+TEST_F(IndexingTest, StringSliceMultiDimIndexAndSlice) {
+  // 4x5 array
+  Array a = arange(20, DType::F32, CPUPlace()).reshape({4, 5});
+
+  // arr[2, 1:-1] → 1D of size 3 (dim 0 squeezed)
+  Array b = a["2,1:-1"];
+  EXPECT_EQ(b.shape().ndim(), 1);
+  EXPECT_EQ(b.numel(), 3);
+  EXPECT_FLOAT_EQ(b.data<float>()[0], 11.0f); // a[2,1]
+  EXPECT_FLOAT_EQ(b.data<float>()[1], 12.0f); // a[2,2]
+  EXPECT_FLOAT_EQ(b.data<float>()[2], 13.0f); // a[2,3]
+
+  // arr[1:3, 2] → 1D of size 2 (dim 1 squeezed)
+  Array c = a["1:3,2"];
+  EXPECT_EQ(c.shape().ndim(), 1);
+  EXPECT_EQ(c.numel(), 2);
+  EXPECT_FLOAT_EQ(c.data<float>()[0], 7.0f);  // a[1,2]
+  EXPECT_FLOAT_EQ(c.data<float>()[1], 12.0f); // a[2,2]
+}
+
+TEST_F(IndexingTest, StringSliceMultiDimAllInt) {
+  // 4x5 array
+  Array a = arange(20, DType::F32, CPUPlace()).reshape({4, 5});
+
+  // arr[1, 3] → scalar
+  Array b = a["1,3"];
+  EXPECT_EQ(b.numel(), 1);
+  EXPECT_FLOAT_EQ(b.item<float>(), 8.0f); // a[1,3]
+}
+
+TEST_F(IndexingTest, StringSliceReverse) {
+  Array a = arange(5, DType::F32, CPUPlace());
+  Array b = a["::-1"];
+  EXPECT_EQ(b.numel(), 5);
+  EXPECT_FLOAT_EQ(b.at({0}).item<float>(), 4.0f);
+  EXPECT_FLOAT_EQ(b.at({4}).item<float>(), 0.0f);
+}
+
+TEST_F(IndexingTest, StringSlice3D) {
+  // 2x5x4 array
+  Array a = arange(40, DType::F32, CPUPlace()).reshape({2, 5, 4});
+
+  // arr[:, 1:-1, ::2] → 2x3x2
+  Array b = a[":,1:-1,::2"];
+  EXPECT_EQ(b.shape().dim(0), 2);
+  EXPECT_EQ(b.shape().dim(1), 3);
+  EXPECT_EQ(b.shape().dim(2), 2);
+  // a[0,1,0]=4, a[0,1,2]=6, a[0,2,0]=8, a[0,2,2]=10, a[0,3,0]=12, a[0,3,2]=14
+  EXPECT_FLOAT_EQ(b.at({0, 0, 0}).item<float>(), 4.0f);
+  EXPECT_FLOAT_EQ(b.at({0, 0, 1}).item<float>(), 6.0f);
+  EXPECT_FLOAT_EQ(b.at({0, 1, 0}).item<float>(), 8.0f);
+
+  // arr[1, :, 2] → 1D of size 5 (dim0 and dim2 squeezed)
+  Array c = a["1,:,2"];
+  EXPECT_EQ(c.shape().ndim(), 1);
+  EXPECT_EQ(c.numel(), 5);
+  // a[1,0,2]=22, a[1,1,2]=26, a[1,2,2]=30
+  EXPECT_FLOAT_EQ(c.at({0}).item<float>(), 22.0f);
+  EXPECT_FLOAT_EQ(c.at({1}).item<float>(), 26.0f);
+  EXPECT_FLOAT_EQ(c.at({2}).item<float>(), 30.0f);
+
+  // arr[0, 1, 3] → scalar
+  Array d = a["0,1,3"];
+  EXPECT_EQ(d.numel(), 1);
+  // a[0,1,3] = 0*20 + 1*4 + 3 = 7
+  EXPECT_FLOAT_EQ(d.item<float>(), 7.0f);
+}
+
+TEST_F(IndexingTest, StringSliceInvalidThrows) {
+  Array a = arange(6, DType::F32, CPUPlace()).reshape({2, 3});
+  EXPECT_THROW(a["abc"], std::exception);
+}
