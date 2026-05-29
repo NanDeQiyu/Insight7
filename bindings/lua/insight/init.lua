@@ -32,14 +32,11 @@
 --     ins.CPUPlace()       -- CPU device
 --     ins.GPUPlace(0)      -- GPU device 0
 
--- Try to load the native C++ module
-local ok, native = pcall(require, "insight_native")
+-- Try to load the native C++ module (_insight.so)
+local ok, native = pcall(require, "_insight")
 if not ok then
-    ok, native = pcall(require, "insight")
-    if not ok then
-        error("Failed to load Insight native module: " .. tostring(native) ..
-              "\nMake sure libinsight.so is in your LUA_CPATH or LD_LIBRARY_PATH.")
-    end
+    error("Failed to load Insight native module: " .. tostring(native) ..
+          "\nMake sure _insight.so is in your LUA_CPATH or LD_LIBRARY_PATH.")
 end
 
 -- Try to load Penlight for enhanced utilities

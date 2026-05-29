@@ -65,9 +65,9 @@ jobs:
 
       - name: Test Python binding
         run: |
-          export PYTHONPATH=build/bindings/python
+          export PYTHONPATH=bindings/python:build/bindings/python
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          python3 -m pytest tests/bindings/test_python_binding.py -v
+          python3 -m pytest tests/bindings/test_python_binding.py tests/bindings/test_numerical_correctness.py -v
 
   lua:
     name: Lua Binding (LuaJIT)
@@ -111,7 +111,7 @@ jobs:
 
       - name: Test Lua binding
         run: |
-          export LUA_CPATH="build/bindings/lua/?.so;;"
+          export LUA_CPATH="build/bindings/lua/?.so;bindings/lua/?/init.lua;;"
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
           luajit tests/bindings/test_lua_binding.lua
 

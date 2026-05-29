@@ -97,7 +97,7 @@ static std::string array_tostring(const Array &a) {
 // Module entry point
 // ============================================================================
 
-extern "C" int luaopen_insight(lua_State *L) {
+extern "C" int luaopen__insight(lua_State *L) {
   sol::state_view lua(L);
   sol::table m = lua.create_table();
 

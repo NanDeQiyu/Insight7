@@ -28,8 +28,8 @@ message(STATUS "LuaJIT headers: ${LUAJIT_INCLUDE_DIR}")
 # Build Lua module as shared library (loadable by require())
 add_library(insight_lua SHARED insight_lua.cpp)
 set_target_properties(insight_lua PROPERTIES
-    PREFIX ""                          # Lua expects "insight.so", not "libinsight.so"
-    OUTPUT_NAME "insight"
+    PREFIX ""
+    OUTPUT_NAME "_insight"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bindings/lua"
 )
 
