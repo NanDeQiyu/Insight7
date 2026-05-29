@@ -90,6 +90,20 @@ cd build/tests
 ### 5.1 BOOL dtype not supported in CUDA kernel
 Many CUDA kernels don't register `INSIGHT_DTYPE_BOOL`. If a test uses `bool` arrays (e.g., masks), the kernel may fail with "kernel not found". Fix the kernel by adding BOOL registration, or cast to `F32` in the test as a workaround.
 
+**bitwise_not on BOOL**: For `~bool`, use `!` (logical not) instead of `~` (bitwise not) in the CUDA kernel. On CUDA, `~true` = `~1` = `0xFE` which is still truthy — wrong behavior. Match NumPy/PyTorch/PaddlePaddle where `~bool` is logical not:
+
+```cpp
+// CUDA kernel: separate BOOL specialization
+__global__ void bitwise_not_bool_kernel(const bool *x, bool *out, ...) {
+  out[idx] = !x[idx];  // logical not, NOT bitwise not
+}
+
+// Register
+REGISTER_GPU_KERNEL(bitwise_not, INSIGHT_DTYPE_BOOL, bitwise_not_kernel_gpu);
+```
+
+The CPU kernel already does this: `UNARY_KERNEL_LOOP(bool, [](bool v) { return !v; });`
+
 ### 5.2 CUDA kernel naming mismatches with CPU
 Some CUDA kernels register with different names than the CPU version:
 - CPU: `negative` → CUDA: `neg` (已修复为 `negative`)
