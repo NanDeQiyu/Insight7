@@ -2,7 +2,7 @@
 name: add-cuda-test
 description: Workflow for adding CUDA tests aligned with CPU tests, including common pitfalls and runtime fixes.
 source: auto-skill
-extracted_at: '2026-05-29T11:00:00.000Z'
+extracted_at: '2026-05-29T16:25:13.968Z'
 ---
 
 # Workflow: Add CUDA Tests
@@ -10,8 +10,20 @@ extracted_at: '2026-05-29T11:00:00.000Z'
 When adding new CUDA tests to align with existing CPU tests, follow this workflow to ensure proper build and discovery.
 
 ## 1. Create Test File
+
 - Create `tests/cuda/test_<module>.cpp`.
 - Use `file(GLOB)` in `tests/CMakeLists.txt` to automatically pick up new files.
+
+### Composite Operations (no dedicated CUDA kernel needed)
+
+Some modules (like `signal`) are implemented as **composite operations** — they call other primitives (`diff`, `sin`, `rfft`, etc.) that already have CUDA kernels. For these modules:
+
+- No `backends/cuda/kernels/<module>/` directory is needed
+- Only the CUDA test file needs to be created
+- The operations work on GPU arrays automatically through the underlying primitives
+- Use the same test logic as CPU, just add GPU data transfer
+
+Example: `unwrap` calls `diff`, `greater_than`, `abs`, `where`, `cumsum`, `pad`, `add` — all of which have CUDA kernels.
 
 ## 2. GPU Fixture Pattern — CRITICAL
 
@@ -52,11 +64,18 @@ cmake .. \
     -DINSIGHT_BUILD_TESTS=ON
 ```
 
-### 4.2 强制重新编译新文件
-`file(GLOB)` 不会自动重新扫描。添加新测试文件后，必须 touch 文件强制重新编译：
+### 4.2 新文件必须重新 cmake
+`file(GLOB)` 在 cmake configure 阶段缓存文件列表。添加新测试文件后，必须重新运行 cmake 才能发现新文件，然后 make：
 ```bash
-touch tests/cuda/test_<module>.cpp
-make -j24
+cd build
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH="$HOME/public/OpenBLAS" \
+    -DINSIGHT_WITH_CUDA=ON \
+    -DINSIGHT_USE_FFTW3=ON \
+    -DINSIGHT_USE_OPENBLAS=ON \
+    -DINSIGHT_BUILD_TESTS=ON
+make -j$(nproc)
 ```
 
 ### 4.3 运行测试 — 必须从 tests 目录！
@@ -124,6 +143,27 @@ Array result(Shape({rows, cols}), DType::F64, CPUPlace());
 std::memcpy(result.data<double>(), data.data(), ...);
 Array gpu_result = result.to(GPUPlace(0));
 ```
+
+### 5.9 `to_array()` defaults to `get_device()` — same GPU trap as 5.8
+
+`to_array(std::vector<T>)` uses `get_device()` as the default `place` parameter. In CUDA tests, `SetUpTestSuite` calls `set_device(GPUPlace(0))`, so `get_device()` returns `GPUPlace(0)`. This means `to_array(data)` creates the array **on GPU**, not CPU.
+
+Accessing `.data<T>()` on such an array from CPU code gives a GPU pointer → **segfault**.
+
+```cpp
+// BUG — to_array() puts data on GPU because get_device() == GPUPlace(0)
+Array orig = to_array(original);  // GPU array!
+const double *p = orig.data<double>();  // GPU pointer
+EXPECT_NEAR(p[0], expected, 1e-6);  // SEGFAULT: CPU dereferences GPU pointer
+
+// FIX option 1: compare against the original std::vector directly
+EXPECT_NEAR(rec_data[i], original[i], 1e-6);
+
+// FIX option 2: explicitly create on CPU
+Array orig = to_array(original, DType::F64, CPUPlace());
+```
+
+**Symptom**: Segfault when accessing `.data<T>()` on an array created by `to_array()`. The pointer looks valid (non-null, page-aligned address like `0x7f...`) but dereferencing it crashes. This is very misleading — it looks like a GPU memory corruption bug but is actually a CPU-side access to a GPU pointer.
 
 ## 6. Run Tests
 ```bash

@@ -26,15 +26,16 @@ The CPU kernel must exist and be registered for the same op name and dtypes.
 
 ## 2. How the Fallback Works
 
-`insight_kernel_launch_v2()` in `src/core/kernel.cpp`:
+`insight_kernel_launch()` in `src/core/kernel.cpp`:
 
 1. Calls GPU kernel → returns `C_FALLBACK`
-2. Looks up CPU kernel for same op+dtype
-3. Identifies all `InsightArray*` in inputs/outputs that are on GPU
-4. Allocates CPU memory, copies GPU→CPU for each array
-5. Calls CPU kernel with modified pointers
-6. Copies output arrays CPU→GPU
-7. Restores original GPU pointers and device info
+2. Scans `inputs[]`/`outputs[]` for NULL to count entries
+3. Looks up CPU kernel for same op+dtype
+4. Identifies all `InsightArray*` in inputs/outputs that are on GPU (with dedup)
+5. Allocates CPU memory, copies GPU→CPU for each array
+6. Calls CPU kernel with modified data pointers
+7. Copies output arrays CPU→GPU
+8. Restores original GPU pointers and device info
 
 ## 3. Critical: Dedup and is_output Flag
 
