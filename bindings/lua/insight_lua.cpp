@@ -902,6 +902,7 @@ extern "C" int luaopen__insight(lua_State *L) {
     sig["square_wf"] = [](const Array &t, sol::optional<double> duty) {
       return signal::square(t, duty.value_or(0.5));
     };
+    sig["square"] = sig["square_wf"]; // alias for signal::square wave
     sig["gausspulse"] = [](const Array &t, sol::optional<double> fc,
                            sol::optional<double> bw, sol::optional<double> bwr,
                            sol::optional<double> tpr) {

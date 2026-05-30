@@ -1062,4 +1062,71 @@ Array *insight_jl_matrix_rank(const Array *x) {
   return new Array(matrix_rank(*x));
 }
 
+// ============================================================================
+// Spectral analysis (returns decomposed results)
+// ============================================================================
+
+// csd: returns (f, Pxx) via output pointers
+void insight_jl_csd(const Array *x, const Array *y, double fs,
+                    const char *window, int64_t nperseg, int64_t noverlap,
+                    int64_t nfft, Array **out_f, Array **out_Pxx) {
+  auto result = signal::csd(*x, *y, fs, window, nperseg, noverlap, nfft);
+  *out_f = new Array(result.f);
+  *out_Pxx = new Array(result.Pxx);
+}
+
+// coherence: returns (f, Pxx) via output pointers
+void insight_jl_coherence(const Array *x, const Array *y, double fs,
+                          const char *window, int64_t nperseg, int64_t noverlap,
+                          int64_t nfft, Array **out_f, Array **out_Pxx) {
+  auto result = signal::coherence(*x, *y, fs, window, nperseg, noverlap, nfft);
+  *out_f = new Array(result.f);
+  *out_Pxx = new Array(result.Pxx);
+}
+
+// spectrogram: returns (f, t, Sxx) via output pointers
+void insight_jl_spectrogram(const Array *x, double fs, const char *window,
+                            int64_t nperseg, int64_t noverlap, int64_t nfft,
+                            Array **out_f, Array **out_t, Array **out_Sxx) {
+  auto result = signal::spectrogram(*x, fs, window, nperseg, noverlap, nfft);
+  *out_f = new Array(result.f);
+  *out_t = new Array(result.t);
+  *out_Sxx = new Array(result.Sxx);
+}
+
+// stft: returns (f, t, Sxx) via output pointers
+void insight_jl_stft(const Array *x, double fs, const char *window,
+                     int64_t nperseg, int64_t noverlap, int64_t nfft,
+                     Array **out_f, Array **out_t, Array **out_Sxx) {
+  auto result = signal::stft(*x, fs, window, nperseg, noverlap, nfft);
+  *out_f = new Array(result.f);
+  *out_t = new Array(result.t);
+  *out_Sxx = new Array(result.Sxx);
+}
+
+// vectorstrength: returns (strength, phase) via output pointers
+void insight_jl_vectorstrength(const Array *events, double period,
+                               double *out_strength, double *out_phase) {
+  auto result = signal::vectorstrength(*events, period);
+  *out_strength = result.first;
+  *out_phase = result.second;
+}
+
+// choose_conv_method: returns method string via static buffer
+const char *insight_jl_choose_conv_method(const Array *in1, const Array *in2,
+                                          const char *mode) {
+  static thread_local std::string result;
+  result = signal::choose_conv_method(*in1, *in2, mode);
+  return result.c_str();
+}
+
+// firfilter_zi_state: returns (output, zf) via output pointers
+void insight_jl_firfilter_zi_state(const Array *b, const Array *x,
+                                   const Array *zi, int32_t axis, Array **out_y,
+                                   Array **out_zf) {
+  auto result = signal::firfilter_zi_state(*b, *x, *zi, axis);
+  *out_y = new Array(result.first);
+  *out_zf = new Array(result.second);
+}
+
 } // extern "C"

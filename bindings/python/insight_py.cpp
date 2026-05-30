@@ -1086,6 +1086,7 @@ PYBIND11_MODULE(_insight, m) {
     sig.def("sawtooth", &signal::sawtooth, py::arg("t"),
             py::arg("width") = 1.0);
     sig.def("square_wf", &signal::square, py::arg("t"), py::arg("duty") = 0.5);
+    sig.def("square", &signal::square, py::arg("t"), py::arg("duty") = 0.5);
     sig.def("gausspulse", &signal::gausspulse, py::arg("t"),
             py::arg("fc") = 1000, py::arg("bw") = 0.5, py::arg("bwr") = -6,
             py::arg("tpr") = -60);

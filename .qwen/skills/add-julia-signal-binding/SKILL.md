@@ -1,0 +1,110 @@
+---
+name: add-julia-signal-binding
+description: Pattern for adding Julia signal function bindings via C ABI wrappers
+source: auto-skill
+extracted_at: '2026-05-31T03:00:00.000Z'
+---
+
+# Adding Julia Signal Function Bindings
+
+## Architecture
+
+Julia bindings use C ABI wrappers (ccall) — each function needs:
+1. A C wrapper function in `bindings/julia/insight_julia_capi.cpp`
+2. A Julia wrapper function in `bindings/julia/Insight.jl`
+3. An export entry in the `export` list
+4. A re-export in the `module signal` section
+
+## Step 1: C ABI Wrapper (insight_julia_capi.cpp)
+
+```cpp
+// Simple array → array function
+Array *insight_jl_fm_demod(const Array *x, int32_t axis) {
+  return new Array(signal::fm_demod(*x, axis));
+}
+
+// Scalar return (use double directly, NOT Array*)
+double insight_jl_cfar_alpha(double pfa, int32_t N) {
+  return signal::cfar_alpha(pfa, N);
+}
+
+// Array with vector parameters
+Array *insight_jl_firwin2(int64_t numtaps, const double *freq, int32_t freq_len,
+                          const double *gain, int32_t gain_len,
+                          const char *window) {
+  std::vector<double> fv(freq, freq + freq_len);
+  std::vector<double> gv(gain, gain + gain_len);
+  return new Array(signal::firwin2(numtaps, fv, gv, 0, window));
+}
+
+// Function returning index array (fill pre-allocated buffer)
+int64_t insight_jl_argrelmax(const Array *data, int32_t axis, int32_t order,
+                             int64_t *out_indices) {
+  auto result = signal::argrelmax(*data, axis, order, "clip");
+  if (result.empty()) return 0;
+  int64_t n = result[0].numel();
+  const int64_t *src = result[0].data<int64_t>();
+  for (int64_t i = 0; i < n; ++i) out_indices[i] = src[i];
+  return n;
+}
+```
+
+**Key rules:**
+- Array functions return `Array *` (heap-allocated, Julia will free via `_free`)
+- Scalar functions return `double`/`int64_t` directly (NOT wrapped in Array)
+- Vector params: pass `(const double *data, int32_t len)` pairs
+- String params: use `const char *` (Julia Cstring auto-converts)
+- Bool params: use `int32_t` (0/1)
+- `std::function` params: NOT bindable from Julia (skip cwt)
+
+## Step 2: Julia Wrapper (Insight.jl)
+
+```julia
+function fm_demod(x::InsightArray, axis::Int = -1)::InsightArray
+    ptr = ccall((:insight_jl_fm_demod, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(axis))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function cfar_alpha(pfa::Float64, N::Int)::Float64
+    return ccall((:insight_jl_cfar_alpha, LIB_INSIGHT), Float64,
+                 (Float64, Int32), pfa, Int32(N))
+end
+
+function argrelmax(data::InsightArray, axis::Int = 0, order::Int = 1)::Vector{Int64}
+    out = Vector{Int64}(undef, numel(data))
+    n = ccall((:insight_jl_argrelmax, LIB_INSIGHT), Int64,
+              (Ptr{Cvoid}, Int32, Int32, Ptr{Int64}),
+              data, Int32(axis), Int32(order), out)
+    return out[1:n]
+end
+```
+
+**Key rules:**
+- Always `finalizer(_free, arr)` for returned InsightArrays
+- `Int32()` for C int32_t parameters
+- `Int64()` for C int64_t parameters
+- Pre-allocate output buffers for index-returning functions
+
+## Step 3: Export List
+
+Add to the `export` block at the top of `Insight.jl`:
+```julia
+export fm_demod, argrelmax, argrelmin, cfar_alpha, ...
+```
+
+## Step 4: Signal Submodule Re-export
+
+Add to the `module signal` section at the bottom:
+```julia
+const fm_demod = Insight.fm_demod
+const argrelmax = Insight.argrelmax
+```
+
+## Common Pitfalls
+
+1. **`_dtype_code` must be defined**: Add a helper that maps Julia DataType → C enum values
+2. **`to_f64` doesn't exist**: Use `Float64` return type for scalar functions instead of wrapping in Array
+3. **`ccall` needs compile-time constants**: Function names must be string literals, not variables
+4. **`size()` returns Tuple**: Use `collect(Int64, size(data))` for ccall pointer args
+5. **C API duplicates**: Check for existing wrappers before adding new ones (e.g., `insight_jl_cosine_win` already existed)

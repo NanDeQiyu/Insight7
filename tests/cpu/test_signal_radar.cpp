@@ -113,6 +113,9 @@ TEST_F(RadarTestCPU, CaCfar2DBasic) {
 // ============================================================================
 
 TEST_F(RadarTestCPU, MvdrBasic) {
+#ifndef INSIGHT_USE_FFTW3
+  GTEST_SKIP() << "FFTW3 not available, skipping FFT-dependent test";
+#endif
   // Simple 2-sensor, 10-sample case with independent data
   int M = 2, N = 10;
   std::vector<double> x_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
@@ -130,6 +133,9 @@ TEST_F(RadarTestCPU, MvdrBasic) {
 }
 
 TEST_F(RadarTestCPU, MvdrInvalidShape) {
+#ifndef INSIGHT_USE_FFTW3
+  GTEST_SKIP() << "FFTW3 not available, skipping FFT-dependent test";
+#endif
   // More sensors than samples should fail
   std::vector<double> x_data = {1, 2, 3, 4, 5, 6};
   Array x = to_array(x_data, Shape({3, 2}), DType::F64, CPUPlace());
@@ -144,6 +150,9 @@ TEST_F(RadarTestCPU, MvdrInvalidShape) {
 // ============================================================================
 
 TEST_F(RadarTestCPU, PulseCompressionBasic) {
+#ifndef INSIGHT_USE_FFTW3
+  GTEST_SKIP() << "FFTW3 not available, skipping FFT-dependent test";
+#endif
   // 3 pulses, 8 samples each
   int num_pulses = 3, samples = 8;
   std::vector<double> x_data(num_pulses * samples);
@@ -165,6 +174,9 @@ TEST_F(RadarTestCPU, PulseCompressionBasic) {
 }
 
 TEST_F(RadarTestCPU, PulseCompressionNormalize) {
+#ifndef INSIGHT_USE_FFTW3
+  GTEST_SKIP() << "FFTW3 not available, skipping FFT-dependent test";
+#endif
   int num_pulses = 2, samples = 8;
   std::vector<double> x_data(num_pulses * samples, 1.0);
   std::vector<double> tpl_data = {1.0, 1.0, 1.0, 1.0};
@@ -183,6 +195,9 @@ TEST_F(RadarTestCPU, PulseCompressionNormalize) {
 // ============================================================================
 
 TEST_F(RadarTestCPU, PulseDopplerBasic) {
+#ifndef INSIGHT_USE_FFTW3
+  GTEST_SKIP() << "FFTW3 not available, skipping FFT-dependent test";
+#endif
   int num_pulses = 8, samples = 4;
   std::vector<double> x_data(num_pulses * samples);
   for (int i = 0; i < num_pulses * samples; ++i)

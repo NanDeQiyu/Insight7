@@ -11,6 +11,9 @@ protected:
   static void SetUpTestSuite() {
     ins::init({"cpu"});
     set_device(CPUPlace());
+#ifndef INSIGHT_USE_FFTW3
+    GTEST_SKIP() << "FFTW3 not available, skipping FFT-dependent tests";
+#endif
   }
 };
 

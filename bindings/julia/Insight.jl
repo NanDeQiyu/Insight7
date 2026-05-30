@@ -60,6 +60,8 @@ export Array, zeros, ones, full, arange, linspace, eye,
        firwin2, convolve2d, correlate2d,
        hilbert2, wiener, firfilter, lfilter_zi, resample_poly,
        morlet2,
+       csd, coherence, spectrogram, stft, vectorstrength,
+       choose_conv_method, firfilter_zi_state,
        # Device info
        device_name, cuda_version, driver_version, compute_capability,
        device_memory, gpu_count,
@@ -1682,6 +1684,100 @@ function unpack_bin(binary::InsightArray, dtype::DataType,
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
+# --- Spectral Analysis (struct returns) ---
+function csd(x::InsightArray, y::InsightArray; fs::Float64 = 1.0,
+             window::String = "hann", nperseg::Int = 256,
+             noverlap::Int = 0, nfft::Int = 0)
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    Pxx_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_csd, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Cvoid}, Float64, Cstring, Int64, Int64, Int64,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, y, fs, window, Int64(nperseg), Int64(noverlap), Int64(nfft),
+          f_ref, Pxx_ref)
+    f_arr = InsightArray(f_ref[]); finalizer(_free, f_arr)
+    Pxx_arr = InsightArray(Pxx_ref[]); finalizer(_free, Pxx_arr)
+    return (f=f_arr, Pxx=Pxx_arr)
+end
+
+function coherence(x::InsightArray, y::InsightArray; fs::Float64 = 1.0,
+                   window::String = "hann", nperseg::Int = 256,
+                   noverlap::Int = 0, nfft::Int = 0)
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    Pxx_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_coherence, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Cvoid}, Float64, Cstring, Int64, Int64, Int64,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, y, fs, window, Int64(nperseg), Int64(noverlap), Int64(nfft),
+          f_ref, Pxx_ref)
+    f_arr = InsightArray(f_ref[]); finalizer(_free, f_arr)
+    Pxx_arr = InsightArray(Pxx_ref[]); finalizer(_free, Pxx_arr)
+    return (f=f_arr, Pxx=Pxx_arr)
+end
+
+function spectrogram(x::InsightArray; fs::Float64 = 1.0,
+                     window::String = "hann", nperseg::Int = 256,
+                     noverlap::Int = 0, nfft::Int = 0)
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    t_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    Sxx_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_spectrogram, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Float64, Cstring, Int64, Int64, Int64,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, fs, window, Int64(nperseg), Int64(noverlap), Int64(nfft),
+          f_ref, t_ref, Sxx_ref)
+    f_arr = InsightArray(f_ref[]); finalizer(_free, f_arr)
+    t_arr = InsightArray(t_ref[]); finalizer(_free, t_arr)
+    Sxx_arr = InsightArray(Sxx_ref[]); finalizer(_free, Sxx_arr)
+    return (f=f_arr, t=t_arr, Sxx=Sxx_arr)
+end
+
+function stft(x::InsightArray; fs::Float64 = 1.0,
+              window::String = "hann", nperseg::Int = 256,
+              noverlap::Int = 0, nfft::Int = 0)
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    t_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    Sxx_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_stft, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Float64, Cstring, Int64, Int64, Int64,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, fs, window, Int64(nperseg), Int64(noverlap), Int64(nfft),
+          f_ref, t_ref, Sxx_ref)
+    f_arr = InsightArray(f_ref[]); finalizer(_free, f_arr)
+    t_arr = InsightArray(t_ref[]); finalizer(_free, t_arr)
+    Sxx_arr = InsightArray(Sxx_ref[]); finalizer(_free, Sxx_arr)
+    return (f=f_arr, t=t_arr, Sxx=Sxx_arr)
+end
+
+function vectorstrength(events::InsightArray, period::Float64)
+    strength_ref = Ref{Float64}(0.0)
+    phase_ref = Ref{Float64}(0.0)
+    ccall((:insight_jl_vectorstrength, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Float64, Ptr{Float64}, Ptr{Float64}),
+          events, period, strength_ref, phase_ref)
+    return (strength=strength_ref[], phase=phase_ref[])
+end
+
+function choose_conv_method(in1::InsightArray, in2::InsightArray,
+                            mode::String = "full")::String
+    ptr = ccall((:insight_jl_choose_conv_method, LIB_INSIGHT), Cstring,
+                (Ptr{Cvoid}, Ptr{Cvoid}, Cstring), in1, in2, mode)
+    return unsafe_string(ptr)
+end
+
+function firfilter_zi_state(b::InsightArray, x::InsightArray, zi::InsightArray,
+                            axis::Int = -1)
+    y_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    zf_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_firfilter_zi_state, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}, Int32,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          b, x, zi, Int32(axis), y_ref, zf_ref)
+    y_arr = InsightArray(y_ref[]); finalizer(_free, y_arr)
+    zf_arr = InsightArray(zf_ref[]); finalizer(_free, zf_arr)
+    return (y=y_arr, zf=zf_arr)
+end
+
 # --- Signal submodule (convenience namespace) ---
 module signal
     using ..Insight
@@ -1742,6 +1838,34 @@ module signal
     const convolve = Insight.convolve
     const unwrap = Insight.unwrap
     const sinc_fn = Insight.sinc
+    const csd = Insight.csd
+    const coherence = Insight.coherence
+    const spectrogram = Insight.spectrogram
+    const stft = Insight.stft
+    const vectorstrength = Insight.vectorstrength
+    const choose_conv_method = Insight.choose_conv_method
+    const firfilter_zi_state = Insight.firfilter_zi_state
+    const pulse_compression = Insight.pulse_compression
+    const pulse_doppler = Insight.pulse_doppler
+    const mvdr = Insight.mvdr
+    const convolve2d = Insight.convolve2d
+    const correlate2d = Insight.correlate2d
+    const hilbert2 = Insight.hilbert2
+    const wiener = Insight.wiener
+    const firfilter = Insight.firfilter
+    const lfilter_zi = Insight.lfilter_zi
+    const resample_poly = Insight.resample_poly
+    const morlet2 = Insight.morlet2
+    const firwin2 = Insight.firwin2
+    const read_sigmf = Insight.read_sigmf
+    const write_sigmf = Insight.write_sigmf
+    const cosine_win = Insight.cosine_win
+    const general_hamming = Insight.general_hamming
+    const parzen_win = Insight.parzen_win
+    const bohman_win = Insight.bohman_win
+    const barthann_win = Insight.barthann_win
+    const exponential_win = Insight.exponential_win
+    const general_gaussian_win = Insight.general_gaussian_win
 end
 
 end # module Insight
