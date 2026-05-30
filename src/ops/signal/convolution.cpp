@@ -85,7 +85,13 @@ Array fftconvolve(const Array &in1, const Array &in2, const std::string &mode) {
 
   // Determine working dtype
   DType work_dtype = DType::F64;
-  if (in1.dtype() == DType::F32 && in2.dtype() == DType::F32) {
+  bool is_complex = (in1.dtype() == DType::C32 || in1.dtype() == DType::C64 ||
+                     in2.dtype() == DType::C32 || in2.dtype() == DType::C64);
+  if (is_complex) {
+    work_dtype = DType::C64;
+    if (in1.dtype() == DType::C32 && in2.dtype() == DType::C32)
+      work_dtype = DType::C32;
+  } else if (in1.dtype() == DType::F32 && in2.dtype() == DType::F32) {
     work_dtype = DType::F32;
   }
 
@@ -99,10 +105,18 @@ Array fftconvolve(const Array &in1, const Array &in2, const std::string &mode) {
     int64_t conv_len = n + m - 1;
     int64_t fft_len = fft::next_fast_len(conv_len);
 
-    Array A = fft::rfft(a, fft_len);
-    Array B = fft::rfft(b, fft_len);
-    Array C = mul(A, B);
-    Array result = fft::irfft(C, conv_len);
+    Array result;
+    if (is_complex) {
+      Array A = fft::fft(a, fft_len);
+      Array B = fft::fft(b, fft_len);
+      Array C = mul(A, B);
+      result = fft::ifft(C, conv_len);
+    } else {
+      Array A = fft::rfft(a, fft_len);
+      Array B = fft::rfft(b, fft_len);
+      Array C = mul(A, B);
+      result = fft::irfft(C, conv_len);
+    }
 
     // Crop for mode
     Shape target = conv_output_shape(a.shape(), b.shape(), mode);
@@ -128,11 +142,19 @@ Array fftconvolve(const Array &in1, const Array &in2, const std::string &mode) {
     fft_shape.push_back(fft::next_fast_len(full_size));
   }
 
-  // Use rfftn for real inputs
-  Array A = fft::rfftn(a, fft_shape);
-  Array B = fft::rfftn(b, fft_shape);
-  Array C = mul(A, B);
-  Array result = fft::irfftn(C, full_shape);
+  // Use rfftn for real inputs, fftn for complex
+  Array result;
+  if (is_complex) {
+    Array A = fft::fftn(a, fft_shape);
+    Array B = fft::fftn(b, fft_shape);
+    Array C = mul(A, B);
+    result = fft::ifftn(C, full_shape);
+  } else {
+    Array A = fft::rfftn(a, fft_shape);
+    Array B = fft::rfftn(b, fft_shape);
+    Array C = mul(A, B);
+    result = fft::irfftn(C, full_shape);
+  }
 
   // Crop for mode
   Shape target = conv_output_shape(a.shape(), b.shape(), mode);

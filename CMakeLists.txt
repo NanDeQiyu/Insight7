@@ -426,6 +426,9 @@ if(INSIGHT_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# ========== Demos ==========
+add_subdirectory(demos)
+
 # ========== Configuration Summary ==========
 if(INSIGHT_DYNAMIC_CPU_BACKEND)
     set(CPU_BACKEND_TYPE "dynamic")

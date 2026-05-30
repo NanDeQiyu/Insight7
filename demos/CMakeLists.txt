@@ -53,3 +53,5 @@ if(INSIGHT_USE_SNDFILE)
         AUDIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../audio"
     )
 endif()
+
+add_insight_demo(demo_radar_task1 radar_task1.cpp)
