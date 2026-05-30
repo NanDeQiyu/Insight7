@@ -20,6 +20,8 @@ SNR_DB = 10
 TARGET_DELAYS = [30e-6, 45e-6]
 TARGET_DOPPLERS = [2000.0, -1500.0]
 RANGE_RES = 3e8 / (2 * B)
+RANGE_PER_BIN = 3e8 / (2 * FS)
+PC_OFFSET = (N - 1) // 2
 
 
 def run_task1(device="cpu"):
@@ -100,7 +102,7 @@ def run_task1(device="cpu"):
 
     total_ms = (t_pc + t_doppler + t_cfar) * 1000
     doppler_bins = np.fft.fftshift(np.fft.fftfreq(N_PULSES, T_PRF))
-    range_bins = np.arange(N) * (3e8 / (2 * FS))
+    range_bins = (np.arange(N) - PC_OFFSET) * RANGE_PER_BIN
 
     return {
         "targets": targets,

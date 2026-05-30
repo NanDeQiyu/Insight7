@@ -56,8 +56,10 @@ static constexpr double target_delays[] = {30e-6, 45e-6};
 static constexpr double target_dopplers[] = {2000.0, -1500.0};
 static constexpr int n_targets = 2;
 static constexpr double range_res = 3e8 / (2 * B);      // 30m
-static constexpr double max_range = 3e8 / (2 * fs) * N; // 15000m
+static constexpr double range_per_bin = 3e8 / (2 * fs); // 15m
+static constexpr double max_range = range_per_bin * N;  // 15000m
 static constexpr double max_doppler = 1.0 / T;          // 10000Hz
+static constexpr int pc_offset = (N - 1) / 2; // pulse compression crop offset
 
 struct Task1Result {
   std::vector<std::pair<int, int>> targets;
@@ -143,6 +145,7 @@ static Task1Result run_task1(Place place) {
   // ========== 3. 脉冲压缩 ==========
   auto t_pc0 = std::chrono::high_resolution_clock::now();
 
+  // Matched filter (create once)
   std::vector<std::complex<double>> mf(N);
   for (int i = 0; i < N; ++i)
     mf[i] = std::conj(s_tx[N - 1 - i]);
@@ -150,13 +153,22 @@ static Task1Result run_task1(Place place) {
   if (place.kind() == DeviceKind::GPU)
     mf_arr = mf_arr.to(place);
 
+  // Pulse compression (reuse output buffer for FFTW plan cache)
   std::vector<std::complex<double>> pc_flat(n_pulses * N);
+  Array pulse_arr = zeros(Shape({N}), DType::C64, CPUPlace());
+  Array conv_out;
+
   for (int p = 0; p < n_pulses; ++p) {
     std::vector<std::complex<double>> pulse_vec(
         s_rx_flat.begin() + p * N, s_rx_flat.begin() + (p + 1) * N);
-    Array pulse_arr = to_array(pulse_vec, DType::C64, CPUPlace());
-    if (place.kind() == DeviceKind::GPU)
-      pulse_arr = pulse_arr.to(place);
+
+    // Copy into reusable buffer
+    if (place.kind() == DeviceKind::GPU) {
+      Array tmp = to_array(pulse_vec, DType::C64, CPUPlace());
+      pulse_arr = tmp.to(place);
+    } else {
+      std::memcpy(pulse_arr.data<char>(), pulse_vec.data(), N * 16);
+    }
 
     Array conv = signal::fftconvolve(pulse_arr, mf_arr, "full");
     Array conv_cpu =
@@ -280,7 +292,7 @@ static void save_plots(const Task1Result &result, const char *prefix) {
   // 距离轴和多普勒轴
   std::vector<double> range_axis(N), doppler_axis(n_pulses);
   for (int i = 0; i < N; ++i)
-    range_axis[i] = i * 3e8 / (2 * fs);
+    range_axis[i] = (i - pc_offset) * range_per_bin;
   for (int i = 0; i < n_pulses; ++i)
     doppler_axis[i] = (i - n_pulses / 2) * (1.0 / (n_pulses * T));
 
@@ -356,8 +368,8 @@ int main() {
 
   printf("\n[CPU 检测结果]\n");
   for (auto &[d, r] : cpu.targets) {
-    printf("  → 距离: %7.2f 米, 多普勒: %8.1f Hz\n", r * range_res,
-           doppler_bins[d]);
+    double range_m = (r - pc_offset) * range_per_bin;
+    printf("  → 距离: %7.2f 米, 多普勒: %8.1f Hz\n", range_m, doppler_bins[d]);
   }
 
   save_plots(cpu, "task1_cpu");
@@ -374,7 +386,8 @@ int main() {
 
     printf("\n[GPU 检测结果]\n");
     for (auto &[d, r] : gpu.targets) {
-      printf("  → 距离: %7.2f 米, 多普勒: %8.1f Hz\n", r * range_res,
+      double range_m = (r - pc_offset) * range_per_bin;
+      printf("  → 距离: %7.2f 米, 多普勒: %8.1f Hz\n", range_m,
              doppler_bins[d]);
     }
 
