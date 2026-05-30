@@ -1,6 +1,7 @@
 // src/ops/signal/convolution.cpp
 #include "insight/ops/signal/convolution.h"
 #include "insight/core/exception.h"
+#include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
 #include "insight/ops/fft.h"
@@ -107,10 +108,40 @@ Array fftconvolve(const Array &in1, const Array &in2, const std::string &mode) {
 
     Array result;
     if (is_complex) {
-      Array A = fft::fft(a, fft_len);
-      Array B = fft::fft(b, fft_len);
-      Array C = mul(A, B);
-      result = fft::ifft(C, conv_len);
+      // Direct convolution for complex (C2C FFT has bug for n>=64)
+      Place cpu = CPUPlace();
+      Place dev = a.place();
+      Array a_cpu = (dev.kind() == DeviceKind::CPU) ? a : a.to(cpu);
+      Array b_cpu = (dev.kind() == DeviceKind::CPU) ? b : b.to(cpu);
+
+      int64_t out_len = conv_len;
+      Array out = zeros(Shape({out_len}), work_dtype, cpu);
+
+      if (work_dtype == DType::C64) {
+        const std::complex<double> *ad =
+            reinterpret_cast<const std::complex<double> *>(a_cpu.data<char>());
+        const std::complex<double> *bd =
+            reinterpret_cast<const std::complex<double> *>(b_cpu.data<char>());
+        std::complex<double> *od =
+            reinterpret_cast<std::complex<double> *>(out.data<char>());
+        for (int64_t i = 0; i < n; ++i)
+          for (int64_t j = 0; j < m; ++j)
+            od[i + j] += ad[i] * bd[j];
+      } else {
+        const std::complex<float> *ad =
+            reinterpret_cast<const std::complex<float> *>(a_cpu.data<char>());
+        const std::complex<float> *bd =
+            reinterpret_cast<const std::complex<float> *>(b_cpu.data<char>());
+        std::complex<float> *od =
+            reinterpret_cast<std::complex<float> *>(out.data<char>());
+        for (int64_t i = 0; i < n; ++i)
+          for (int64_t j = 0; j < m; ++j)
+            od[i + j] += ad[i] * bd[j];
+      }
+
+      result = out;
+      if (dev.kind() == DeviceKind::GPU)
+        result = result.to(dev);
     } else {
       Array A = fft::rfft(a, fft_len);
       Array B = fft::rfft(b, fft_len);

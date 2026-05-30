@@ -92,9 +92,9 @@ test_matrix = rng.randn(128, 1000) + 1j * rng.randn(128, 1000)
 np_fft = np.fft.fft(test_matrix, axis=0)
 np_fft_shifted = np.fft.fftshift(np_fft, axes=0)
 
-# Insight7
+# Insight7 (2D FFT along axis=0, batch_size>1 avoids C2C FFT bug)
 test_ins = to_ins(test_matrix)
-ins_fft = to_np(ins.fft.fft(test_ins, n=128, axis=0))
+ins_fft = to_np(ins.fft(test_ins, 128, 0))
 ins_fft_shifted = np.fft.fftshift(ins_fft, axes=0)
 
 fft_diff = np.max(np.abs(ins_fft - np_fft))
@@ -156,9 +156,9 @@ for p in range(n_pulses):
     start = (len(conv) - N) // 2
     pc[p, :] = conv[start : start + N]
 
-# Doppler FFT
+# Doppler FFT (2D, batch_size>1)
 pc_ins = to_ins(pc)
-doppler = to_np(ins.fft.fft(pc_ins, n=n_pulses, axis=0))
+doppler = to_np(ins.fft(pc_ins, n_pulses, 0))
 doppler = np.fft.fftshift(doppler, axes=0)
 
 # CFAR
