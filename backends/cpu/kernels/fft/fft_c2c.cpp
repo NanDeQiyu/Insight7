@@ -43,21 +43,29 @@ C_Status fft_c2c_kernel_cpu(void **inputs, void **outputs) {
   // Double precision
   if (x->dtype == INSIGHT_DTYPE_F64 || x->dtype == INSIGHT_DTYPE_C64) {
     double *data = (double *)out->data;
-    // Copy input to output (in-place transform)
     memcpy(data, x->data, total_complex * 2 * sizeof(double));
 
-    fftw_plan plan =
-        fft_ensure_plan_f64(fft_len, batch_size, direction, FFT_KIND_C2C);
-    fftw_execute_dft(plan, (fftw_complex *)data, (fftw_complex *)data);
+    // Create plan with actual buffer (dummy buffer plan gives wrong results
+    // for n>=64 due to FFTW internal behavior)
+    int fft_len_int = (int)fft_len;
+    fftw_plan plan = fftw_plan_many_dft(
+        1, &fft_len_int, batch_size, (fftw_complex *)data, NULL, 1, fft_len_int,
+        (fftw_complex *)data, NULL, 1, fft_len_int, direction, FFTW_ESTIMATE);
+    fftw_execute(plan);
+    fftw_destroy_plan(plan);
   }
   // Single precision
   else if (x->dtype == INSIGHT_DTYPE_F32 || x->dtype == INSIGHT_DTYPE_C32) {
     float *data = (float *)out->data;
     memcpy(data, x->data, total_complex * 2 * sizeof(float));
 
+    int fft_len_int = (int)fft_len;
     fftwf_plan plan =
-        fft_ensure_plan_f32(fft_len, batch_size, direction, FFT_KIND_C2C);
-    fftwf_execute_dft(plan, (fftwf_complex *)data, (fftwf_complex *)data);
+        fftwf_plan_many_dft(1, &fft_len_int, batch_size, (fftwf_complex *)data,
+                            NULL, 1, fft_len_int, (fftwf_complex *)data, NULL,
+                            1, fft_len_int, direction, FFTW_ESTIMATE);
+    fftwf_execute(plan);
+    fftwf_destroy_plan(plan);
   } else {
     cpu_set_last_error("fft_c2c: unsupported dtype");
     return C_FAILED;
