@@ -1221,6 +1221,97 @@ PYBIND11_MODULE(_insight, m) {
     sig.def("bark2hz", &signal::bark2hz, py::arg("bark"));
 
     // ----------------------------------------------------------------
+    // Demod
+    // ----------------------------------------------------------------
+    sig.def("fm_demod", &signal::fm_demod, py::arg("x"), py::arg("axis") = -1);
+
+    // ----------------------------------------------------------------
+    // Peak Finding
+    // ----------------------------------------------------------------
+    sig.def(
+        "argrelextrema",
+        [](const Array &data, const std::string &comparator, int axis,
+           int order, const std::string &mode) {
+          return signal::argrelextrema(data, comparator, axis, order, mode);
+        },
+        py::arg("data"), py::arg("comparator"), py::arg("axis") = 0,
+        py::arg("order") = 1, py::arg("mode") = "clip");
+    sig.def(
+        "argrelmax",
+        [](const Array &data, int axis, int order, const std::string &mode) {
+          return signal::argrelmax(data, axis, order, mode);
+        },
+        py::arg("data"), py::arg("axis") = 0, py::arg("order") = 1,
+        py::arg("mode") = "clip");
+    sig.def(
+        "argrelmin",
+        [](const Array &data, int axis, int order, const std::string &mode) {
+          return signal::argrelmin(data, axis, order, mode);
+        },
+        py::arg("data"), py::arg("axis") = 0, py::arg("order") = 1,
+        py::arg("mode") = "clip");
+
+    // ----------------------------------------------------------------
+    // Radar
+    // ----------------------------------------------------------------
+    sig.def("pulse_compression", &signal::pulse_compression, py::arg("x"),
+            py::arg("template_tx"), py::arg("normalize") = false,
+            py::arg("window") = "", py::arg("nfft") = 0);
+    sig.def("pulse_doppler", &signal::pulse_doppler, py::arg("x"),
+            py::arg("window") = "", py::arg("nfft") = 0);
+    sig.def("cfar_alpha", &signal::cfar_alpha, py::arg("pfa"), py::arg("N"));
+    sig.def(
+        "ca_cfar",
+        [](const Array &data, const std::vector<int> &guard_cells,
+           const std::vector<int> &reference_cells, double pfa) {
+          return signal::ca_cfar(data, guard_cells, reference_cells, pfa);
+        },
+        py::arg("data"), py::arg("guard_cells"), py::arg("reference_cells"),
+        py::arg("pfa") = 1e-3);
+    sig.def("mvdr", &signal::mvdr, py::arg("x"), py::arg("sv"),
+            py::arg("calc_cov") = true);
+    sig.def("ambgfun", &signal::ambgfun, py::arg("x"), py::arg("fs"),
+            py::arg("prf"), py::arg("y") = Array(), py::arg("cut") = "2d",
+            py::arg("cutValue") = 0);
+
+    // ----------------------------------------------------------------
+    // Estimation (KalmanFilter)
+    // ----------------------------------------------------------------
+    py::class_<signal::KalmanFilter>(sig, "KalmanFilter")
+        .def(py::init<int, int, int, int, DType>(), py::arg("dim_x"),
+             py::arg("dim_z"), py::arg("dim_u") = 0, py::arg("points") = 1,
+             py::arg("dtype") = DType::F64)
+        .def_readwrite("x", &signal::KalmanFilter::x)
+        .def_readwrite("P", &signal::KalmanFilter::P)
+        .def_readwrite("z", &signal::KalmanFilter::z)
+        .def_readwrite("R", &signal::KalmanFilter::R)
+        .def_readwrite("Q", &signal::KalmanFilter::Q)
+        .def_readwrite("F", &signal::KalmanFilter::F)
+        .def_readwrite("H", &signal::KalmanFilter::H)
+        .def_readonly("dim_x", &signal::KalmanFilter::dim_x)
+        .def_readonly("dim_z", &signal::KalmanFilter::dim_z)
+        .def_readonly("points", &signal::KalmanFilter::points)
+        .def("predict", &signal::KalmanFilter::predict)
+        .def("update", &signal::KalmanFilter::update, py::arg("z"));
+
+    // ----------------------------------------------------------------
+    // Signal I/O
+    // ----------------------------------------------------------------
+    sig.def("read_bin", &signal::read_bin, py::arg("file"),
+            py::arg("dtype") = DType::U8, py::arg("num_samples") = 0,
+            py::arg("offset") = 0);
+    sig.def("write_bin", &signal::write_bin, py::arg("file"), py::arg("data"),
+            py::arg("append") = true);
+    sig.def("unpack_bin", &signal::unpack_bin, py::arg("binary"),
+            py::arg("dtype"), py::arg("endianness") = "L");
+    sig.def("pack_bin", &signal::pack_bin, py::arg("data"));
+    sig.def("read_sigmf", &signal::read_sigmf, py::arg("data_file"),
+            py::arg("meta_file") = "", py::arg("num_samples") = 0,
+            py::arg("offset") = 0);
+    sig.def("write_sigmf", &signal::write_sigmf, py::arg("data_file"),
+            py::arg("data"), py::arg("append") = true);
+
+    // ----------------------------------------------------------------
     // Top-level signal functions (in ins:: namespace, aliased here)
     // ----------------------------------------------------------------
     sig.def("convolve", &convolve, py::arg("a"), py::arg("v"),

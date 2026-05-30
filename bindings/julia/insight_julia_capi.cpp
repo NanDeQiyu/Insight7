@@ -512,6 +512,76 @@ Array *insight_jl_bark2hz(const Array *bark) {
 }
 
 // ============================================================================
+// Demod
+// ============================================================================
+
+Array *insight_jl_fm_demod(const Array *x, int32_t axis) {
+  return new Array(signal::fm_demod(*x, axis));
+}
+
+// ============================================================================
+// Peak Finding
+// ============================================================================
+
+// Returns number of extrema found; caller provides output buffer for indices
+int64_t insight_jl_argrelmax(const Array *data, int32_t axis, int32_t order,
+                             int64_t *out_indices) {
+  auto result = signal::argrelmax(*data, axis, order, "clip");
+  if (result.empty())
+    return 0;
+  int64_t n = result[0].numel();
+  const int64_t *src = result[0].data<int64_t>();
+  for (int64_t i = 0; i < n; ++i)
+    out_indices[i] = src[i];
+  return n;
+}
+
+int64_t insight_jl_argrelmin(const Array *data, int32_t axis, int32_t order,
+                             int64_t *out_indices) {
+  auto result = signal::argrelmin(*data, axis, order, "clip");
+  if (result.empty())
+    return 0;
+  int64_t n = result[0].numel();
+  const int64_t *src = result[0].data<int64_t>();
+  for (int64_t i = 0; i < n; ++i)
+    out_indices[i] = src[i];
+  return n;
+}
+
+// ============================================================================
+// Radar
+// ============================================================================
+
+Array *insight_jl_cfar_alpha(double pfa, int32_t N) {
+  double alpha = signal::cfar_alpha(pfa, N);
+  return new Array(alpha);
+}
+
+// ============================================================================
+// Signal I/O
+// ============================================================================
+
+Array *insight_jl_read_bin(const char *file, int32_t dtype, int64_t num_samples,
+                           int64_t offset) {
+  return new Array(
+      signal::read_bin(file, static_cast<DType>(dtype), num_samples, offset));
+}
+
+void insight_jl_write_bin(const char *file, const Array *data, int32_t append) {
+  signal::write_bin(file, *data, append != 0);
+}
+
+Array *insight_jl_pack_bin(const Array *data) {
+  return new Array(signal::pack_bin(*data));
+}
+
+Array *insight_jl_unpack_bin(const Array *binary, int32_t dtype,
+                             const char *endianness) {
+  return new Array(
+      signal::unpack_bin(*binary, static_cast<DType>(dtype), endianness));
+}
+
+// ============================================================================
 // Random
 // ============================================================================
 

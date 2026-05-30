@@ -52,6 +52,8 @@ export Array, zeros, ones, full, arange, linspace, eye,
        welch_jl, periodogram_jl,
        morlet, ricker,
        mel2hz, hz2mel, mel_frequencies, hz2bark, bark2hz,
+       fm_demod, argrelmax, argrelmin, cfar_alpha,
+       read_bin, write_bin, pack_bin, unpack_bin,
        # Device info
        device_name, cuda_version, driver_version, compute_capability,
        device_memory, gpu_count,
@@ -1456,6 +1458,68 @@ function bark2hz(bark::InsightArray)::InsightArray
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
+# --- Demod ---
+function fm_demod(x::InsightArray, axis::Int = -1)::InsightArray
+    ptr = ccall((:insight_jl_fm_demod, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(axis))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+# --- Peak Finding ---
+function argrelmax(data::InsightArray, axis::Int = 0, order::Int = 1)::Vector{Int64}
+    out = Vector{Int64}(undef, numel(data))
+    n = ccall((:insight_jl_argrelmax, LIB_INSIGHT), Int64,
+              (Ptr{Cvoid}, Int32, Int32, Ptr{Int64}),
+              data, Int32(axis), Int32(order), out)
+    return out[1:n]
+end
+
+function argrelmin(data::InsightArray, axis::Int = 0, order::Int = 1)::Vector{Int64}
+    out = Vector{Int64}(undef, numel(data))
+    n = ccall((:insight_jl_argrelmin, LIB_INSIGHT), Int64,
+              (Ptr{Cvoid}, Int32, Int32, Ptr{Int64}),
+              data, Int32(axis), Int32(order), out)
+    return out[1:n]
+end
+
+# --- Radar ---
+function cfar_alpha(pfa::Float64, N::Int)::Float64
+    ptr = ccall((:insight_jl_cfar_alpha, LIB_INSIGHT), Ptr{Cvoid},
+                (Float64, Int32), pfa, Int32(N))
+    val = to_f64(InsightArray(ptr))
+    return val
+end
+
+# --- Signal I/O ---
+function read_bin(file::String, dtype::DataType = UInt8,
+                  num_samples::Int = 0, offset::Int = 0)::InsightArray
+    dtype_code = _dtype_code(dtype)
+    ptr = ccall((:insight_jl_read_bin, LIB_INSIGHT), Ptr{Cvoid},
+                (Cstring, Int32, Int64, Int64),
+                file, Int32(dtype_code), Int64(num_samples), Int64(offset))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function write_bin(file::String, data::InsightArray, append::Bool = true)
+    ccall((:insight_jl_write_bin, LIB_INSIGHT), Cvoid,
+          (Cstring, Ptr{Cvoid}, Int32), file, data, Int32(append ? 1 : 0))
+end
+
+function pack_bin(data::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_pack_bin, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid},), data)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function unpack_bin(binary::InsightArray, dtype::DataType,
+                    endianness::String = "L")::InsightArray
+    dtype_code = _dtype_code(dtype)
+    ptr = ccall((:insight_jl_unpack_bin, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32, Cstring),
+                binary, Int32(dtype_code), endianness)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
 # --- Signal submodule (convenience namespace) ---
 module signal
     using ..Insight
@@ -1505,6 +1569,14 @@ module signal
     const mel_frequencies = Insight.mel_frequencies
     const hz2bark = Insight.hz2bark
     const bark2hz = Insight.bark2hz
+    const fm_demod = Insight.fm_demod
+    const argrelmax = Insight.argrelmax
+    const argrelmin = Insight.argrelmin
+    const cfar_alpha = Insight.cfar_alpha
+    const read_bin = Insight.read_bin
+    const write_bin = Insight.write_bin
+    const pack_bin = Insight.pack_bin
+    const unpack_bin = Insight.unpack_bin
     const convolve = Insight.convolve
     const unwrap = Insight.unwrap
     const sinc_fn = Insight.sinc

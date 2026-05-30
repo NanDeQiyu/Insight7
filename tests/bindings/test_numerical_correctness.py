@@ -6,9 +6,9 @@ floating-point tolerance) to NumPy for the same inputs.
 Run with:
     LD_LIBRARY_PATH=build/backends/cpu python3 -m pytest tests/bindings/test_numerical_correctness.py -v
 """
+
 import sys
 import os
-import math
 
 _root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 sys.path.insert(0, os.path.join(_root, "bindings", "python"))
@@ -29,6 +29,7 @@ np.random.seed(42)
 # Helpers
 # ============================================================================
 
+
 def to_insight(np_arr, dtype=None):
     """Convert a NumPy array to Insight array."""
     if dtype is not None:
@@ -47,28 +48,37 @@ def assert_close(actual, expected, rtol=1e-5, atol=1e-6, label=""):
     expected = np.asarray(expected)
     if np.iscomplexobj(actual) or np.iscomplexobj(expected):
         # For complex arrays, compare real and imaginary parts separately
-        np.testing.assert_allclose(actual.real, expected.real, rtol=rtol,
-                                   atol=atol,
-                                   err_msg=f"Real part mismatch in {label}")
-        np.testing.assert_allclose(actual.imag, expected.imag, rtol=rtol,
-                                   atol=atol,
-                                   err_msg=f"Imag part mismatch in {label}")
+        np.testing.assert_allclose(
+            actual.real,
+            expected.real,
+            rtol=rtol,
+            atol=atol,
+            err_msg=f"Real part mismatch in {label}",
+        )
+        np.testing.assert_allclose(
+            actual.imag,
+            expected.imag,
+            rtol=rtol,
+            atol=atol,
+            err_msg=f"Imag part mismatch in {label}",
+        )
     else:
         actual = np.asarray(actual, dtype=np.float64)
         expected = np.asarray(expected, dtype=np.float64)
-        np.testing.assert_allclose(actual, expected, rtol=rtol, atol=atol,
-                                   err_msg=f"Mismatch in {label}")
+        np.testing.assert_allclose(
+            actual, expected, rtol=rtol, atol=atol, err_msg=f"Mismatch in {label}"
+        )
 
 
 def assert_equal(actual, expected, label=""):
     """Assert two NumPy arrays are exactly equal."""
-    np.testing.assert_array_equal(actual, expected,
-                                  err_msg=f"Mismatch in {label}")
+    np.testing.assert_array_equal(actual, expected, err_msg=f"Mismatch in {label}")
 
 
 # ============================================================================
 # Creation
 # ============================================================================
+
 
 class TestCreation:
     """Verify creation functions match NumPy."""
@@ -102,6 +112,7 @@ class TestCreation:
 # ============================================================================
 # Elementwise arithmetic
 # ============================================================================
+
 
 class TestElementwiseArithmetic:
     """Verify elementwise operations match NumPy."""
@@ -144,6 +155,7 @@ class TestElementwiseArithmetic:
 # ============================================================================
 # Unary math
 # ============================================================================
+
 
 class TestUnaryMath:
     """Verify unary math functions match NumPy."""
@@ -207,6 +219,7 @@ class TestUnaryMath:
 # Reduction
 # ============================================================================
 
+
 class TestReduction:
     """Verify reduction operations match NumPy."""
 
@@ -221,13 +234,11 @@ class TestReduction:
 
     def test_sum_axis0(self, x2d):
         ix, nx = x2d
-        assert_close(to_numpy(ins.sum(ix, axis=0)),
-                     np.sum(nx, axis=0), label="sum_axis0")
+        assert_close(to_numpy(ins.sum(ix, axis=0)), np.sum(nx, axis=0), label="sum_axis0")
 
     def test_sum_axis1(self, x2d):
         ix, nx = x2d
-        assert_close(to_numpy(ins.sum(ix, axis=1)),
-                     np.sum(nx, axis=1), label="sum_axis1")
+        assert_close(to_numpy(ins.sum(ix, axis=1)), np.sum(nx, axis=1), label="sum_axis1")
 
     def test_mean_all(self, x2d):
         ix, nx = x2d
@@ -259,6 +270,7 @@ class TestReduction:
 # Linear Algebra
 # ============================================================================
 
+
 class TestLinalg:
     """Verify linear algebra operations match NumPy."""
 
@@ -266,53 +278,49 @@ class TestLinalg:
         np_a = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         np_b = np.array([[7, 8], [9, 10], [11, 12]], dtype=np.float32)
         ia, ib = to_insight(np_a), to_insight(np_b)
-        assert_close(to_numpy(ins.matmul(ia, ib)),
-                     np.matmul(np_a, np_b), label="matmul")
+        assert_close(to_numpy(ins.matmul(ia, ib)), np.matmul(np_a, np_b), label="matmul")
 
     def test_dot_1d(self):
         np_a = np.array([1, 2, 3], dtype=np.float64)
         np_b = np.array([4, 5, 6], dtype=np.float64)
         ia, ib = to_insight(np_a), to_insight(np_b)
-        assert_close(to_numpy(ins.dot(ia, ib)),
-                     np.dot(np_a, np_b), label="dot_1d")
+        assert_close(to_numpy(ins.dot(ia, ib)), np.dot(np_a, np_b), label="dot_1d")
 
     def test_det_2x2(self):
         np_a = np.array([[1, 2], [3, 4]], dtype=np.float64)
         ia = to_insight(np_a)
-        assert_close(to_numpy(ins.det(ia)),
-                     np.linalg.det(np_a), rtol=1e-5, label="det_2x2")
+        assert_close(to_numpy(ins.det(ia)), np.linalg.det(np_a), rtol=1e-5, label="det_2x2")
 
     def test_det_3x3(self):
         np_a = np.array([[1, 2, 3], [0, 1, 4], [5, 6, 0]], dtype=np.float64)
         ia = to_insight(np_a)
-        assert_close(to_numpy(ins.det(ia)),
-                     np.linalg.det(np_a), rtol=1e-5, label="det_3x3")
+        assert_close(to_numpy(ins.det(ia)), np.linalg.det(np_a), rtol=1e-5, label="det_3x3")
 
     def test_inv(self):
         np_a = np.array([[1, 2], [3, 4]], dtype=np.float64)
         ia = to_insight(np_a)
-        assert_close(to_numpy(ins.inv(ia)),
-                     np.linalg.inv(np_a), rtol=1e-5, label="inv")
+        assert_close(to_numpy(ins.inv(ia)), np.linalg.inv(np_a), rtol=1e-5, label="inv")
 
     def test_trace(self):
-        np_a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-                        dtype=np.float32)
+        np_a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32)
         ia = to_insight(np_a)
-        assert_close(to_numpy(ins.trace(ia)),
-                     np.trace(np_a), label="trace")
+        assert_close(to_numpy(ins.trace(ia)), np.trace(np_a), label="trace")
 
     def test_norm_1d(self):
         np_a = np.array([3.0, 4.0], dtype=np.float64)
         ia = to_insight(np_a)
-        assert_close(to_numpy(ins.norm(ia)),
-                     np.linalg.norm(np_a), rtol=1e-5, label="norm_1d")
+        assert_close(to_numpy(ins.norm(ia)), np.linalg.norm(np_a), rtol=1e-5, label="norm_1d")
 
     def test_solve(self):
         np_a = np.array([[2, 1], [1, 3]], dtype=np.float64)
         np_b = np.array([5, 7], dtype=np.float64)
         ia, ib = to_insight(np_a), to_insight(np_b)
-        assert_close(to_numpy(ins.solve(ia, ib)),
-                     np.linalg.solve(np_a, np_b), rtol=1e-5, label="solve")
+        assert_close(
+            to_numpy(ins.solve(ia, ib)),
+            np.linalg.solve(np_a, np_b),
+            rtol=1e-5,
+            label="solve",
+        )
 
     def test_svd(self):
         np_a = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float64)
@@ -325,6 +333,7 @@ class TestLinalg:
 # ============================================================================
 # FFT
 # ============================================================================
+
 
 class TestFFT:
     """Verify FFT operations match NumPy."""
@@ -359,6 +368,7 @@ class TestFFT:
 # Signal
 # ============================================================================
 
+
 class TestSignal:
     """Verify signal operations."""
 
@@ -383,6 +393,7 @@ class TestSignal:
 # Comparison
 # ============================================================================
 
+
 class TestComparison:
     """Verify comparison operations."""
 
@@ -394,23 +405,25 @@ class TestComparison:
 
     def test_equal(self, ab):
         ia, ib, na, nb = ab
-        assert_equal(to_numpy(ins.equal(ia, ib)),
-                     np.equal(na, nb).astype(np.float32), "equal")
+        assert_equal(to_numpy(ins.equal(ia, ib)), np.equal(na, nb).astype(np.float32), "equal")
 
     def test_greater(self, ab):
         ia, ib, na, nb = ab
-        assert_equal(to_numpy(ins.greater(ia, ib)),
-                     np.greater(na, nb).astype(np.float32), "greater")
+        assert_equal(
+            to_numpy(ins.greater(ia, ib)),
+            np.greater(na, nb).astype(np.float32),
+            "greater",
+        )
 
     def test_less(self, ab):
         ia, ib, na, nb = ab
-        assert_equal(to_numpy(ins.less(ia, ib)),
-                     np.less(na, nb).astype(np.float32), "less")
+        assert_equal(to_numpy(ins.less(ia, ib)), np.less(na, nb).astype(np.float32), "less")
 
 
 # ============================================================================
 # Casting
 # ============================================================================
+
 
 class TestCast:
     """Verify dtype casting."""

@@ -5,9 +5,9 @@ Run with:
     # or with wrapper:
     PYTHONPATH=bindings/python:build/bindings/python python -m pytest tests/bindings/test_python_binding.py -v
 """
+
 import sys
 import os
-import math
 
 # Add wrapper package and native module directories to the path
 _root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")

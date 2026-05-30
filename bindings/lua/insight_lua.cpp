@@ -1115,6 +1115,48 @@ extern "C" int luaopen__insight(lua_State *L) {
     sig["hz2bark"] = &signal::hz2bark;
     sig["bark2hz"] = &signal::bark2hz;
 
+    // --- Demod ---
+    sig["fm_demod"] = &signal::fm_demod;
+
+    // --- Peak Finding ---
+    sig["argrelextrema"] = &signal::argrelextrema;
+    sig["argrelmax"] = &signal::argrelmax;
+    sig["argrelmin"] = &signal::argrelmin;
+
+    // --- Radar ---
+    sig["pulse_compression"] = &signal::pulse_compression;
+    sig["pulse_doppler"] = &signal::pulse_doppler;
+    sig["cfar_alpha"] = &signal::cfar_alpha;
+    sig["ca_cfar"] = &signal::ca_cfar;
+    sig["mvdr"] = &signal::mvdr;
+    sig["ambgfun"] = &signal::ambgfun;
+
+    // --- Signal I/O ---
+    sig["read_bin"] = &signal::read_bin;
+    sig["write_bin"] = &signal::write_bin;
+    sig["unpack_bin"] = &signal::unpack_bin;
+    sig["pack_bin"] = &signal::pack_bin;
+    sig["read_sigmf"] = &signal::read_sigmf;
+    sig["write_sigmf"] = &signal::write_sigmf;
+
+    // --- Estimation (KalmanFilter) ---
+    sol::usertype<signal::KalmanFilter> kf_type =
+        sig.new_usertype<signal::KalmanFilter>(
+            "KalmanFilter", sol::constructors<signal::KalmanFilter(
+                                int, int, int, int, DType)>());
+    kf_type["x"] = &signal::KalmanFilter::x;
+    kf_type["P"] = &signal::KalmanFilter::P;
+    kf_type["z"] = &signal::KalmanFilter::z;
+    kf_type["R"] = &signal::KalmanFilter::R;
+    kf_type["Q"] = &signal::KalmanFilter::Q;
+    kf_type["F"] = &signal::KalmanFilter::F;
+    kf_type["H"] = &signal::KalmanFilter::H;
+    kf_type["dim_x"] = &signal::KalmanFilter::dim_x;
+    kf_type["dim_z"] = &signal::KalmanFilter::dim_z;
+    kf_type["points"] = &signal::KalmanFilter::points;
+    kf_type["predict"] = &signal::KalmanFilter::predict;
+    kf_type["update"] = &signal::KalmanFilter::update;
+
     // Top-level aliases
     sig["convolve"] = &convolve;
     sig["unwrap"] = &unwrap;

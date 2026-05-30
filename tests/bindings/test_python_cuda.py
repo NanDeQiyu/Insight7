@@ -7,7 +7,6 @@ Run with:
     python3 ../../tests/bindings/test_python_cuda.py
 """
 
-import sys
 import numpy as np
 
 import insight as ins
@@ -110,9 +109,9 @@ def test_signal_cuda():
     assert ins.signal.ChirpMethod.quadratic is not None
 
     # Top-level aliases
-    assert hasattr(ins, 'convolve')
-    assert hasattr(ins, 'unwrap')
-    assert hasattr(ins, 'sinc')
+    assert hasattr(ins, "convolve")
+    assert hasattr(ins, "unwrap")
+    assert hasattr(ins, "sinc")
 
     print("=== ALL PYTHON CUDA SIGNAL TESTS PASSED ===")
 
