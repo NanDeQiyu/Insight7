@@ -172,29 +172,27 @@ static Task1Result run_task1(Place place) {
   double pc_ms =
       std::chrono::duration<double, std::milli>(t_pc1 - t_pc0).count();
 
-  // ========== 4. 多普勒处理 ==========
+  // ========== 4. 多普勒处理 (2D FFT, axis=0, batch_size=N) ==========
   auto t_dp0 = std::chrono::high_resolution_clock::now();
 
+  Array pc_arr =
+      to_array(pc_flat, Shape({n_pulses, N}), DType::C64, CPUPlace());
+  if (place.kind() == DeviceKind::GPU)
+    pc_arr = pc_arr.to(place);
+
+  Array doppler_arr = fft::fft(pc_arr, n_pulses, 0);
+  if (place.kind() == DeviceKind::GPU)
+    doppler_arr = doppler_arr.to(CPUPlace());
+
+  const std::complex<double> *dp_data =
+      reinterpret_cast<const std::complex<double> *>(doppler_arr.data<char>());
+
+  // fftshift along axis 0
   std::vector<std::complex<double>> doppler_flat(n_pulses * N);
-  for (int r = 0; r < N; ++r) {
-    std::vector<std::complex<double>> col(n_pulses);
-    for (int p = 0; p < n_pulses; ++p)
-      col[p] = pc_flat[p * N + r];
-
-    Array col_arr = to_array(col, DType::C64, CPUPlace());
-    if (place.kind() == DeviceKind::GPU)
-      col_arr = col_arr.to(place);
-
-    Array fft_col = fft::fft(col_arr, n_pulses);
-    Array fft_cpu =
-        (place.kind() == DeviceKind::GPU) ? fft_col.to(CPUPlace()) : fft_col;
-    const std::complex<double> *fd =
-        reinterpret_cast<const std::complex<double> *>(fft_cpu.data<char>());
-
-    // fftshift
-    for (int p = 0; p < n_pulses; ++p) {
-      int shifted = (p + n_pulses / 2) % n_pulses;
-      doppler_flat[shifted * N + r] = fd[p];
+  for (int p = 0; p < n_pulses; ++p) {
+    int shifted = (p + n_pulses / 2) % n_pulses;
+    for (int r = 0; r < N; ++r) {
+      doppler_flat[shifted * N + r] = dp_data[p * N + r];
     }
   }
 

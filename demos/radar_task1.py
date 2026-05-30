@@ -69,7 +69,7 @@ def run_task1(device="cpu"):
 
     # 4. 多普勒 FFT
     t0 = time.time()
-    doppler_fft = ins.fft.fft(ins.from_numpy(pc), n=N_PULSES, axis=0)
+    doppler_fft = ins.fft(ins.from_numpy(pc), N_PULSES, 0)
     doppler_np = np.fft.fftshift(doppler_fft.numpy(), axes=0)
     t_doppler = time.time() - t0
 
