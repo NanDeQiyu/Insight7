@@ -1,7 +1,7 @@
 -- bindings/lua/insight.lua
 --
 -- Lua loader for the Insight7 native module.
--- This file is installed by luarocks and handles finding the native library.
+-- Delegates to insight/init.lua for the full wrapper.
 --
 -- Usage:
 --   local ins = require("insight")
@@ -10,15 +10,4 @@
 --   local c = a + b
 --   print(c)
 
--- Try to load the native C++ module (insight.so / insight.dll)
-local ok, native = pcall(require, "insight_native")
-if not ok then
-    -- Fallback: try loading directly (standalone build)
-    ok, native = pcall(require, "insight")
-    if not ok then
-        error("Failed to load Insight native module: " .. tostring(native) ..
-              "\nMake sure libinsight.so is in your LUA_CPATH or LD_LIBRARY_PATH.")
-    end
-end
-
-return native
+return require("insight.init")

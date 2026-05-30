@@ -1,16 +1,25 @@
 ---
 name: fetchcontent-xiph-codecs
-description: Building libsndfile with Ogg/Vorbis/FLAC/Opus via FetchContent on systems without sudo
+description: Building libsndfile with Ogg/Vorbis/FLAC/Opus — now uses local third_party/ sources (see migrate-to-local-third-party skill)
 source: auto-skill
 extracted_at: '2026-05-29T19:31:53.038Z'
 ---
 
-# Building libsndfile with Full Codec Support via FetchContent
+# Building libsndfile with Full Codec Support
 
-## Problem
-libsndfile requires a chain of Xiph codec libraries (Ogg → Vorbis/FLAC/Opus). When `apt install` is unavailable (e.g., AI Studio), all must be built from source via FetchContent.
+## Status: Migrated to local third_party/ (2026-05-30)
 
-## Key Pitfalls
+As of 2026-05-30, all Xiph codec libraries are cloned to `third_party/`:
+- `third_party/ogg` (v1.3.5)
+- `third_party/vorbis` (v1.3.7)
+- `third_party/flac` (1.4.3)
+- `third_party/opus` (v1.5.2)
+- `third_party/libsndfile` (1.2.2)
+
+CMakeLists.txt auto-detects local sources and falls back to FetchContent if missing.
+See `migrate-to-local-third-party` skill for the general pattern.
+
+## Key Pitfalls (still relevant)
 
 ### 1. Cache variables must be set BEFORE FetchContent_MakeAvailable
 libsndfile's `cmake/FindOgg.cmake`, `FindFLAC.cmake`, `FindVorbis.cmake`, `FindOpus.cmake` use `find_path`/`find_library`. If cache variables are set AFTER `FetchContent_MakeAvailable`, the find modules run during `MakeAvailable` and fail because the libraries haven't been built yet.

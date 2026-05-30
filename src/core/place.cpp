@@ -138,6 +138,73 @@ size_t device_count(DeviceKind kind) {
 }
 
 // ========================================================================
+// Device information queries
+// ========================================================================
+
+std::string device_name(DeviceKind kind, int device_id) {
+  if (kind == DeviceKind::CPU)
+    return "CPU";
+
+  const C_DeviceInterface *iface = get_device_interface(kind);
+  if (!iface || !iface->get_device_name)
+    return "";
+
+  C_Device_st dev;
+  dev.id = device_id;
+  char buf[256] = {};
+  C_Status status = iface->get_device_name(&dev, buf, sizeof(buf));
+  return (status == C_SUCCESS) ? std::string(buf) : "";
+}
+
+int cuda_version() {
+  const C_DeviceInterface *iface = get_device_interface(DeviceKind::GPU);
+  if (!iface || !iface->get_runtime_version)
+    return 0;
+
+  C_Device_st dev;
+  dev.id = 0;
+  size_t ver = 0;
+  C_Status status = iface->get_runtime_version(&dev, &ver);
+  return (status == C_SUCCESS) ? static_cast<int>(ver) : 0;
+}
+
+int driver_version() {
+  const C_DeviceInterface *iface = get_device_interface(DeviceKind::GPU);
+  if (!iface || !iface->get_driver_version)
+    return 0;
+
+  C_Device_st dev;
+  dev.id = 0;
+  size_t ver = 0;
+  C_Status status = iface->get_driver_version(&dev, &ver);
+  return (status == C_SUCCESS) ? static_cast<int>(ver) : 0;
+}
+
+int compute_capability(int device_id) {
+  const C_DeviceInterface *iface = get_device_interface(DeviceKind::GPU);
+  if (!iface || !iface->get_compute_capability)
+    return 0;
+
+  C_Device_st dev;
+  dev.id = device_id;
+  size_t cap = 0;
+  C_Status status = iface->get_compute_capability(&dev, &cap);
+  return (status == C_SUCCESS) ? static_cast<int>(cap) : 0;
+}
+
+DeviceMemoryInfo device_memory(int device_id) {
+  DeviceMemoryInfo info{0, 0};
+  const C_DeviceInterface *iface = get_device_interface(DeviceKind::GPU);
+  if (!iface || !iface->device_memory_stats)
+    return info;
+
+  C_Device_st dev;
+  dev.id = device_id;
+  iface->device_memory_stats(&dev, &info.total, &info.free);
+  return info;
+}
+
+// ========================================================================
 // Factory functions
 // ========================================================================
 

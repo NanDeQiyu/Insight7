@@ -123,30 +123,66 @@ option(INSIGHT_USE_SNDFILE "Use libsndfile for audio file I/O" ON)
 if(INSIGHT_USE_SNDFILE)
     find_package(LibSndFile QUIET)
     if(NOT SndFile_FOUND)
-        include(FetchContent)
-        message(STATUS "libsndfile not found on system, fetching from source...")
+        message(STATUS "libsndfile not found on system, building from source...")
 
-        # Build codec dependencies first (Ogg -> Vorbis/FLAC/Opus -> libsndfile)
-        FetchContent_Declare(ogg
-            GIT_REPOSITORY "https://github.com/xiph/ogg.git"
-            GIT_TAG        "v1.3.5"
-            GIT_SHALLOW    TRUE
-        )
-        FetchContent_Declare(vorbis
-            GIT_REPOSITORY "https://github.com/xiph/vorbis.git"
-            GIT_TAG        "v1.3.7"
-            GIT_SHALLOW    TRUE
-        )
-        FetchContent_Declare(FLAC
-            GIT_REPOSITORY "https://github.com/xiph/flac.git"
-            GIT_TAG        "1.4.3"
-            GIT_SHALLOW    TRUE
-        )
-        FetchContent_Declare(opus
-            GIT_REPOSITORY "https://github.com/xiph/opus.git"
-            GIT_TAG        "v1.5.2"
-            GIT_SHALLOW    TRUE
-        )
+        # Determine source locations: prefer local third_party/, fall back to FetchContent
+        set(_local "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
+        foreach(_dep ogg vorbis FLAC opus sndfile)
+            string(TOUPPER "${_dep}" _dep_upper)
+            string(TOLOWER "${_dep}" _dep_lower)
+            # Try exact name, lowercase, and lib-prefixed
+            if(EXISTS "${_local}/${_dep}/CMakeLists.txt")
+                set(${_dep_upper}_LOCAL "${_local}/${_dep}")
+                message(STATUS "  ${_dep}: using local ${_local}/${_dep}")
+            elseif(EXISTS "${_local}/${_dep_lower}/CMakeLists.txt")
+                set(${_dep_upper}_LOCAL "${_local}/${_dep_lower}")
+                message(STATUS "  ${_dep}: using local ${_local}/${_dep_lower}")
+            elseif(EXISTS "${_local}/lib${_dep_lower}/CMakeLists.txt")
+                set(${_dep_upper}_LOCAL "${_local}/lib${_dep_lower}")
+                message(STATUS "  ${_dep}: using local ${_local}/lib${_dep_lower}")
+            else()
+                message(STATUS "  ${_dep}: will fetch from GitHub")
+            endif()
+        endforeach()
+
+        include(FetchContent)
+
+        # Ogg
+        if(NOT DEFINED OGG_LOCAL)
+            FetchContent_Declare(ogg
+                GIT_REPOSITORY "https://github.com/xiph/ogg.git"
+                GIT_TAG "v1.3.5" GIT_SHALLOW TRUE)
+        endif()
+
+        # Vorbis
+        if(NOT DEFINED VORBIS_LOCAL)
+            FetchContent_Declare(vorbis
+                GIT_REPOSITORY "https://github.com/xiph/vorbis.git"
+                GIT_TAG "v1.3.7" GIT_SHALLOW TRUE)
+        endif()
+
+        # FLAC
+        if(NOT DEFINED FLAC_LOCAL)
+            FetchContent_Declare(FLAC
+                GIT_REPOSITORY "https://github.com/xiph/flac.git"
+                GIT_TAG "1.4.3" GIT_SHALLOW TRUE)
+        endif()
+
+        # Opus
+        if(NOT DEFINED OPUS_LOCAL)
+            FetchContent_Declare(opus
+                GIT_REPOSITORY "https://github.com/xiph/opus.git"
+                GIT_TAG "v1.5.2" GIT_SHALLOW TRUE)
+        endif()
+
+        # libsndfile
+        if(NOT DEFINED SNDFILE_LOCAL)
+            FetchContent_Declare(sndfile
+                GIT_REPOSITORY "https://github.com/libsndfile/libsndfile.git"
+                GIT_TAG "1.2.2" GIT_SHALLOW TRUE)
+        endif()
+
+        # Common cache settings
         set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
         set(INSTALL_CMAKE_PACKAGE_MODULE OFF CACHE BOOL "" FORCE)
         set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -156,28 +192,53 @@ if(INSIGHT_USE_SNDFILE)
         set(INSTALL_MANPAGES OFF CACHE BOOL "" FORCE)
         set(INSTALL_PKGCONFIG_MODULES OFF CACHE BOOL "" FORCE)
         set(BUILD_CXXLIBS OFF CACHE BOOL "" FORCE)
-        # Pre-set cache variables using FetchContent naming convention
-        # (source dirs known before MakeAvailable, build dirs use CMAKE_BINARY_DIR)
-        set(_fc_base "${CMAKE_BINARY_DIR}/_deps")
-        set(OGG_INCLUDE_DIR "${_fc_base}/ogg-src/include" CACHE PATH "" FORCE)
-        set(OGG_LIBRARY "${_fc_base}/ogg-build/${CMAKE_STATIC_LIBRARY_PREFIX}ogg${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+
+        # Pre-set Ogg variables so find_package(Ogg) works for vorbis/FLAC/opus
+        set(_ogg_src "${_local}/ogg")
+        set(_ogg_bin "${CMAKE_BINARY_DIR}/_deps/ogg-build")
+        set(OGG_INCLUDE_DIR "${_ogg_src}/include" CACHE PATH "" FORCE)
+        set(OGG_LIBRARY "${_ogg_bin}/${CMAKE_STATIC_LIBRARY_PREFIX}ogg${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
         set(Ogg_FOUND TRUE CACHE BOOL "" FORCE)
         set(OGG_LIBRARIES "${OGG_LIBRARY}" CACHE STRING "" FORCE)
-        set(OGG_INCLUDE_DIRS "${_fc_base}/ogg-src/include" CACHE PATH "" FORCE)
-        set(FLAC_INCLUDE_DIR "${_fc_base}/flac-src/include" CACHE PATH "" FORCE)
-        set(FLAC_LIBRARY "${_fc_base}/flac-build/src/libFLAC/${CMAKE_STATIC_LIBRARY_PREFIX}FLAC${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+        set(OGG_INCLUDE_DIRS "${_ogg_src}/include" CACHE PATH "" FORCE)
+        set(CMAKE_MODULE_PATH "${_local}/vorbis/cmake;${_local}/flac/cmake;${CMAKE_MODULE_PATH}")
+
+        # Determine source dir for each dependency
+        macro(_resolve_dep VAR NAME)
+            if(DEFINED ${VAR})
+                set(_${NAME}_src "${${VAR}}")
+                set(_saved_skip ${CMAKE_SKIP_INSTALL_RULES})
+                set(CMAKE_SKIP_INSTALL_RULES ON)
+                add_subdirectory("${${VAR}}" "${CMAKE_BINARY_DIR}/_deps/${NAME}-build")
+                set(CMAKE_SKIP_INSTALL_RULES ${_saved_skip})
+            else()
+                FetchContent_MakeAvailable(${NAME})
+                set(_${NAME}_src "${${NAME}_SOURCE_DIR}")
+            endif()
+        endmacro()
+
+        _resolve_dep(OGG_LOCAL ogg)
+
+        _resolve_dep(FLAC_LOCAL FLAC)
+        set(FLAC_INCLUDE_DIR "${_flac_src}/include" CACHE PATH "" FORCE)
+        set(FLAC_LIBRARY "${CMAKE_BINARY_DIR}/_deps/flac-build/src/libFLAC/${CMAKE_STATIC_LIBRARY_PREFIX}FLAC${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
         set(FLAC_FOUND TRUE CACHE BOOL "" FORCE)
         set(FLAC_LIBRARIES "${FLAC_LIBRARY};${OGG_LIBRARY}" CACHE STRING "" FORCE)
-        set(FLAC_INCLUDE_DIRS "${_fc_base}/flac-src/include" CACHE PATH "" FORCE)
-        set(Vorbis_Vorbis_INCLUDE_DIR "${_fc_base}/vorbis-src/include" CACHE PATH "" FORCE)
-        set(Vorbis_Vorbis_LIBRARY "${_fc_base}/vorbis-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vorbis${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
-        set(Vorbis_Enc_INCLUDE_DIR "${_fc_base}/vorbis-src/include" CACHE PATH "" FORCE)
-        set(Vorbis_Enc_LIBRARY "${_fc_base}/vorbis-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vorbisenc${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
-        set(Vorbis_File_INCLUDE_DIR "${_fc_base}/vorbis-src/include" CACHE PATH "" FORCE)
-        set(Vorbis_File_LIBRARY "${_fc_base}/vorbis-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vorbisfile${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
-        set(OPUS_INCLUDE_DIR "${_fc_base}/opus-src/include" CACHE PATH "" FORCE)
-        set(OPUS_LIBRARY "${_fc_base}/opus-build/${CMAKE_STATIC_LIBRARY_PREFIX}opus${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
-        # Create imported targets so sndfile can link against them
+        set(FLAC_INCLUDE_DIRS "${_flac_src}/include" CACHE PATH "" FORCE)
+
+        _resolve_dep(VORBIS_LOCAL vorbis)
+        set(Vorbis_Vorbis_INCLUDE_DIR "${_vorbis_src}/include" CACHE PATH "" FORCE)
+        set(Vorbis_Vorbis_LIBRARY "${CMAKE_BINARY_DIR}/_deps/vorbis-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vorbis${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+        set(Vorbis_Enc_INCLUDE_DIR "${_vorbis_src}/include" CACHE PATH "" FORCE)
+        set(Vorbis_Enc_LIBRARY "${CMAKE_BINARY_DIR}/_deps/vorbis-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vorbisenc${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+        set(Vorbis_File_INCLUDE_DIR "${_vorbis_src}/include" CACHE PATH "" FORCE)
+        set(Vorbis_File_LIBRARY "${CMAKE_BINARY_DIR}/_deps/vorbis-build/lib/${CMAKE_STATIC_LIBRARY_PREFIX}vorbisfile${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+
+        _resolve_dep(OPUS_LOCAL opus)
+        set(OPUS_INCLUDE_DIR "${_opus_src}/include" CACHE PATH "" FORCE)
+        set(OPUS_LIBRARY "${CMAKE_BINARY_DIR}/_deps/opus-build/${CMAKE_STATIC_LIBRARY_PREFIX}opus${CMAKE_STATIC_LIBRARY_SUFFIX}" CACHE FILEPATH "" FORCE)
+
+        # Create imported targets (skip if already created by add_subdirectory)
         foreach(_spec
             "Ogg::ogg|OGG_LIBRARY|OGG_INCLUDE_DIRS"
             "FLAC::FLAC|FLAC_LIBRARY|FLAC_INCLUDE_DIRS"
@@ -193,43 +254,74 @@ if(INSIGHT_USE_SNDFILE)
                 add_library(${_target} STATIC IMPORTED)
                 set_target_properties(${_target} PROPERTIES
                     IMPORTED_LOCATION "${${_lib_var}}"
-                    INTERFACE_INCLUDE_DIRECTORIES "${${_inc_var}}"
-                )
+                    INTERFACE_INCLUDE_DIRECTORIES "${${_inc_var}}")
             endif()
         endforeach()
-        # Ogg is a dependency of FLAC, Vorbis, and Opus
-        set_target_properties(FLAC::FLAC PROPERTIES INTERFACE_LINK_LIBRARIES Ogg::ogg)
-        set_target_properties(Vorbis::vorbis PROPERTIES INTERFACE_LINK_LIBRARIES Ogg::ogg)
-        set_target_properties(Vorbis::vorbisenc PROPERTIES INTERFACE_LINK_LIBRARIES "Vorbis::vorbis;Ogg::ogg")
-        set_target_properties(Vorbis::vorbisfile PROPERTIES INTERFACE_LINK_LIBRARIES "Vorbis::vorbis;Ogg::ogg")
-        # Ogg needs binary dir for generated config_types.h
-        set_target_properties(Ogg::ogg PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${_fc_base}/ogg-src/include;${_fc_base}/ogg-build/include")
-        # Fetch and build all codec dependencies
+        # Link dependencies (only for imported targets we created, not add_subdirectory targets)
+        get_target_property(_flac_type FLAC::FLAC TYPE)
+        if(_flac_type STREQUAL "STATIC_LIBRARY")
+            get_target_property(_flac_imp FLAC::FLAC IMPORTED)
+            if(_flac_imp)
+                set_target_properties(FLAC::FLAC PROPERTIES INTERFACE_LINK_LIBRARIES Ogg::ogg)
+                set_target_properties(Vorbis::vorbis PROPERTIES INTERFACE_LINK_LIBRARIES Ogg::ogg)
+                set_target_properties(Vorbis::vorbisenc PROPERTIES INTERFACE_LINK_LIBRARIES "Vorbis::vorbis;Ogg::ogg")
+                set_target_properties(Vorbis::vorbisfile PROPERTIES INTERFACE_LINK_LIBRARIES "Vorbis::vorbis;Ogg::ogg")
+            endif()
+        endif()
+        # Ogg binary dir for generated config_types.h
+        set(_ogg_bin "${CMAKE_BINARY_DIR}/_deps/ogg-build")
+        get_target_property(_ogg_imp Ogg::ogg IMPORTED)
+        if(_ogg_imp)
+            set_target_properties(Ogg::ogg PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${_ogg_src}/include;${_ogg_bin}/include")
+        endif()
+
+        # Build remaining deps that weren't built by _resolve_dep
         set(_saved_skip_install ${CMAKE_SKIP_INSTALL_RULES})
         set(CMAKE_SKIP_INSTALL_RULES ON)
-        FetchContent_MakeAvailable(ogg vorbis FLAC opus)
+        # Only FetchContent_MakeAvailable deps that aren't local (local ones already resolved above)
+        # The _resolve_dep macro already called MakeAvailable for non-local deps
         set(CMAKE_SKIP_INSTALL_RULES ${_saved_skip_install})
-        # Opus puts headers in include/ directly, but code expects include/opus/
-        if(NOT EXISTS "${_fc_base}/opus-src/include/opus")
-            file(CREATE_LINK "${_fc_base}/opus-src/include" "${_fc_base}/opus-src/include/opus" SYMBOLIC)
+
+        # Opus header symlink
+        if(NOT EXISTS "${_opus_src}/include/opus")
+            file(CREATE_LINK "${_opus_src}/include" "${_opus_src}/include/opus" SYMBOLIC)
         endif()
-        FetchContent_Declare(sndfile
-            GIT_REPOSITORY "https://github.com/libsndfile/libsndfile.git"
-            GIT_TAG        "1.2.2"
-            GIT_SHALLOW    TRUE
-        )
-        set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
-        set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        set(ENABLE_EXTERNAL_LIBS ON CACHE BOOL "" FORCE)
-        set(HAVE_EXTERNAL_XIPH_LIBS ON CACHE BOOL "" FORCE)
-        FetchContent_MakeAvailable(sndfile)
+
+        # libsndfile
+        if(DEFINED SNDFILE_LOCAL)
+            set(_sndfile_src "${SNDFILE_LOCAL}")
+            set(_saved_skip ${CMAKE_SKIP_INSTALL_RULES})
+            set(CMAKE_SKIP_INSTALL_RULES ON)
+            add_subdirectory("${SNDFILE_LOCAL}" "${CMAKE_BINARY_DIR}/_deps/libsndfile-build")
+            set(CMAKE_SKIP_INSTALL_RULES ${_saved_skip})
+        else()
+            set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+            set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+            set(ENABLE_EXTERNAL_LIBS ON CACHE BOOL "" FORCE)
+            set(HAVE_EXTERNAL_XIPH_LIBS ON CACHE BOOL "" FORCE)
+            FetchContent_MakeAvailable(sndfile)
+            set(_sndfile_src "${sndfile_SOURCE_DIR}")
+        endif()
         set(SndFile_FOUND TRUE)
     endif()
     if(TARGET SndFile::sndfile-static)
         target_link_libraries(insight_core PRIVATE SndFile::sndfile-static)
     elseif(TARGET SndFile::sndfile)
         target_link_libraries(insight_core PRIVATE SndFile::sndfile)
+        # sndfile's codec deps are PRIVATE, must link explicitly
+        if(TARGET Vorbis::vorbisenc)
+            target_link_libraries(insight_core PRIVATE Vorbis::vorbisenc Vorbis::vorbis Vorbis::vorbisfile)
+        endif()
+        if(TARGET FLAC::FLAC)
+            target_link_libraries(insight_core PRIVATE FLAC::FLAC)
+        endif()
+        if(TARGET Opus::opus)
+            target_link_libraries(insight_core PRIVATE Opus::opus)
+        endif()
+        if(TARGET Ogg::ogg)
+            target_link_libraries(insight_core PRIVATE Ogg::ogg)
+        endif()
     endif()
     target_compile_definitions(insight_core PUBLIC INSIGHT_USE_SNDFILE)
     message(STATUS "libsndfile enabled (with FLAC support)")
@@ -247,6 +339,43 @@ target_include_directories(insight_core
         ${INSIGHT_UTILS_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# ========== Matplotplusplus (C++ plotting, matplotlib-compatible) ==========
+include(cmake/ApplyPatch.cmake)
+option(INSIGHT_USE_MATPLOT "Use matplotplusplus for plotting" ON)
+if(INSIGHT_USE_MATPLOT)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    set(LOCAL_MATPLOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/matplotplusplus")
+    if(EXISTS "${LOCAL_MATPLOT}/CMakeLists.txt")
+        message(STATUS "Using local matplotplusplus from ${LOCAL_MATPLOT}")
+        add_subdirectory("${LOCAL_MATPLOT}" "${CMAKE_CURRENT_BINARY_DIR}/matplotplusplus")
+    else()
+        message(STATUS "Fetching matplotplusplus from GitHub...")
+        include(FetchContent)
+        FetchContent_Declare(matplotplusplus
+            GIT_REPOSITORY "https://github.com/alandefreitas/matplotplusplus"
+            GIT_TAG        "v1.2.1"
+            GIT_SHALLOW    TRUE
+        )
+        set(MATPLOTPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(MATPLOTPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(MATPLOTPP_WITH_INTERACTIVE_BACKENDS OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(matplotplusplus)
+    endif()
+    # Apply GCC compatibility patches (idempotent)
+    apply_patch("${LOCAL_MATPLOT}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gcc-compat.patch")
+    if(TARGET matplot)
+        target_compile_definitions(insight_core PUBLIC INSIGHT_USE_MATPLOT)
+        target_link_libraries(insight_core PUBLIC matplot)
+        message(STATUS "Matplotplusplus enabled")
+    else()
+        message(WARNING "Matplotplusplus target not found, disabling")
+        set(INSIGHT_USE_MATPLOT OFF)
+    endif()
+else()
+    message(STATUS "Matplotplusplus support disabled")
+endif()
 
 # ========== CPU Backend ==========
 add_subdirectory(backends/cpu)
@@ -319,6 +448,7 @@ message(STATUS "  OpenMP:    ${OpenMP_CXX_FOUND}")
 message(STATUS "  OpenBLAS:  ${INSIGHT_USE_OPENBLAS}")
 message(STATUS "  FFTW3:     ${INSIGHT_USE_FFTW3}")
 message(STATUS "  SndFile:   ${INSIGHT_USE_SNDFILE}")
+message(STATUS "  Matplot:   ${INSIGHT_USE_MATPLOT}")
 message(STATUS "  CUDA:      ${INSIGHT_WITH_CUDA}")
 message(STATUS "  Thrust:    ${INSIGHT_USE_THRUST}")
 message(STATUS "  Tests:     ${INSIGHT_BUILD_TESTS}")

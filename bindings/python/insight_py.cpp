@@ -27,7 +27,11 @@
 #include "insight/ops/random.h"
 #include "insight/ops/reduction.h"
 #include "insight/ops/signal.h"
+#ifdef INSIGHT_USE_MATPLOT
+#include "insight/ops/plot.h"
+#endif
 
+#include <cmath>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -284,6 +288,45 @@ PYBIND11_MODULE(_insight, m) {
       "Initialize Insight backends");
   m.def("is_initialized", &ins::is_initialized,
         "Check if Insight is initialized");
+  m.def(
+      "load_backend",
+      [](const std::string &backend) { ins::load_backend(backend); },
+      py::arg("backend"),
+      "Load an additional backend after init() (e.g., 'cuda', 'rocm')");
+
+  // ===== Device information =====
+  m.def(
+      "device_name",
+      [](const std::string &kind, int device_id) {
+        DeviceKind dk = (kind == "gpu" || kind == "cuda") ? DeviceKind::GPU
+                                                          : DeviceKind::CPU;
+        return device_name(dk, device_id);
+      },
+      py::arg("kind") = "cpu", py::arg("device_id") = 0,
+      "Get the name of a device");
+  m.def(
+      "cuda_version", []() { return cuda_version(); },
+      "Get the CUDA runtime version (major*1000+minor*10, 0 if not available)");
+  m.def(
+      "driver_version", []() { return driver_version(); },
+      "Get the CUDA driver version (major*1000+minor*10, 0 if not available)");
+  m.def(
+      "compute_capability",
+      [](int device_id) { return compute_capability(device_id); },
+      py::arg("device_id") = 0,
+      "Get the compute capability of a GPU (e.g., 80 for SM 8.0)");
+  m.def(
+      "device_memory",
+      [](int device_id) {
+        auto info = device_memory(device_id);
+        return py::make_tuple(info.total, info.free);
+      },
+      py::arg("device_id") = 0,
+      "Get GPU memory info as (total_bytes, free_bytes)");
+  m.def(
+      "device_count",
+      []() { return static_cast<int>(device_count(DeviceKind::GPU)); },
+      "Get the number of GPU devices");
 
   // ===== DType (Paddle-style: ins.float32, ins.int64, ...) =====
   py::enum_<DType>(m, "DType")
@@ -564,7 +607,7 @@ PYBIND11_MODULE(_insight, m) {
   // ====================================================================
   m.def("abs", [](const Array &x) { return ins::abs(x); }, py::arg("x"));
   m.def("negative", [](const Array &x) { return negative(x); }, py::arg("x"));
-  m.def("square", [](const Array &x) { return square(x); }, py::arg("x"));
+  m.def("square", [](const Array &x) { return ins::square(x); }, py::arg("x"));
   m.def("sqrt", [](const Array &x) { return sqrt(x); }, py::arg("x"));
   m.def("exp", [](const Array &x) { return exp(x); }, py::arg("x"));
   m.def("log", [](const Array &x) { return log(x); }, py::arg("x"));
@@ -586,6 +629,18 @@ PYBIND11_MODULE(_insight, m) {
   m.def("isnan", [](const Array &x) { return isnan(x); }, py::arg("x"));
   m.def("isinf", [](const Array &x) { return isinf(x); }, py::arg("x"));
   m.def("isfinite", [](const Array &x) { return isfinite(x); }, py::arg("x"));
+  m.def("exp2", [](const Array &x) { return exp2(x); }, py::arg("x"));
+  m.def("expm1", [](const Array &x) { return expm1(x); }, py::arg("x"));
+  m.def("log1p", [](const Array &x) { return log1p(x); }, py::arg("x"));
+  m.def("cbrt", [](const Array &x) { return cbrt(x); }, py::arg("x"));
+  m.def(
+      "reciprocal", [](const Array &x) { return reciprocal(x); }, py::arg("x"));
+  m.def("asinh", [](const Array &x) { return asinh(x); }, py::arg("x"));
+  m.def("acosh", [](const Array &x) { return acosh(x); }, py::arg("x"));
+  m.def("atanh", [](const Array &x) { return atanh(x); }, py::arg("x"));
+  m.def("trunc", [](const Array &x) { return trunc(x); }, py::arg("x"));
+  m.def("deg2rad", [](const Array &x) { return deg2rad(x); }, py::arg("x"));
+  m.def("rad2deg", [](const Array &x) { return rad2deg(x); }, py::arg("x"));
   m.def(
       "where",
       [](const Array &cond, const Array &x, const Array &y) {
@@ -675,6 +730,91 @@ PYBIND11_MODULE(_insight, m) {
       py::arg("ddof") = 0);
   m.def("cumsum", &cumsum, py::arg("x"), py::arg("axis"));
   m.def("cumprod", &cumprod, py::arg("x"), py::arg("axis"));
+  m.def("cummax", &cummax, py::arg("x"), py::arg("axis"));
+  m.def("cummin", &cummin, py::arg("x"), py::arg("axis"));
+  m.def(
+      "sem",
+      [](const Array &x, std::optional<int> axis, bool keepdims, int ddof) {
+        return sem(x, axis, keepdims, ddof);
+      },
+      py::arg("x"), py::arg("axis") = std::nullopt, py::arg("keepdims") = false,
+      py::arg("ddof") = 0);
+  m.def(
+      "count_nonzero",
+      [](const Array &x, std::optional<int> axis, bool keepdims) {
+        return count_nonzero(x, axis, keepdims);
+      },
+      py::arg("x"), py::arg("axis") = std::nullopt,
+      py::arg("keepdims") = false);
+  m.def(
+      "median",
+      [](const Array &x, std::optional<int> axis, bool keepdims) {
+        return median(x, axis, keepdims);
+      },
+      py::arg("x"), py::arg("axis") = std::nullopt,
+      py::arg("keepdims") = false);
+  m.def(
+      "quantile",
+      [](const Array &x, double q, std::optional<int> axis, bool keepdims) {
+        return quantile(x, q, axis, keepdims);
+      },
+      py::arg("x"), py::arg("q"), py::arg("axis") = std::nullopt,
+      py::arg("keepdims") = false);
+  m.def(
+      "quantile",
+      [](const Array &x, const Array &q, std::optional<int> axis,
+         bool keepdims) { return quantile(x, q, axis, keepdims); },
+      py::arg("x"), py::arg("q"), py::arg("axis") = std::nullopt,
+      py::arg("keepdims") = false);
+  m.def(
+      "percentile",
+      [](const Array &x, double q, std::optional<int> axis, bool keepdims) {
+        return percentile(x, q, axis, keepdims);
+      },
+      py::arg("x"), py::arg("q"), py::arg("axis") = std::nullopt,
+      py::arg("keepdims") = false);
+  m.def(
+      "nansum",
+      [](const Array &x, std::optional<int> axis, bool keepdims) {
+        return nansum(x, axis, keepdims);
+      },
+      py::arg("x"), py::arg("axis") = std::nullopt,
+      py::arg("keepdims") = false);
+  m.def(
+      "nanmean",
+      [](const Array &x, std::optional<int> axis, bool keepdims) {
+        return nanmean(x, axis, keepdims);
+      },
+      py::arg("x"), py::arg("axis") = std::nullopt,
+      py::arg("keepdims") = false);
+  m.def(
+      "nanmax",
+      [](const Array &x, std::optional<int> axis, bool keepdims) {
+        return nanmax(x, axis, keepdims);
+      },
+      py::arg("x"), py::arg("axis") = std::nullopt,
+      py::arg("keepdims") = false);
+  m.def(
+      "nanmin",
+      [](const Array &x, std::optional<int> axis, bool keepdims) {
+        return nanmin(x, axis, keepdims);
+      },
+      py::arg("x"), py::arg("axis") = std::nullopt,
+      py::arg("keepdims") = false);
+  m.def(
+      "nanstd",
+      [](const Array &x, std::optional<int> axis, bool keepdims, int ddof) {
+        return nanstd(x, axis, keepdims, ddof);
+      },
+      py::arg("x"), py::arg("axis") = std::nullopt, py::arg("keepdims") = false,
+      py::arg("ddof") = 0);
+  m.def(
+      "nanvar",
+      [](const Array &x, std::optional<int> axis, bool keepdims, int ddof) {
+        return nanvar(x, axis, keepdims, ddof);
+      },
+      py::arg("x"), py::arg("axis") = std::nullopt, py::arg("keepdims") = false,
+      py::arg("ddof") = 0);
 
   // ====================================================================
   // Manipulation
@@ -709,6 +849,21 @@ PYBIND11_MODULE(_insight, m) {
   m.def("unsqueeze", &unsqueeze, py::arg("x"), py::arg("axis"));
   m.def("roll", &roll, py::arg("x"), py::arg("shift"),
         py::arg("axis") = std::nullopt);
+  m.def("permute", &permute, py::arg("x"), py::arg("axes"));
+  m.def("swapaxes", &swapaxes, py::arg("x"), py::arg("axis1"),
+        py::arg("axis2"));
+  m.def("moveaxis", &moveaxis, py::arg("x"), py::arg("source"),
+        py::arg("destination"));
+  m.def("fliplr", &fliplr, py::arg("x"));
+  m.def("flipud", &flipud, py::arg("x"));
+  m.def("rot90", &rot90, py::arg("x"), py::arg("k") = 1,
+        py::arg("axes") = std::vector<int>{0, 1});
+  m.def("diag", &diag, py::arg("x"), py::arg("k") = 0);
+  m.def("diagonal", &diagonal, py::arg("x"), py::arg("offset") = 0,
+        py::arg("axis1") = 0, py::arg("axis2") = 1);
+  m.def("tril", &tril, py::arg("x"), py::arg("k") = 0);
+  m.def("triu", &triu, py::arg("x"), py::arg("k") = 0);
+  m.def("diff", &diff, py::arg("x"), py::arg("n") = 1, py::arg("axis") = -1);
 
   // ====================================================================
   // Linear Algebra
@@ -808,13 +963,568 @@ PYBIND11_MODULE(_insight, m) {
       py::arg("n"), py::arg("d") = 1.0);
 
   // ====================================================================
-  // Signal
+  // Complex
   // ====================================================================
+  m.def("is_complex", static_cast<bool (*)(const Array &)>(&is_complex),
+        py::arg("x"), "Check if array has complex dtype");
+  m.def("has_complex_shape", &has_complex_shape, py::arg("x"),
+        "Check if array uses legacy complex storage (last dim = 2)");
+  m.def(
+      "to_complex", [](const Array &real) { return to_complex(real); },
+      py::arg("real"), "Convert real array to complex (imag = 0)");
+  m.def(
+      "to_complex",
+      [](const Array &real, const Array &imag) {
+        return to_complex(real, imag);
+      },
+      py::arg("real"), py::arg("imag"),
+      "Convert real and imag arrays to complex");
+  m.def("as_complex", &as_complex, py::arg("x"),
+        "View real array with last dim=2 as complex (zero-copy)");
+  m.def("as_real", &as_real, py::arg("x"),
+        "View complex array as real with last dim=2 (zero-copy)");
+  m.def(
+      "real", [](const Array &z) { return real(z); }, py::arg("z"),
+      "Extract real part from complex array");
+  m.def(
+      "imag", [](const Array &z) { return imag(z); }, py::arg("z"),
+      "Extract imaginary part from complex array");
+
+  // ====================================================================
+  // Signal (ins::signal:: namespace)
+  // ====================================================================
+  {
+    auto sig = m.def_submodule("signal", "Signal processing functions");
+
+    // --- Result structs ---
+    py::class_<signal::SpectralResult>(sig, "SpectralResult")
+        .def_readonly("f", &signal::SpectralResult::f)
+        .def_readonly("Pxx", &signal::SpectralResult::Pxx)
+        .def("__repr__", [](const signal::SpectralResult &r) {
+          return "<SpectralResult f=" + array_repr(r.f) +
+                 " Pxx=" + array_repr(r.Pxx) + ">";
+        });
+
+    py::class_<signal::SpectrogramResult>(sig, "SpectrogramResult")
+        .def_readonly("f", &signal::SpectrogramResult::f)
+        .def_readonly("t", &signal::SpectrogramResult::t)
+        .def_readonly("Sxx", &signal::SpectrogramResult::Sxx)
+        .def("__repr__", [](const signal::SpectrogramResult &r) {
+          return "<SpectrogramResult f=" + array_repr(r.f) +
+                 " t=" + array_repr(r.t) + " Sxx=" + array_repr(r.Sxx) + ">";
+        });
+
+    py::class_<signal::GaussPulseResult>(sig, "GaussPulseResult")
+        .def_readonly("yi", &signal::GaussPulseResult::yi)
+        .def_readonly("yq", &signal::GaussPulseResult::yq)
+        .def_readonly("ye", &signal::GaussPulseResult::ye)
+        .def("__repr__", [](const signal::GaussPulseResult &r) {
+          return "<GaussPulseResult yi=" + array_repr(r.yi) + ">";
+        });
+
+    // --- ChirpMethod enum ---
+    py::enum_<signal::ChirpMethod>(sig, "ChirpMethod")
+        .value("linear", signal::ChirpMethod::Linear)
+        .value("quadratic", signal::ChirpMethod::Quadratic)
+        .value("logarithmic", signal::ChirpMethod::Logarithmic)
+        .value("hyperbolic", signal::ChirpMethod::Hyperbolic);
+
+    // ----------------------------------------------------------------
+    // Windows
+    // ----------------------------------------------------------------
+    sig.def("general_cosine", &signal::general_cosine, py::arg("M"),
+            py::arg("a"), py::arg("sym") = true);
+    sig.def(
+        "get_window",
+        [](const std::string &window, int64_t Nx, bool fftbins) {
+          return signal::get_window(window, Nx, fftbins);
+        },
+        py::arg("window"), py::arg("Nx"), py::arg("fftbins") = true);
+    sig.def(
+        "get_window",
+        [](const std::string &window, double param, int64_t Nx, bool fftbins) {
+          return signal::get_window(window, param, Nx, fftbins);
+        },
+        py::arg("window"), py::arg("param"), py::arg("Nx"),
+        py::arg("fftbins") = true);
+    sig.def("boxcar", &signal::boxcar, py::arg("M"), py::arg("sym") = true);
+    sig.def("triang", &signal::triang, py::arg("M"), py::arg("sym") = true);
+    sig.def("parzen", &signal::parzen, py::arg("M"), py::arg("sym") = true);
+    sig.def("bohman", &signal::bohman, py::arg("M"), py::arg("sym") = true);
+    sig.def("bartlett", &signal::bartlett, py::arg("M"), py::arg("sym") = true);
+    sig.def("cosine", &signal::cosine, py::arg("M"), py::arg("sym") = true);
+    sig.def("exponential", &signal::exponential, py::arg("M"),
+            py::arg("center") = -1.0, py::arg("tau") = 1.0,
+            py::arg("sym") = true);
+    sig.def("blackman", &signal::blackman, py::arg("M"), py::arg("sym") = true);
+    sig.def("nuttall", &signal::nuttall, py::arg("M"), py::arg("sym") = true);
+    sig.def("blackmanharris", &signal::blackmanharris, py::arg("M"),
+            py::arg("sym") = true);
+    sig.def("flattop", &signal::flattop, py::arg("M"), py::arg("sym") = true);
+    sig.def("hann", &signal::hann, py::arg("M"), py::arg("sym") = true);
+    sig.def("general_hamming", &signal::general_hamming, py::arg("M"),
+            py::arg("alpha"), py::arg("sym") = true);
+    sig.def("hamming", &signal::hamming, py::arg("M"), py::arg("sym") = true);
+    sig.def("tukey", &signal::tukey, py::arg("M"), py::arg("alpha") = 0.5,
+            py::arg("sym") = true);
+    sig.def("barthann", &signal::barthann, py::arg("M"), py::arg("sym") = true);
+    sig.def("kaiser", &signal::kaiser, py::arg("M"), py::arg("beta"),
+            py::arg("sym") = true);
+    sig.def("gaussian", &signal::gaussian, py::arg("M"), py::arg("std"),
+            py::arg("sym") = true);
+    sig.def("general_gaussian", &signal::general_gaussian, py::arg("M"),
+            py::arg("p"), py::arg("sig"), py::arg("sym") = true);
+    sig.def("chebwin", &signal::chebwin, py::arg("M"), py::arg("at"),
+            py::arg("sym") = true);
+    sig.def("taylor", &signal::taylor, py::arg("M"), py::arg("nbar") = 4,
+            py::arg("sll") = -30.0, py::arg("norm") = true,
+            py::arg("sym") = true);
+
+    // ----------------------------------------------------------------
+    // Waveforms
+    // ----------------------------------------------------------------
+    sig.def("sawtooth", &signal::sawtooth, py::arg("t"),
+            py::arg("width") = 1.0);
+    sig.def("square_wf", &signal::square, py::arg("t"), py::arg("duty") = 0.5);
+    sig.def("gausspulse", &signal::gausspulse, py::arg("t"),
+            py::arg("fc") = 1000, py::arg("bw") = 0.5, py::arg("bwr") = -6,
+            py::arg("tpr") = -60);
+    sig.def("gausspulse_full", &signal::gausspulse_full, py::arg("t"),
+            py::arg("fc") = 1000, py::arg("bw") = 0.5, py::arg("bwr") = -6,
+            py::arg("tpr") = -60);
+    sig.def("chirp", &signal::chirp, py::arg("t"), py::arg("f0"), py::arg("t1"),
+            py::arg("f1"), py::arg("method") = signal::ChirpMethod::Linear,
+            py::arg("phi") = 0.0, py::arg("vertex_zero") = true);
+    sig.def("unit_impulse", &signal::unit_impulse, py::arg("shape"),
+            py::arg("idx") = -1, py::arg("dtype") = DType::F64,
+            py::arg("place") = get_device());
+
+    // ----------------------------------------------------------------
+    // B-Splines
+    // ----------------------------------------------------------------
+    sig.def("gauss_spline", &signal::gauss_spline, py::arg("x"), py::arg("n"));
+    sig.def("cubic", &signal::cubic, py::arg("x"));
+    sig.def("quadratic", &signal::quadratic, py::arg("x"));
+
+    // ----------------------------------------------------------------
+    // Filter Design
+    // ----------------------------------------------------------------
+    sig.def("kaiser_beta", &signal::kaiser_beta, py::arg("a"));
+    sig.def("kaiser_atten", &signal::kaiser_atten, py::arg("numtaps"),
+            py::arg("width"));
+    sig.def("firwin", &signal::firwin, py::arg("numtaps"), py::arg("cutoff"),
+            py::arg("window") = "hamming", py::arg("pass_zero") = "lowpass",
+            py::arg("scale") = true);
+    sig.def("firwin2", &signal::firwin2, py::arg("numtaps"), py::arg("freq"),
+            py::arg("gain"), py::arg("nfreqs") = 0,
+            py::arg("window") = "hamming", py::arg("antisymmetric") = false);
+    sig.def("cmplx_sort", &signal::cmplx_sort, py::arg("p"));
+
+    // ----------------------------------------------------------------
+    // Convolution
+    // ----------------------------------------------------------------
+    sig.def("fftconvolve", &signal::fftconvolve, py::arg("in1"), py::arg("in2"),
+            py::arg("mode") = "full");
+    sig.def("correlate", &signal::correlate, py::arg("in1"), py::arg("in2"),
+            py::arg("mode") = "full");
+    sig.def("convolve2d", &signal::convolve2d, py::arg("in1"), py::arg("in2"),
+            py::arg("mode") = "full");
+    sig.def("correlate2d", &signal::correlate2d, py::arg("in1"), py::arg("in2"),
+            py::arg("mode") = "full");
+    sig.def("choose_conv_method", &signal::choose_conv_method, py::arg("in1"),
+            py::arg("in2"), py::arg("mode") = "full");
+    sig.def("correlation_lags", &signal::correlation_lags, py::arg("in1_len"),
+            py::arg("in2_len"), py::arg("mode") = "full");
+
+    // ----------------------------------------------------------------
+    // Filtering
+    // ----------------------------------------------------------------
+    sig.def("hilbert", &signal::hilbert, py::arg("x"), py::arg("N") = -1);
+    sig.def("hilbert2", &signal::hilbert2, py::arg("x"), py::arg("N") = -1);
+    sig.def("detrend", &signal::detrend, py::arg("data"), py::arg("axis") = -1,
+            py::arg("type") = "linear");
+    sig.def("wiener", &signal::wiener, py::arg("im"),
+            py::arg("mysize") = std::vector<int64_t>{},
+            py::arg("noise") = -1.0);
+    sig.def("firfilter", &signal::firfilter, py::arg("b"), py::arg("x"),
+            py::arg("axis") = -1);
+    sig.def("lfilter", &signal::lfilter, py::arg("b"), py::arg("a"),
+            py::arg("x"), py::arg("axis") = -1);
+    sig.def("lfilter_zi", &signal::lfilter_zi, py::arg("b"), py::arg("a"));
+    sig.def("filtfilt", &signal::filtfilt, py::arg("b"), py::arg("a"),
+            py::arg("x"), py::arg("axis") = -1);
+    sig.def("decimate", &signal::decimate, py::arg("x"), py::arg("q"),
+            py::arg("axis") = -1, py::arg("zero_phase") = true);
+    sig.def("resample", &signal::resample, py::arg("x"), py::arg("num"),
+            py::arg("axis") = -1);
+    sig.def("resample_poly", &signal::resample_poly, py::arg("x"),
+            py::arg("up"), py::arg("down"), py::arg("axis") = -1);
+    sig.def("freq_shift", &signal::freq_shift, py::arg("x"), py::arg("freq"),
+            py::arg("fs"));
+
+    // ----------------------------------------------------------------
+    // Spectral Analysis
+    // ----------------------------------------------------------------
+    sig.def("csd", &signal::csd, py::arg("x"), py::arg("y"),
+            py::arg("fs") = 1.0, py::arg("window") = "hann",
+            py::arg("nperseg") = 256, py::arg("noverlap") = 0,
+            py::arg("nfft") = 0, py::arg("detrend") = "constant",
+            py::arg("return_onesided") = true, py::arg("scaling") = "density");
+    sig.def("welch", &signal::welch, py::arg("x"), py::arg("fs") = 1.0,
+            py::arg("window") = "hann", py::arg("nperseg") = 256,
+            py::arg("noverlap") = 0, py::arg("nfft") = 0,
+            py::arg("detrend") = "constant", py::arg("return_onesided") = true,
+            py::arg("scaling") = "density");
+    sig.def("periodogram", &signal::periodogram, py::arg("x"),
+            py::arg("fs") = 1.0, py::arg("window") = "boxcar",
+            py::arg("nfft") = 0, py::arg("detrend") = "constant",
+            py::arg("return_onesided") = true, py::arg("scaling") = "density");
+    sig.def("coherence", &signal::coherence, py::arg("x"), py::arg("y"),
+            py::arg("fs") = 1.0, py::arg("window") = "hann",
+            py::arg("nperseg") = 256, py::arg("noverlap") = 0,
+            py::arg("nfft") = 0, py::arg("detrend") = "constant");
+    sig.def("spectrogram", &signal::spectrogram, py::arg("x"),
+            py::arg("fs") = 1.0, py::arg("window") = "hann",
+            py::arg("nperseg") = 256, py::arg("noverlap") = 0,
+            py::arg("nfft") = 0, py::arg("detrend") = "constant",
+            py::arg("return_onesided") = true, py::arg("mode") = "psd");
+    sig.def("stft", &signal::stft, py::arg("x"), py::arg("fs") = 1.0,
+            py::arg("window") = "hann", py::arg("nperseg") = 256,
+            py::arg("noverlap") = 0, py::arg("nfft") = 0);
+    sig.def("vectorstrength", &signal::vectorstrength, py::arg("events"),
+            py::arg("period"));
+
+    // ----------------------------------------------------------------
+    // Wavelets
+    // ----------------------------------------------------------------
+    sig.def("morlet", &signal::morlet, py::arg("M"), py::arg("w") = 5.0,
+            py::arg("s") = 1.0, py::arg("complete") = true);
+    sig.def("ricker", &signal::ricker, py::arg("points"), py::arg("a"));
+    sig.def("morlet2", &signal::morlet2, py::arg("M"), py::arg("s"),
+            py::arg("w") = 5.0);
+    sig.def(
+        "cwt",
+        [](const Array &data, std::function<Array(int64_t, double)> wavelet,
+           const std::vector<double> &widths) {
+          return signal::cwt(data, wavelet, widths);
+        },
+        py::arg("data"), py::arg("wavelet"), py::arg("widths"));
+
+    // ----------------------------------------------------------------
+    // Acoustics
+    // ----------------------------------------------------------------
+    sig.def("mel2hz", &signal::mel2hz, py::arg("mels"));
+    sig.def("hz2mel", &signal::hz2mel, py::arg("hz"));
+    sig.def("mel_frequencies", &signal::mel_frequencies, py::arg("n_mels"),
+            py::arg("f_low") = 0.0, py::arg("f_high") = 11000.0);
+    sig.def("hz2bark", &signal::hz2bark, py::arg("hz"));
+    sig.def("bark2hz", &signal::bark2hz, py::arg("bark"));
+
+    // ----------------------------------------------------------------
+    // Top-level signal functions (in ins:: namespace, aliased here)
+    // ----------------------------------------------------------------
+    sig.def("convolve", &convolve, py::arg("a"), py::arg("v"),
+            py::arg("mode") = "full");
+    sig.def("unwrap", &unwrap, py::arg("p"), py::arg("axis") = -1,
+            py::arg("discont") = M_PI, py::arg("period") = 2 * M_PI);
+    sig.def("sinc", &sinc, py::arg("x"));
+  }
+
+  // Top-level aliases (scipy-compatible)
   m.def("convolve", &convolve, py::arg("a"), py::arg("v"),
         py::arg("mode") = "full");
   m.def("unwrap", &unwrap, py::arg("p"), py::arg("axis") = -1,
         py::arg("discont") = M_PI, py::arg("period") = 2 * M_PI);
   m.def("sinc", &sinc, py::arg("x"));
+
+  // ====================================================================
+  // Plot (ins::plot:: namespace, requires INSIGHT_USE_MATPLOT)
+  // ====================================================================
+#ifdef INSIGHT_USE_MATPLOT
+  {
+    auto plt = m.def_submodule("plot", "Plotting functions (matplotlib-style)");
+
+    // Figure & Axes
+    plt.def("figure", &plot::figure, py::arg("number") = -1);
+    plt.def("subplot", &plot::subplot, py::arg("rows"), py::arg("cols"),
+            py::arg("index"));
+    plt.def("hold", &plot::hold, py::arg("on"));
+    plt.def("clf", &plot::clf);
+    plt.def("show", &plot::show);
+    plt.def("save", &plot::save, py::arg("filename"));
+
+    // Line plots
+    plt.def(
+        "plot",
+        [](const Array &y, const std::string &fmt) { plot::plot(y, fmt); },
+        py::arg("y"), py::arg("format") = "");
+    plt.def(
+        "plot",
+        [](const Array &x, const Array &y, const std::string &fmt) {
+          plot::plot(x, y, fmt);
+        },
+        py::arg("x"), py::arg("y"), py::arg("format") = "");
+    plt.def(
+        "plot3",
+        [](const Array &x, const Array &y, const Array &z,
+           const std::string &fmt) { plot::plot3(x, y, z, fmt); },
+        py::arg("x"), py::arg("y"), py::arg("z"), py::arg("format") = "");
+    plt.def(
+        "fplot",
+        [](std::function<double(double)> f, double xmin, double xmax,
+           const std::string &fmt,
+           int n) { plot::fplot(f, xmin, xmax, fmt, n); },
+        py::arg("f"), py::arg("xmin"), py::arg("xmax"), py::arg("format") = "",
+        py::arg("n_points") = 100);
+    plt.def(
+        "stairs",
+        [](const Array &y, const std::string &fmt) { plot::stairs(y, fmt); },
+        py::arg("y"), py::arg("format") = "");
+    plt.def(
+        "stairs",
+        [](const Array &x, const Array &y, const std::string &fmt) {
+          plot::stairs(x, y, fmt);
+        },
+        py::arg("x"), py::arg("y"), py::arg("format") = "");
+    plt.def("errorbar", &plot::errorbar, py::arg("x"), py::arg("y"),
+            py::arg("err"), py::arg("format") = "");
+    plt.def("area", [](const Array &y) { plot::area(y); }, py::arg("y"));
+    plt.def(
+        "area", [](const Array &x, const Array &y) { plot::area(x, y); },
+        py::arg("x"), py::arg("y"));
+    plt.def("fill", &plot::fill, py::arg("x"), py::arg("y"),
+            py::arg("color") = "b");
+    plt.def("line", &plot::line, py::arg("x"), py::arg("y"),
+            py::arg("format") = "");
+
+    // Logarithmic
+    plt.def(
+        "semilogx",
+        [](const Array &y, const std::string &fmt) { plot::semilogx(y, fmt); },
+        py::arg("y"), py::arg("format") = "");
+    plt.def(
+        "semilogx",
+        [](const Array &x, const Array &y, const std::string &fmt) {
+          plot::semilogx(x, y, fmt);
+        },
+        py::arg("x"), py::arg("y"), py::arg("format") = "");
+    plt.def(
+        "semilogy",
+        [](const Array &y, const std::string &fmt) { plot::semilogy(y, fmt); },
+        py::arg("y"), py::arg("format") = "");
+    plt.def(
+        "semilogy",
+        [](const Array &x, const Array &y, const std::string &fmt) {
+          plot::semilogy(x, y, fmt);
+        },
+        py::arg("x"), py::arg("y"), py::arg("format") = "");
+    plt.def(
+        "loglog",
+        [](const Array &y, const std::string &fmt) { plot::loglog(y, fmt); },
+        py::arg("y"), py::arg("format") = "");
+    plt.def(
+        "loglog",
+        [](const Array &x, const Array &y, const std::string &fmt) {
+          plot::loglog(x, y, fmt);
+        },
+        py::arg("x"), py::arg("y"), py::arg("format") = "");
+
+    // Scatter
+    plt.def("scatter", &plot::scatter, py::arg("x"), py::arg("y"),
+            py::arg("size") = 20.0);
+    plt.def("scatter3", &plot::scatter3, py::arg("x"), py::arg("y"),
+            py::arg("z"), py::arg("size") = 20.0);
+    plt.def("binscatter", &plot::binscatter, py::arg("x"), py::arg("y"));
+
+    // Bar
+    plt.def(
+        "bar", [](const Array &y, double w) { plot::bar(y, w); }, py::arg("y"),
+        py::arg("width") = 0.8);
+    plt.def(
+        "bar",
+        [](const Array &x, const Array &y, double w) { plot::bar(x, y, w); },
+        py::arg("x"), py::arg("y"), py::arg("width") = 0.8);
+    plt.def(
+        "barh", [](const Array &y, double w) { plot::barh(y, w); },
+        py::arg("y"), py::arg("width") = 0.8);
+    plt.def(
+        "barh",
+        [](const Array &x, const Array &y, double w) { plot::barh(x, y, w); },
+        py::arg("x"), py::arg("y"), py::arg("width") = 0.8);
+    plt.def("barstacked", py::overload_cast<const Array &>(&plot::barstacked),
+            py::arg("Y"));
+    plt.def("barstacked",
+            py::overload_cast<const Array &, const Array &>(&plot::barstacked),
+            py::arg("x"), py::arg("Y"));
+    plt.def("pareto", [](const Array &y) { plot::pareto(y); }, py::arg("y"));
+    plt.def(
+        "pareto", [](const Array &x, const Array &y) { plot::pareto(x, y); },
+        py::arg("x"), py::arg("y"));
+
+    // Histograms
+    plt.def("hist", &plot::hist, py::arg("data"), py::arg("bins") = 10);
+    plt.def("hist2", &plot::hist2, py::arg("x"), py::arg("y"),
+            py::arg("bins") = 10);
+    plt.def(
+        "boxplot", [](const Array &d) { plot::boxplot(d); }, py::arg("data"));
+    plt.def(
+        "boxplot",
+        [](const Array &d, const std::vector<std::string> &g) {
+          plot::boxplot(d, g);
+        },
+        py::arg("data"), py::arg("groups"));
+    plt.def("heatmap", &plot::heatmap, py::arg("data"));
+
+    // Stem
+    plt.def(
+        "stem",
+        [](const Array &y, const std::string &fmt) { plot::stem(y, fmt); },
+        py::arg("y"), py::arg("format") = "");
+    plt.def(
+        "stem",
+        [](const Array &x, const Array &y, const std::string &fmt) {
+          plot::stem(x, y, fmt);
+        },
+        py::arg("x"), py::arg("y"), py::arg("format") = "");
+    plt.def("stem3", &plot::stem3, py::arg("x"), py::arg("y"), py::arg("z"),
+            py::arg("format") = "");
+
+    // Contour
+    plt.def("contour", &plot::contour, py::arg("X"), py::arg("Y"), py::arg("Z"),
+            py::arg("levels") = 10);
+    plt.def("contourf", &plot::contourf, py::arg("X"), py::arg("Y"),
+            py::arg("Z"), py::arg("levels") = 10);
+    plt.def("pcolor", &plot::pcolor, py::arg("C"));
+
+    // Surface / Mesh
+    plt.def("surf", &plot::surf, py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def("surfc", &plot::surfc, py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def("mesh", &plot::mesh, py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def("meshc", &plot::meshc, py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def("meshz", &plot::meshz, py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def("waterfall", &plot::waterfall, py::arg("X"), py::arg("Y"),
+            py::arg("Z"));
+    plt.def(
+        "fsurf",
+        [](std::function<double(double, double)> f,
+           const std::vector<double> &uv) { plot::fsurf(f, uv); },
+        py::arg("f"), py::arg("uv") = std::vector<double>{-5, 5, -5, 5});
+    plt.def(
+        "fmesh",
+        [](std::function<double(double, double)> f,
+           const std::vector<double> &uv) { plot::fmesh(f, uv); },
+        py::arg("f"), py::arg("uv") = std::vector<double>{-5, 5, -5, 5});
+    plt.def("ribbon", [](const Array &y) { plot::ribbon(y); }, py::arg("y"));
+    plt.def(
+        "ribbon", [](const Array &x, const Array &y) { plot::ribbon(x, y); },
+        py::arg("x"), py::arg("y"));
+    plt.def("fence", &plot::fence, py::arg("X"), py::arg("Y"), py::arg("Z"));
+
+    // Vector fields
+    plt.def("quiver", &plot::quiver, py::arg("X"), py::arg("Y"), py::arg("U"),
+            py::arg("V"), py::arg("scale") = 1.0);
+    plt.def("quiver3", &plot::quiver3, py::arg("X"), py::arg("Y"), py::arg("Z"),
+            py::arg("U"), py::arg("V"), py::arg("W"));
+    plt.def("feather", &plot::feather, py::arg("u"), py::arg("v"));
+
+    // Polar
+    plt.def("polarplot", &plot::polarplot, py::arg("theta"), py::arg("rho"),
+            py::arg("format") = "");
+    plt.def("polarscatter", &plot::polarscatter, py::arg("theta"),
+            py::arg("rho"), py::arg("size") = 20.0);
+    plt.def("polarhistogram", &plot::polarhistogram, py::arg("data"),
+            py::arg("bins") = 10);
+    plt.def("compass", &plot::compass, py::arg("u"), py::arg("v"));
+    plt.def("ezpolar", &plot::ezpolar, py::arg("expr"));
+
+    // Pie
+    plt.def("pie", [](const Array &x) { plot::pie(x); }, py::arg("x"));
+    plt.def(
+        "pie",
+        [](const Array &x, const std::vector<std::string> &labels) {
+          plot::pie(x, labels);
+        },
+        py::arg("x"), py::arg("labels"));
+
+    // Images
+    plt.def("imshow", &plot::imshow, py::arg("data"));
+    plt.def("image", &plot::image, py::arg("data"));
+    plt.def("imagesc", &plot::imagesc, py::arg("data"));
+
+    // Graph
+    plt.def("graph", &plot::graph, py::arg("sources"), py::arg("targets"));
+    plt.def("digraph", &plot::digraph, py::arg("sources"), py::arg("targets"));
+
+    // Misc
+    plt.def("parallelplot", &plot::parallelplot, py::arg("data"));
+    plt.def("plotmatrix", &plot::plotmatrix, py::arg("X"));
+    plt.def("wordcloud", &plot::wordcloud, py::arg("words"), py::arg("sizes"));
+    plt.def("rgbplot", &plot::rgbplot, py::arg("data"));
+
+    // Labels & Titles
+    plt.def("title", &plot::title, py::arg("text"));
+    plt.def("subtitle", &plot::subtitle, py::arg("text"));
+    plt.def("xlabel", &plot::xlabel, py::arg("text"));
+    plt.def("ylabel", &plot::ylabel, py::arg("text"));
+    plt.def("zlabel", &plot::zlabel, py::arg("text"));
+    plt.def("legend", &plot::legend, py::arg("labels"));
+
+    // Axis limits
+    plt.def("xlim", &plot::xlim, py::arg("xmin"), py::arg("xmax"));
+    plt.def("ylim", &plot::ylim, py::arg("ymin"), py::arg("ymax"));
+    plt.def("zlim", &plot::zlim, py::arg("zmin"), py::arg("zmax"));
+    plt.def("axis_equal", &plot::axis_equal);
+    plt.def("axis_tight", &plot::axis_tight);
+    plt.def("axis_off", &plot::axis_off);
+    plt.def("axis_ij", &plot::axis_ij);
+    plt.def("grid", &plot::grid, py::arg("on"));
+
+    // Ticks
+    plt.def("xticks", &plot::xticks, py::arg("ticks"));
+    plt.def("yticks", &plot::yticks, py::arg("ticks"));
+    plt.def("zticks", &plot::zticks, py::arg("ticks"));
+    plt.def("xticklabels", &plot::xticklabels, py::arg("labels"));
+    plt.def("yticklabels", &plot::yticklabels, py::arg("labels"));
+    plt.def("xtickangle", &plot::xtickangle, py::arg("angle"));
+    plt.def("ytickangle", &plot::ytickangle, py::arg("angle"));
+
+    // Colormap
+    py::enum_<plot::Colormap>(plt, "Colormap")
+        .value("parula", plot::Colormap::Parula)
+        .value("jet", plot::Colormap::Jet)
+        .value("hsv", plot::Colormap::HSV)
+        .value("hot", plot::Colormap::Hot)
+        .value("cool", plot::Colormap::Cool)
+        .value("spring", plot::Colormap::Spring)
+        .value("summer", plot::Colormap::Summer)
+        .value("autumn", plot::Colormap::Autumn)
+        .value("winter", plot::Colormap::Winter)
+        .value("bone", plot::Colormap::Bone)
+        .value("copper", plot::Colormap::Copper)
+        .value("pink", plot::Colormap::Pink)
+        .value("lines", plot::Colormap::Lines)
+        .value("colorcube", plot::Colormap::Colorcube)
+        .value("prism", plot::Colormap::Prism)
+        .value("flag", plot::Colormap::Flag);
+    plt.def("colormap", &plot::colormap, py::arg("cmap"));
+    plt.def("colorbar", &plot::colorbar, py::arg("on") = true);
+
+    // Annotations
+    plt.def(
+        "text",
+        [](double x, double y, const std::string &s) { plot::text(x, y, s); },
+        py::arg("x"), py::arg("y"), py::arg("text"));
+    plt.def("arrow", &plot::arrow, py::arg("x1"), py::arg("y1"), py::arg("x2"),
+            py::arg("y2"));
+    plt.def("rectangle", &plot::rectangle, py::arg("x"), py::arg("y"),
+            py::arg("w"), py::arg("h"));
+    plt.def("ellipse", &plot::ellipse, py::arg("cx"), py::arg("cy"),
+            py::arg("rx"), py::arg("ry"));
+
+    // 3D Camera
+    plt.def("view", &plot::view, py::arg("azimuth"), py::arg("elevation"));
+  }
+#endif // INSIGHT_USE_MATPLOT
 
   // ====================================================================
   // Random
@@ -893,4 +1603,126 @@ PYBIND11_MODULE(_insight, m) {
         return searchsorted(x, v, side);
       },
       py::arg("x"), py::arg("v"), py::arg("side") = "left");
+
+  // --- Additional indexing ---
+  {
+    py::class_<UniqueResult>(m, "UniqueResult")
+        .def_readonly("unique", &UniqueResult::unique)
+        .def_readonly("indices", &UniqueResult::indices)
+        .def_readonly("inverse", &UniqueResult::inverse)
+        .def_readonly("counts", &UniqueResult::counts);
+    m.def("unique", &unique, py::arg("x"), py::arg("return_indices") = false,
+          py::arg("return_inverse") = false, py::arg("return_counts") = false);
+    m.def("topk", &topk, py::arg("x"), py::arg("k"), py::arg("axis") = -1,
+          py::arg("largest") = true, py::arg("sorted") = true);
+    m.def("gather", &gather, py::arg("x"), py::arg("dim"), py::arg("index"));
+    m.def("scatter", &scatter, py::arg("x"), py::arg("dim"), py::arg("index"),
+          py::arg("src"));
+    m.def("scatter_add", &scatter_add, py::arg("x"), py::arg("dim"),
+          py::arg("index"), py::arg("src"));
+    m.def("scatter_reduce", &scatter_reduce, py::arg("x"), py::arg("dim"),
+          py::arg("index"), py::arg("src"), py::arg("reduce") = "replace");
+    m.def("interp", &interp, py::arg("x"), py::arg("xp"), py::arg("fp"),
+          py::arg("left") = std::nullopt, py::arg("right") = std::nullopt);
+    m.def(
+        "indices",
+        [](const Shape &shape, bool sparse) { return indices(shape, sparse); },
+        py::arg("shape"), py::arg("sparse") = false);
+    m.def("ix_", &ix_, py::arg("arrays"));
+  }
+
+  // --- Additional random ---
+  m.def("seed", &seed, py::arg("seed"));
+  m.def("get_seed", &get_seed);
+  m.def("rand_like", &rand_like, py::arg("x"));
+  m.def("randn_like", &randn_like, py::arg("x"));
+  m.def(
+      "exponential",
+      [](double scale, const Shape &shape, DType dtype, const Place &place) {
+        return exponential(scale, shape, dtype, place);
+      },
+      py::arg("scale"), py::arg("shape"), py::arg("dtype") = DType::F32,
+      py::arg("place") = get_device());
+  m.def(
+      "gamma",
+      [](double shape_p, double rate, const Shape &shape, DType dtype,
+         const Place &place) {
+        return gamma(shape_p, rate, shape, dtype, place);
+      },
+      py::arg("shape"), py::arg("rate"), py::arg("out_shape"),
+      py::arg("dtype") = DType::F32, py::arg("place") = get_device());
+  m.def(
+      "beta",
+      [](double a, double b, const Shape &shape, DType dtype,
+         const Place &place) { return beta(a, b, shape, dtype, place); },
+      py::arg("a"), py::arg("b"), py::arg("shape"),
+      py::arg("dtype") = DType::F32, py::arg("place") = get_device());
+  m.def(
+      "binomial",
+      [](int64_t n, double p, const Shape &shape, DType dtype,
+         const Place &place) { return binomial(n, p, shape, dtype, place); },
+      py::arg("n"), py::arg("p"), py::arg("shape"),
+      py::arg("dtype") = DType::I64, py::arg("place") = get_device());
+  m.def(
+      "poisson",
+      [](double lam, const Shape &shape, DType dtype, const Place &place) {
+        return poisson(lam, shape, dtype, place);
+      },
+      py::arg("lam"), py::arg("shape"), py::arg("dtype") = DType::I64,
+      py::arg("place") = get_device());
+
+  // --- Additional FFT ---
+  m.def(
+      "fftshift",
+      [](const Array &x, int axis) { return fft::fftshift(x, axis); },
+      py::arg("x"), py::arg("axis") = -1);
+  m.def(
+      "ifftshift",
+      [](const Array &x, int axis) { return fft::ifftshift(x, axis); },
+      py::arg("x"), py::arg("axis") = -1);
+  m.def(
+      "next_fast_len", [](int target) { return fft::next_fast_len(target); },
+      py::arg("target"));
+  m.def(
+      "hfft",
+      [](const Array &x, int n, int axis, const std::string &norm) {
+        return fft::hfft(x, n, axis, norm);
+      },
+      py::arg("x"), py::arg("n") = -1, py::arg("axis") = -1,
+      py::arg("norm") = "backward");
+  m.def(
+      "ihfft",
+      [](const Array &x, int n, int axis, const std::string &norm) {
+        return fft::ihfft(x, n, axis, norm);
+      },
+      py::arg("x"), py::arg("n") = -1, py::arg("axis") = -1,
+      py::arg("norm") = "backward");
+  m.def(
+      "rfft2",
+      [](const Array &x, const std::vector<int64_t> &s,
+         const std::vector<int> &axes,
+         const std::string &norm) { return fft::rfft2(x, s, axes, norm); },
+      py::arg("x"), py::arg("s") = std::vector<int64_t>{},
+      py::arg("axes") = std::vector<int>{-2, -1}, py::arg("norm") = "backward");
+  m.def(
+      "irfft2",
+      [](const Array &x, const std::vector<int64_t> &s,
+         const std::vector<int> &axes,
+         const std::string &norm) { return fft::irfft2(x, s, axes, norm); },
+      py::arg("x"), py::arg("s") = std::vector<int64_t>{},
+      py::arg("axes") = std::vector<int>{-2, -1}, py::arg("norm") = "backward");
+  m.def(
+      "rfftn",
+      [](const Array &x, const std::vector<int64_t> &s,
+         const std::vector<int> &axes,
+         const std::string &norm) { return fft::rfftn(x, s, axes, norm); },
+      py::arg("x"), py::arg("s") = std::vector<int64_t>{},
+      py::arg("axes") = std::vector<int>{}, py::arg("norm") = "backward");
+  m.def(
+      "irfftn",
+      [](const Array &x, const std::vector<int64_t> &s,
+         const std::vector<int> &axes,
+         const std::string &norm) { return fft::irfftn(x, s, axes, norm); },
+      py::arg("x"), py::arg("s") = std::vector<int64_t>{},
+      py::arg("axes") = std::vector<int>{}, py::arg("norm") = "backward");
 }

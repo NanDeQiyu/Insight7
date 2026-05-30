@@ -22,6 +22,7 @@
 #include "insight/core/slice.h"
 #include "insight/init.h"
 #include "insight/ops/cast.h"
+#include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
 #include "insight/ops/fft.h"
@@ -32,7 +33,12 @@
 #include "insight/ops/random.h"
 #include "insight/ops/reduction.h"
 #include "insight/ops/signal.h"
+#include "insight/ops/unary.h"
+#ifdef INSIGHT_USE_MATPLOT
+#include "insight/ops/plot.h"
+#endif
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -237,6 +243,32 @@ extern "C" int luaopen__insight(lua_State *L) {
     ins::init(be);
   };
 
+  // Load additional backend after init
+  m["load_backend"] = [](const std::string &backend) {
+    ins::load_backend(backend);
+  };
+
+  // ===== Device information =====
+  m["device_name"] = [](sol::optional<std::string> kind,
+                        sol::optional<int> device_id) {
+    std::string k = kind.value_or("cpu");
+    DeviceKind dk =
+        (k == "gpu" || k == "cuda") ? DeviceKind::GPU : DeviceKind::CPU;
+    return device_name(dk, device_id.value_or(0));
+  };
+  m["cuda_version"] = []() { return cuda_version(); };
+  m["driver_version"] = []() { return driver_version(); };
+  m["compute_capability"] = [](sol::optional<int> device_id) {
+    return compute_capability(device_id.value_or(0));
+  };
+  m["device_memory"] = [](sol::optional<int> device_id) {
+    auto info = device_memory(device_id.value_or(0));
+    return std::make_tuple(info.total, info.free);
+  };
+  m["gpu_count"] = []() {
+    return static_cast<int>(device_count(DeviceKind::GPU));
+  };
+
   // ===== DType shortcuts (Paddle-style: ins.float32, ins.int64, ...) =====
   m["float32"] = DType::F32;
   m["float64"] = DType::F64;
@@ -273,8 +305,8 @@ extern "C" int luaopen__insight(lua_State *L) {
       sol::constructors<Array(), Array(const Shape &, DType, const Place &)>());
 
   // Properties
-  array_type["shape"] = sol::property([](const Array &a) {
-    sol::table t;
+  array_type["shape"] = sol::property([](const Array &a, sol::this_state L) {
+    sol::table t = sol::table::create(L.lua_state(), a.shape().ndim());
     for (int i = 0; i < a.shape().ndim(); i++) {
       t[i + 1] = a.shape().dim(i);
     }
@@ -468,6 +500,32 @@ extern "C" int luaopen__insight(lua_State *L) {
   m["where"] = [](const Array &cond, const Array &x, const Array &y) {
     return where(cond, x, y);
   };
+  m["exp2"] = [](const Array &x) { return exp2(x); };
+  m["expm1"] = [](const Array &x) { return expm1(x); };
+  m["log1p"] = [](const Array &x) { return log1p(x); };
+  m["cbrt"] = [](const Array &x) { return cbrt(x); };
+  m["reciprocal"] = [](const Array &x) { return reciprocal(x); };
+  m["asinh"] = [](const Array &x) { return asinh(x); };
+  m["acosh"] = [](const Array &x) { return acosh(x); };
+  m["atanh"] = [](const Array &x) { return atanh(x); };
+  m["trunc"] = [](const Array &x) { return trunc(x); };
+  m["deg2rad"] = [](const Array &x) { return deg2rad(x); };
+  m["rad2deg"] = [](const Array &x) { return rad2deg(x); };
+
+  // ====================================================================
+  // Complex
+  // ====================================================================
+  m["is_complex"] = [](const Array &x) { return is_complex(x); };
+  m["has_complex_shape"] = [](const Array &x) { return has_complex_shape(x); };
+  m["to_complex"] =
+      sol::overload([](const Array &real) { return to_complex(real); },
+                    [](const Array &real, const Array &imag) {
+                      return to_complex(real, imag);
+                    });
+  m["as_complex"] = [](const Array &x) { return as_complex(x); };
+  m["as_real"] = [](const Array &x) { return as_real(x); };
+  m["real"] = [](const Array &z) { return real(z); };
+  m["imag"] = [](const Array &z) { return imag(z); };
 
   // ====================================================================
   // Reduction
@@ -509,6 +567,69 @@ extern "C" int luaopen__insight(lua_State *L) {
   };
   m["cumsum"] = [](const Array &x, int axis) { return cumsum(x, axis); };
   m["cumprod"] = [](const Array &x, int axis) { return cumprod(x, axis); };
+  m["cummax"] = [](const Array &x, int axis) { return cummax(x, axis); };
+  m["cummin"] = [](const Array &x, int axis) { return cummin(x, axis); };
+  m["sem"] = [](const Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims, sol::optional<int> ddof) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return sem(x, ax, keepdims.value_or(false), ddof.value_or(0));
+  };
+  m["count_nonzero"] = [](const Array &x, sol::optional<int> axis,
+                          sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return count_nonzero(x, ax, keepdims.value_or(false));
+  };
+  m["median"] = [](const Array &x, sol::optional<int> axis,
+                   sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return median(x, ax, keepdims.value_or(false));
+  };
+  m["quantile"] = sol::overload(
+      [](const Array &x, double q, sol::optional<int> axis,
+         sol::optional<bool> keepdims) {
+        std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+        return quantile(x, q, ax, keepdims.value_or(false));
+      },
+      [](const Array &x, const Array &q, sol::optional<int> axis,
+         sol::optional<bool> keepdims) {
+        std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+        return quantile(x, q, ax, keepdims.value_or(false));
+      });
+  m["percentile"] = [](const Array &x, double q, sol::optional<int> axis,
+                       sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return percentile(x, q, ax, keepdims.value_or(false));
+  };
+  m["nansum"] = [](const Array &x, sol::optional<int> axis,
+                   sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return nansum(x, ax, keepdims.value_or(false));
+  };
+  m["nanmean"] = [](const Array &x, sol::optional<int> axis,
+                    sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return nanmean(x, ax, keepdims.value_or(false));
+  };
+  m["nanmax"] = [](const Array &x, sol::optional<int> axis,
+                   sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return nanmax(x, ax, keepdims.value_or(false));
+  };
+  m["nanmin"] = [](const Array &x, sol::optional<int> axis,
+                   sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return nanmin(x, ax, keepdims.value_or(false));
+  };
+  m["nanstd"] = [](const Array &x, sol::optional<int> axis,
+                   sol::optional<bool> keepdims, sol::optional<int> ddof) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return nanstd(x, ax, keepdims.value_or(false), ddof.value_or(0));
+  };
+  m["nanvar"] = [](const Array &x, sol::optional<int> axis,
+                   sol::optional<bool> keepdims, sol::optional<int> ddof) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return nanvar(x, ax, keepdims.value_or(false), ddof.value_or(0));
+  };
 
   // ====================================================================
   // Manipulation
@@ -540,6 +661,39 @@ extern "C" int luaopen__insight(lua_State *L) {
   m["roll"] = [](const Array &x, int shift, sol::optional<int> axis) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
     return roll(x, shift, ax);
+  };
+  m["permute"] = [](const Array &x, std::vector<int> axes) {
+    return permute(x, axes);
+  };
+  m["swapaxes"] = [](const Array &x, int axis1, int axis2) {
+    return swapaxes(x, axis1, axis2);
+  };
+  m["moveaxis"] = [](const Array &x, int source, int destination) {
+    return moveaxis(x, source, destination);
+  };
+  m["fliplr"] = [](const Array &x) { return fliplr(x); };
+  m["flipud"] = [](const Array &x) { return flipud(x); };
+  m["rot90"] = [](const Array &x, sol::optional<int> k,
+                  sol::optional<std::vector<int>> axes) {
+    return rot90(x, k.value_or(1), axes.value_or(std::vector<int>{0, 1}));
+  };
+  m["diag"] = [](const Array &x, sol::optional<int> k) {
+    return diag(x, k.value_or(0));
+  };
+  m["diagonal"] = [](const Array &x, sol::optional<int> offset,
+                     sol::optional<int> axis1, sol::optional<int> axis2) {
+    return diagonal(x, offset.value_or(0), axis1.value_or(0),
+                    axis2.value_or(1));
+  };
+  m["tril"] = [](const Array &x, sol::optional<int> k) {
+    return tril(x, k.value_or(0));
+  };
+  m["triu"] = [](const Array &x, sol::optional<int> k) {
+    return triu(x, k.value_or(0));
+  };
+  m["diff"] = [](const Array &x, sol::optional<int> n,
+                 sol::optional<int> axis) {
+    return diff(x, n.value_or(1), axis.value_or(-1));
   };
 
   // ====================================================================
@@ -596,13 +750,604 @@ extern "C" int luaopen__insight(lua_State *L) {
   m["rfftfreq"] = [](int64_t n, sol::optional<double> d) {
     return fft::rfftfreq(n, d.value_or(1.0));
   };
+  m["fftshift"] = [](const Array &x, sol::optional<int> axis) {
+    return fft::fftshift(x, axis.value_or(-1));
+  };
+  m["ifftshift"] = [](const Array &x, sol::optional<int> axis) {
+    return fft::ifftshift(x, axis.value_or(-1));
+  };
+  m["next_fast_len"] = [](int target) { return fft::next_fast_len(target); };
+  m["hfft"] = [](const Array &x, sol::optional<int> n, sol::optional<int> axis,
+                 sol::optional<std::string> norm) {
+    return fft::hfft(x, n.value_or(-1), axis.value_or(-1),
+                     norm.value_or("backward"));
+  };
+  m["ihfft"] = [](const Array &x, sol::optional<int> n, sol::optional<int> axis,
+                  sol::optional<std::string> norm) {
+    return fft::ihfft(x, n.value_or(-1), axis.value_or(-1),
+                      norm.value_or("backward"));
+  };
+  m["rfft2"] = [](const Array &x, sol::optional<std::vector<int64_t>> s,
+                  sol::optional<std::vector<int>> axes,
+                  sol::optional<std::string> norm) {
+    return fft::rfft2(x, s.value_or(std::vector<int64_t>{}),
+                      axes.value_or(std::vector<int>{-2, -1}),
+                      norm.value_or("backward"));
+  };
+  m["irfft2"] = [](const Array &x, sol::optional<std::vector<int64_t>> s,
+                   sol::optional<std::vector<int>> axes,
+                   sol::optional<std::string> norm) {
+    return fft::irfft2(x, s.value_or(std::vector<int64_t>{}),
+                       axes.value_or(std::vector<int>{-2, -1}),
+                       norm.value_or("backward"));
+  };
+  m["rfftn"] = [](const Array &x, sol::optional<std::vector<int64_t>> s,
+                  sol::optional<std::vector<int>> axes,
+                  sol::optional<std::string> norm) {
+    return fft::rfftn(x, s.value_or(std::vector<int64_t>{}),
+                      axes.value_or(std::vector<int>{}),
+                      norm.value_or("backward"));
+  };
+  m["irfftn"] = [](const Array &x, sol::optional<std::vector<int64_t>> s,
+                   sol::optional<std::vector<int>> axes,
+                   sol::optional<std::string> norm) {
+    return fft::irfftn(x, s.value_or(std::vector<int64_t>{}),
+                       axes.value_or(std::vector<int>{}),
+                       norm.value_or("backward"));
+  };
 
   // ====================================================================
-  // Signal
+  // Signal (ins.signal.*)
   // ====================================================================
+  {
+    sol::table sig = m.create_named("signal");
+
+    // --- ChirpMethod enum ---
+    sol::table cm = sig.create_named("ChirpMethod");
+    cm["linear"] = signal::ChirpMethod::Linear;
+    cm["quadratic"] = signal::ChirpMethod::Quadratic;
+    cm["logarithmic"] = signal::ChirpMethod::Logarithmic;
+    cm["hyperbolic"] = signal::ChirpMethod::Hyperbolic;
+
+    // --- Windows ---
+    sig["general_cosine"] = [](int64_t M, std::vector<double> a,
+                               sol::optional<bool> sym) {
+      return signal::general_cosine(M, a, sym.value_or(true));
+    };
+    sig["get_window"] = sol::overload(
+        [](const std::string &w, int64_t Nx, sol::optional<bool> fftbins) {
+          return signal::get_window(w, Nx, fftbins.value_or(true));
+        },
+        [](const std::string &w, double param, int64_t Nx,
+           sol::optional<bool> fftbins) {
+          return signal::get_window(w, param, Nx, fftbins.value_or(true));
+        });
+    sig["boxcar"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::boxcar(M, sym.value_or(true));
+    };
+    sig["triang"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::triang(M, sym.value_or(true));
+    };
+    sig["parzen"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::parzen(M, sym.value_or(true));
+    };
+    sig["bohman"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::bohman(M, sym.value_or(true));
+    };
+    sig["bartlett"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::bartlett(M, sym.value_or(true));
+    };
+    sig["cosine"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::cosine(M, sym.value_or(true));
+    };
+    sig["exponential"] = [](int64_t M, sol::optional<double> center,
+                            sol::optional<double> tau,
+                            sol::optional<bool> sym) {
+      return signal::exponential(M, center.value_or(-1.0), tau.value_or(1.0),
+                                 sym.value_or(true));
+    };
+    sig["blackman"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::blackman(M, sym.value_or(true));
+    };
+    sig["nuttall"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::nuttall(M, sym.value_or(true));
+    };
+    sig["blackmanharris"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::blackmanharris(M, sym.value_or(true));
+    };
+    sig["flattop"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::flattop(M, sym.value_or(true));
+    };
+    sig["hann"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::hann(M, sym.value_or(true));
+    };
+    sig["general_hamming"] = [](int64_t M, double alpha,
+                                sol::optional<bool> sym) {
+      return signal::general_hamming(M, alpha, sym.value_or(true));
+    };
+    sig["hamming"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::hamming(M, sym.value_or(true));
+    };
+    sig["tukey"] = [](int64_t M, sol::optional<double> alpha,
+                      sol::optional<bool> sym) {
+      return signal::tukey(M, alpha.value_or(0.5), sym.value_or(true));
+    };
+    sig["barthann"] = [](int64_t M, sol::optional<bool> sym) {
+      return signal::barthann(M, sym.value_or(true));
+    };
+    sig["kaiser"] = [](int64_t M, double beta, sol::optional<bool> sym) {
+      return signal::kaiser(M, beta, sym.value_or(true));
+    };
+    sig["gaussian"] = [](int64_t M, double std_val, sol::optional<bool> sym) {
+      return signal::gaussian(M, std_val, sym.value_or(true));
+    };
+    sig["general_gaussian"] = [](int64_t M, double p, double sig_val,
+                                 sol::optional<bool> sym) {
+      return signal::general_gaussian(M, p, sig_val, sym.value_or(true));
+    };
+    sig["chebwin"] = [](int64_t M, double at, sol::optional<bool> sym) {
+      return signal::chebwin(M, at, sym.value_or(true));
+    };
+    sig["taylor"] = [](int64_t M, sol::optional<int64_t> nbar,
+                       sol::optional<double> sll, sol::optional<bool> norm,
+                       sol::optional<bool> sym) {
+      return signal::taylor(M, nbar.value_or(4), sll.value_or(-30.0),
+                            norm.value_or(true), sym.value_or(true));
+    };
+
+    // --- Waveforms ---
+    sig["sawtooth"] = [](const Array &t, sol::optional<double> width) {
+      return signal::sawtooth(t, width.value_or(1.0));
+    };
+    sig["square_wf"] = [](const Array &t, sol::optional<double> duty) {
+      return signal::square(t, duty.value_or(0.5));
+    };
+    sig["gausspulse"] = [](const Array &t, sol::optional<double> fc,
+                           sol::optional<double> bw, sol::optional<double> bwr,
+                           sol::optional<double> tpr) {
+      return signal::gausspulse(t, fc.value_or(1000), bw.value_or(0.5),
+                                bwr.value_or(-6), tpr.value_or(-60));
+    };
+    sig["chirp"] = [](const Array &t, double f0, double t1, double f1,
+                      sol::optional<signal::ChirpMethod> method,
+                      sol::optional<double> phi,
+                      sol::optional<bool> vertex_zero) {
+      return signal::chirp(t, f0, t1, f1,
+                           method.value_or(signal::ChirpMethod::Linear),
+                           phi.value_or(0.0), vertex_zero.value_or(true));
+    };
+    sig["unit_impulse"] = [](sol::table shape, sol::optional<int64_t> idx,
+                             sol::optional<DType> dtype,
+                             sol::optional<Place> place) {
+      return signal::unit_impulse(Shape(table_to_shape(shape)),
+                                  idx.value_or(-1), dtype.value_or(DType::F64),
+                                  place.value_or(get_device()));
+    };
+
+    // --- B-Splines ---
+    sig["gauss_spline"] = &signal::gauss_spline;
+    sig["cubic"] = &signal::cubic;
+    sig["quadratic"] = &signal::quadratic;
+
+    // --- Filter Design ---
+    sig["kaiser_beta"] = &signal::kaiser_beta;
+    sig["kaiser_atten"] = &signal::kaiser_atten;
+    sig["firwin"] = [](int64_t numtaps, std::vector<double> cutoff,
+                       sol::optional<std::string> window,
+                       sol::optional<std::string> pass_zero,
+                       sol::optional<bool> scale) {
+      return signal::firwin(numtaps, cutoff, window.value_or("hamming"),
+                            pass_zero.value_or("lowpass"),
+                            scale.value_or(true));
+    };
+    sig["firwin2"] = [](int64_t numtaps, std::vector<double> freq,
+                        std::vector<double> gain, sol::optional<int64_t> nfreqs,
+                        sol::optional<std::string> window,
+                        sol::optional<bool> antisymmetric) {
+      return signal::firwin2(numtaps, freq, gain, nfreqs.value_or(0),
+                             window.value_or("hamming"),
+                             antisymmetric.value_or(false));
+    };
+    sig["cmplx_sort"] = &signal::cmplx_sort;
+
+    // --- Convolution ---
+    sig["fftconvolve"] = [](const Array &in1, const Array &in2,
+                            sol::optional<std::string> mode) {
+      return signal::fftconvolve(in1, in2, mode.value_or("full"));
+    };
+    sig["correlate"] = [](const Array &in1, const Array &in2,
+                          sol::optional<std::string> mode) {
+      return signal::correlate(in1, in2, mode.value_or("full"));
+    };
+    sig["convolve2d"] = [](const Array &in1, const Array &in2,
+                           sol::optional<std::string> mode) {
+      return signal::convolve2d(in1, in2, mode.value_or("full"));
+    };
+    sig["correlate2d"] = [](const Array &in1, const Array &in2,
+                            sol::optional<std::string> mode) {
+      return signal::correlate2d(in1, in2, mode.value_or("full"));
+    };
+    sig["choose_conv_method"] = [](const Array &in1, const Array &in2,
+                                   sol::optional<std::string> mode) {
+      return signal::choose_conv_method(in1, in2, mode.value_or("full"));
+    };
+    sig["correlation_lags"] = [](int64_t in1_len, int64_t in2_len,
+                                 sol::optional<std::string> mode) {
+      return signal::correlation_lags(in1_len, in2_len, mode.value_or("full"));
+    };
+
+    // --- Filtering ---
+    sig["hilbert"] = [](const Array &x, sol::optional<int64_t> N) {
+      return signal::hilbert(x, N.value_or(-1));
+    };
+    sig["hilbert2"] = [](const Array &x, sol::optional<int64_t> N) {
+      return signal::hilbert2(x, N.value_or(-1));
+    };
+    sig["detrend"] = [](const Array &data, sol::optional<int> axis,
+                        sol::optional<std::string> type) {
+      return signal::detrend(data, axis.value_or(-1), type.value_or("linear"));
+    };
+    sig["wiener"] = [](const Array &im,
+                       sol::optional<std::vector<int64_t>> mysize,
+                       sol::optional<double> noise) {
+      return signal::wiener(im, mysize.value_or(std::vector<int64_t>{}),
+                            noise.value_or(-1.0));
+    };
+    sig["firfilter"] = [](const Array &b, const Array &x,
+                          sol::optional<int> axis) {
+      return signal::firfilter(b, x, axis.value_or(-1));
+    };
+    sig["lfilter"] = [](const Array &b, const Array &a, const Array &x,
+                        sol::optional<int> axis) {
+      return signal::lfilter(b, a, x, axis.value_or(-1));
+    };
+    sig["lfilter_zi"] = &signal::lfilter_zi;
+    sig["filtfilt"] = [](const Array &b, const Array &a, const Array &x,
+                         sol::optional<int> axis) {
+      return signal::filtfilt(b, a, x, axis.value_or(-1));
+    };
+    sig["decimate"] = [](const Array &x, int64_t q, sol::optional<int> axis,
+                         sol::optional<bool> zero_phase) {
+      return signal::decimate(x, q, axis.value_or(-1),
+                              zero_phase.value_or(true));
+    };
+    sig["resample"] = [](const Array &x, int64_t num, sol::optional<int> axis) {
+      return signal::resample(x, num, axis.value_or(-1));
+    };
+    sig["resample_poly"] = [](const Array &x, int64_t up, int64_t down,
+                              sol::optional<int> axis) {
+      return signal::resample_poly(x, up, down, axis.value_or(-1));
+    };
+    sig["freq_shift"] = &signal::freq_shift;
+
+    // --- Spectral Analysis ---
+    sig["welch"] =
+        [](const Array &x, sol::optional<double> fs,
+           sol::optional<std::string> window, sol::optional<int64_t> nperseg,
+           sol::optional<int64_t> noverlap, sol::optional<int64_t> nfft,
+           sol::optional<std::string> detrend,
+           sol::optional<bool> return_onesided,
+           sol::optional<std::string> scaling) {
+          return signal::welch(x, fs.value_or(1.0), window.value_or("hann"),
+                               nperseg.value_or(256), noverlap.value_or(0),
+                               nfft.value_or(0), detrend.value_or("constant"),
+                               return_onesided.value_or(true),
+                               scaling.value_or("density"));
+        };
+    sig["periodogram"] = [](const Array &x, sol::optional<double> fs,
+                            sol::optional<std::string> window,
+                            sol::optional<int64_t> nfft,
+                            sol::optional<std::string> detrend,
+                            sol::optional<bool> return_onesided,
+                            sol::optional<std::string> scaling) {
+      return signal::periodogram(x, fs.value_or(1.0), window.value_or("boxcar"),
+                                 nfft.value_or(0), detrend.value_or("constant"),
+                                 return_onesided.value_or(true),
+                                 scaling.value_or("density"));
+    };
+    sig["csd"] =
+        [](const Array &x, const Array &y, sol::optional<double> fs,
+           sol::optional<std::string> window, sol::optional<int64_t> nperseg,
+           sol::optional<int64_t> noverlap, sol::optional<int64_t> nfft,
+           sol::optional<std::string> detrend,
+           sol::optional<bool> return_onesided,
+           sol::optional<std::string> scaling) {
+          return signal::csd(x, y, fs.value_or(1.0), window.value_or("hann"),
+                             nperseg.value_or(256), noverlap.value_or(0),
+                             nfft.value_or(0), detrend.value_or("constant"),
+                             return_onesided.value_or(true),
+                             scaling.value_or("density"));
+        };
+    sig["coherence"] = [](const Array &x, const Array &y,
+                          sol::optional<double> fs,
+                          sol::optional<std::string> window,
+                          sol::optional<int64_t> nperseg,
+                          sol::optional<int64_t> noverlap,
+                          sol::optional<int64_t> nfft,
+                          sol::optional<std::string> detrend) {
+      return signal::coherence(x, y, fs.value_or(1.0), window.value_or("hann"),
+                               nperseg.value_or(256), noverlap.value_or(0),
+                               nfft.value_or(0), detrend.value_or("constant"));
+    };
+    sig["spectrogram"] = [](const Array &x, sol::optional<double> fs,
+                            sol::optional<std::string> window,
+                            sol::optional<int64_t> nperseg,
+                            sol::optional<int64_t> noverlap,
+                            sol::optional<int64_t> nfft,
+                            sol::optional<std::string> detrend,
+                            sol::optional<bool> return_onesided,
+                            sol::optional<std::string> mode) {
+      return signal::spectrogram(
+          x, fs.value_or(1.0), window.value_or("hann"), nperseg.value_or(256),
+          noverlap.value_or(0), nfft.value_or(0), detrend.value_or("constant"),
+          return_onesided.value_or(true), mode.value_or("psd"));
+    };
+    sig["stft"] =
+        [](const Array &x, sol::optional<double> fs,
+           sol::optional<std::string> window, sol::optional<int64_t> nperseg,
+           sol::optional<int64_t> noverlap, sol::optional<int64_t> nfft) {
+          return signal::stft(x, fs.value_or(1.0), window.value_or("hann"),
+                              nperseg.value_or(256), noverlap.value_or(0),
+                              nfft.value_or(0));
+        };
+    sig["vectorstrength"] = &signal::vectorstrength;
+
+    // --- Wavelets ---
+    sig["morlet"] = [](int64_t M, sol::optional<double> w,
+                       sol::optional<double> s, sol::optional<bool> complete) {
+      return signal::morlet(M, w.value_or(5.0), s.value_or(1.0),
+                            complete.value_or(true));
+    };
+    sig["ricker"] = &signal::ricker;
+    sig["morlet2"] = [](int64_t M, double s, sol::optional<double> w) {
+      return signal::morlet2(M, s, w.value_or(5.0));
+    };
+    // Note: cwt takes std::function — not easily bindable from Lua
+
+    // --- Acoustics ---
+    sig["mel2hz"] = &signal::mel2hz;
+    sig["hz2mel"] = &signal::hz2mel;
+    sig["mel_frequencies"] = [](int64_t n_mels, sol::optional<double> f_low,
+                                sol::optional<double> f_high) {
+      return signal::mel_frequencies(n_mels, f_low.value_or(0.0),
+                                     f_high.value_or(11000.0));
+    };
+    sig["hz2bark"] = &signal::hz2bark;
+    sig["bark2hz"] = &signal::bark2hz;
+
+    // Top-level aliases
+    sig["convolve"] = &convolve;
+    sig["unwrap"] = &unwrap;
+    sig["sinc"] = &sinc;
+  }
+
+  // Top-level aliases (scipy-compatible)
   m["convolve"] = &convolve;
   m["unwrap"] = &unwrap;
   m["sinc"] = &sinc;
+
+  // ====================================================================
+  // Plot (ins.plot.*, requires INSIGHT_USE_MATPLOT)
+  // ====================================================================
+#ifdef INSIGHT_USE_MATPLOT
+  {
+    sol::table plt = m.create_named("plot");
+
+    plt["figure"] = [](sol::optional<int> number) {
+      plot::figure(number.value_or(-1));
+    };
+    plt["subplot"] = &plot::subplot;
+    plt["hold"] = &plot::hold;
+    plt["clf"] = &plot::clf;
+    plt["show"] = &plot::show;
+    plt["save"] = &plot::save;
+
+    plt["plot"] = sol::overload(
+        [](const Array &y, sol::optional<std::string> fmt) {
+          plot::plot(y, fmt.value_or(""));
+        },
+        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+          plot::plot(x, y, fmt.value_or(""));
+        });
+    plt["plot3"] = [](const Array &x, const Array &y, const Array &z,
+                      sol::optional<std::string> fmt) {
+      plot::plot3(x, y, z, fmt.value_or(""));
+    };
+    plt["stairs"] = sol::overload(
+        [](const Array &y, sol::optional<std::string> fmt) {
+          plot::stairs(y, fmt.value_or(""));
+        },
+        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+          plot::stairs(x, y, fmt.value_or(""));
+        });
+    plt["errorbar"] = &plot::errorbar;
+    plt["area"] =
+        sol::overload([](const Array &y) { plot::area(y); },
+                      [](const Array &x, const Array &y) { plot::area(x, y); });
+    plt["fill"] = [](const Array &x, const Array &y,
+                     sol::optional<std::string> color) {
+      plot::fill(x, y, color.value_or("b"));
+    };
+    plt["line"] = [](const Array &x, const Array &y,
+                     sol::optional<std::string> fmt) {
+      plot::line(x, y, fmt.value_or(""));
+    };
+
+    plt["semilogx"] = sol::overload(
+        [](const Array &y, sol::optional<std::string> fmt) {
+          plot::semilogx(y, fmt.value_or(""));
+        },
+        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+          plot::semilogx(x, y, fmt.value_or(""));
+        });
+    plt["semilogy"] = sol::overload(
+        [](const Array &y, sol::optional<std::string> fmt) {
+          plot::semilogy(y, fmt.value_or(""));
+        },
+        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+          plot::semilogy(x, y, fmt.value_or(""));
+        });
+    plt["loglog"] = sol::overload(
+        [](const Array &y, sol::optional<std::string> fmt) {
+          plot::loglog(y, fmt.value_or(""));
+        },
+        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+          plot::loglog(x, y, fmt.value_or(""));
+        });
+
+    plt["scatter"] = [](const Array &x, const Array &y,
+                        sol::optional<double> size) {
+      plot::scatter(x, y, size.value_or(20.0));
+    };
+    plt["scatter3"] = [](const Array &x, const Array &y, const Array &z,
+                         sol::optional<double> size) {
+      plot::scatter3(x, y, z, size.value_or(20.0));
+    };
+    plt["binscatter"] = &plot::binscatter;
+
+    plt["bar"] = sol::overload(
+        [](const Array &y, sol::optional<double> w) {
+          plot::bar(y, w.value_or(0.8));
+        },
+        [](const Array &x, const Array &y, sol::optional<double> w) {
+          plot::bar(x, y, w.value_or(0.8));
+        });
+    plt["barh"] = sol::overload(
+        [](const Array &y, sol::optional<double> w) {
+          plot::barh(y, w.value_or(0.8));
+        },
+        [](const Array &x, const Array &y, sol::optional<double> w) {
+          plot::barh(x, y, w.value_or(0.8));
+        });
+    plt["barstacked"] = sol::overload(
+        [](const Array &Y) { plot::barstacked(Y); },
+        [](const Array &x, const Array &Y) { plot::barstacked(x, Y); });
+    plt["pareto"] = sol::overload(
+        [](const Array &y) { plot::pareto(y); },
+        [](const Array &x, const Array &y) { plot::pareto(x, y); });
+
+    plt["hist"] = [](const Array &data, sol::optional<int> bins) {
+      plot::hist(data, bins.value_or(10));
+    };
+    plt["hist2"] = [](const Array &x, const Array &y, sol::optional<int> bins) {
+      plot::hist2(x, y, bins.value_or(10));
+    };
+    plt["boxplot"] =
+        sol::overload([](const Array &data) { plot::boxplot(data); },
+                      [](const Array &data, std::vector<std::string> groups) {
+                        plot::boxplot(data, groups);
+                      });
+    plt["heatmap"] = &plot::heatmap;
+
+    plt["stem"] = sol::overload(
+        [](const Array &y, sol::optional<std::string> fmt) {
+          plot::stem(y, fmt.value_or(""));
+        },
+        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+          plot::stem(x, y, fmt.value_or(""));
+        });
+    plt["stem3"] = [](const Array &x, const Array &y, const Array &z,
+                      sol::optional<std::string> fmt) {
+      plot::stem3(x, y, z, fmt.value_or(""));
+    };
+
+    plt["contour"] = [](const Array &X, const Array &Y, const Array &Z,
+                        sol::optional<int> levels) {
+      plot::contour(X, Y, Z, levels.value_or(10));
+    };
+    plt["contourf"] = [](const Array &X, const Array &Y, const Array &Z,
+                         sol::optional<int> levels) {
+      plot::contourf(X, Y, Z, levels.value_or(10));
+    };
+    plt["pcolor"] = &plot::pcolor;
+
+    plt["surf"] = &plot::surf;
+    plt["surfc"] = &plot::surfc;
+    plt["mesh"] = &plot::mesh;
+    plt["meshc"] = &plot::meshc;
+    plt["meshz"] = &plot::meshz;
+    plt["waterfall"] = &plot::waterfall;
+    plt["ribbon"] = sol::overload(
+        [](const Array &y) { plot::ribbon(y); },
+        [](const Array &x, const Array &y) { plot::ribbon(x, y); });
+    plt["fence"] = &plot::fence;
+
+    plt["quiver"] = [](const Array &X, const Array &Y, const Array &U,
+                       const Array &V, sol::optional<double> scale) {
+      plot::quiver(X, Y, U, V, scale.value_or(1.0));
+    };
+    plt["quiver3"] = &plot::quiver3;
+    plt["feather"] = &plot::feather;
+
+    plt["polarplot"] = [](const Array &theta, const Array &rho,
+                          sol::optional<std::string> fmt) {
+      plot::polarplot(theta, rho, fmt.value_or(""));
+    };
+    plt["polarscatter"] = [](const Array &theta, const Array &rho,
+                             sol::optional<double> size) {
+      plot::polarscatter(theta, rho, size.value_or(20.0));
+    };
+    plt["polarhistogram"] = [](const Array &data, sol::optional<int> bins) {
+      plot::polarhistogram(data, bins.value_or(10));
+    };
+    plt["compass"] = &plot::compass;
+    plt["ezpolar"] = &plot::ezpolar;
+
+    plt["pie"] =
+        sol::overload([](const Array &x) { plot::pie(x); },
+                      [](const Array &x, std::vector<std::string> labels) {
+                        plot::pie(x, labels);
+                      });
+
+    plt["imshow"] = &plot::imshow;
+    plt["image"] = &plot::image;
+    plt["imagesc"] = &plot::imagesc;
+
+    plt["graph"] = &plot::graph;
+    plt["digraph"] = &plot::digraph;
+    plt["parallelplot"] = &plot::parallelplot;
+    plt["plotmatrix"] = &plot::plotmatrix;
+    plt["wordcloud"] = &plot::wordcloud;
+    plt["rgbplot"] = &plot::rgbplot;
+
+    plt["title"] = &plot::title;
+    plt["subtitle"] = &plot::subtitle;
+    plt["xlabel"] = &plot::xlabel;
+    plt["ylabel"] = &plot::ylabel;
+    plt["zlabel"] = &plot::zlabel;
+    plt["legend"] = &plot::legend;
+
+    plt["xlim"] = &plot::xlim;
+    plt["ylim"] = &plot::ylim;
+    plt["zlim"] = &plot::zlim;
+    plt["axis_equal"] = &plot::axis_equal;
+    plt["axis_tight"] = &plot::axis_tight;
+    plt["axis_off"] = &plot::axis_off;
+    plt["axis_ij"] = &plot::axis_ij;
+    plt["grid"] = &plot::grid;
+
+    plt["xticks"] = &plot::xticks;
+    plt["yticks"] = &plot::yticks;
+    plt["zticks"] = &plot::zticks;
+    plt["xticklabels"] = &plot::xticklabels;
+    plt["yticklabels"] = &plot::yticklabels;
+    plt["xtickangle"] = &plot::xtickangle;
+    plt["ytickangle"] = &plot::ytickangle;
+
+    plt["colormap"] = &plot::colormap;
+    plt["colorbar"] = [](sol::optional<bool> on) {
+      plot::colorbar(on.value_or(true));
+    };
+
+    plt["text"] = [](double x, double y, const std::string &s) {
+      plot::text(x, y, s);
+    };
+    plt["arrow"] = &plot::arrow;
+    plt["rectangle"] = &plot::rectangle;
+    plt["ellipse"] = &plot::ellipse;
+    plt["view"] = &plot::view;
+  }
+#endif // INSIGHT_USE_MATPLOT
 
   // ====================================================================
   // Random
@@ -623,6 +1368,37 @@ extern "C" int luaopen__insight(lua_State *L) {
                    dtype.value_or(DType::I64), place.value_or(get_device()));
   };
   m["randperm"] = &randperm;
+  m["seed"] = [](uint64_t s) { return seed(s); };
+  m["get_seed"] = []() { return get_seed(); };
+  m["rand_like"] = [](const Array &x) { return rand_like(x); };
+  m["randn_like"] = [](const Array &x) { return randn_like(x); };
+  m["exponential"] = [](double scale, sol::table shape,
+                        sol::optional<DType> dtype,
+                        sol::optional<Place> place) {
+    return exponential(scale, Shape(table_to_shape(shape)),
+                       dtype.value_or(DType::F32),
+                       place.value_or(get_device()));
+  };
+  m["gamma"] = [](double shape_param, double rate, sol::table shape,
+                  sol::optional<DType> dtype, sol::optional<Place> place) {
+    return gamma(shape_param, rate, Shape(table_to_shape(shape)),
+                 dtype.value_or(DType::F32), place.value_or(get_device()));
+  };
+  m["beta"] = [](double a, double b, sol::table shape,
+                 sol::optional<DType> dtype, sol::optional<Place> place) {
+    return beta(a, b, Shape(table_to_shape(shape)), dtype.value_or(DType::F32),
+                place.value_or(get_device()));
+  };
+  m["binomial"] = [](int64_t n, double p, sol::table shape,
+                     sol::optional<DType> dtype, sol::optional<Place> place) {
+    return binomial(n, p, Shape(table_to_shape(shape)),
+                    dtype.value_or(DType::I64), place.value_or(get_device()));
+  };
+  m["poisson"] = [](double lam, sol::table shape, sol::optional<DType> dtype,
+                    sol::optional<Place> place) {
+    return poisson(lam, Shape(table_to_shape(shape)),
+                   dtype.value_or(DType::I64), place.value_or(get_device()));
+  };
 
   // ====================================================================
   // Cast
@@ -632,10 +1408,55 @@ extern "C" int luaopen__insight(lua_State *L) {
   // ====================================================================
   // Indexing
   // ====================================================================
+  sol::usertype<UniqueResult> ur_type = m.new_usertype<UniqueResult>(
+      "UniqueResult", sol::constructors<UniqueResult()>());
+  ur_type["unique"] = &UniqueResult::unique;
+  ur_type["indices"] = &UniqueResult::indices;
+  ur_type["inverse"] = &UniqueResult::inverse;
+  ur_type["counts"] = &UniqueResult::counts;
+
   m["take"] = &take;
   m["nonzero"] = &nonzero;
   m["argsort"] = &argsort;
   m["sort"] = &sort;
+  m["unique"] = [](const Array &x, sol::optional<bool> return_indices,
+                   sol::optional<bool> return_inverse,
+                   sol::optional<bool> return_counts) {
+    return unique(x, return_indices.value_or(false),
+                  return_inverse.value_or(false),
+                  return_counts.value_or(false));
+  };
+  m["topk"] = [](const Array &x, int64_t k, sol::optional<int> axis,
+                 sol::optional<bool> largest, sol::optional<bool> sorted) {
+    return topk(x, k, axis.value_or(-1), largest.value_or(true),
+                sorted.value_or(true));
+  };
+  m["gather"] = [](const Array &x, int dim, const Array &index) {
+    return gather(x, dim, index);
+  };
+  m["scatter"] = [](const Array &x, int dim, const Array &index,
+                    const Array &src) { return scatter(x, dim, index, src); };
+  m["scatter_add"] = [](const Array &x, int dim, const Array &index,
+                        const Array &src) {
+    return scatter_add(x, dim, index, src);
+  };
+  m["scatter_reduce"] = [](const Array &x, int dim, const Array &index,
+                           const Array &src,
+                           sol::optional<std::string> reduce) {
+    return scatter_reduce(x, dim, index, src, reduce.value_or("replace"));
+  };
+  m["interp"] = [](const Array &x, const Array &xp, const Array &fp,
+                   sol::optional<double> left, sol::optional<double> right) {
+    std::optional<double> l =
+        left ? std::optional<double>(*left) : std::nullopt;
+    std::optional<double> r =
+        right ? std::optional<double>(*right) : std::nullopt;
+    return interp(x, xp, fp, l, r);
+  };
+  m["indices"] = [](const Shape &shape, sol::optional<bool> sparse) {
+    return indices(shape, sparse.value_or(false));
+  };
+  m["ix_"] = [](sol::table arrays) { return ix_(table_to_arrays(arrays)); };
 
   // Push module table onto stack
   sol::stack::push(lua, m);

@@ -88,7 +88,9 @@ jobs:
             cmake \
             build-essential \
             luajit \
-            libluajit-5.1-dev
+            libluajit-5.1-dev \
+            luarocks
+          sudo luarocks install busted
 
       - name: Configure CMake
         run: |
@@ -111,10 +113,58 @@ jobs:
 
       - name: Test Lua binding
         run: |
-          export LUA_PATH="bindings/lua/?/init.lua;;"
           export LUA_CPATH="build/bindings/lua/?.so;;"
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          luajit tests/bindings/test_lua_binding.lua
+          busted tests/bindings/test_lua_binding.lua
+
+  lua53:
+    name: Lua Binding (Lua 5.3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libfftw3-dev \
+            libopenblas-dev \
+            liblapacke-dev \
+            libomp-dev \
+            cmake \
+            build-essential \
+            lua5.3 \
+            liblua5.3-dev \
+            luarocks
+          sudo luarocks install --lua-version=5.3 busted
+
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=OFF \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=ON \
+            -DINSIGHT_BUILD_PYTHON_BINDING=OFF \
+            -DINSIGHT_BUILD_LUA_BINDING=ON \
+            -DINSIGHT_BUILD_JULIA_BINDING=OFF \
+            -DLUA_DIR=/usr
+
+      - name: Build
+        run: cd build && cmake --build . -j$(nproc) --target insight_lua
+
+      - name: Test Lua 5.3 binding
+        run: |
+          export LUA_CPATH="build/bindings/lua/?.so;;"
+          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
+          busted --lua=lua5.3 tests/bindings/test_lua_binding.lua
 
   julia:
     name: Julia Binding

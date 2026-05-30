@@ -1,0 +1,86 @@
+name: Plot Module Tests
+
+on:
+  push:
+    branches: [ main, 'feat/**' ]
+    paths:
+      - 'include/insight/ops/plot.h'
+      - 'src/ops/plot.cpp'
+      - 'tests/cpu/test_plot.cpp'
+      - 'CMakeLists.txt'
+      - 'patches/matplotplusplus/**'
+      - '.github/workflows/plot_tests.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'include/insight/ops/plot.h'
+      - 'src/ops/plot.cpp'
+      - 'tests/cpu/test_plot.cpp'
+      - 'CMakeLists.txt'
+      - 'patches/matplotplusplus/**'
+      - '.github/workflows/plot_tests.yml'
+
+jobs:
+  plot-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake g++ libopenblas-dev libfftw3-dev libsndfile1-dev \
+          gnuplot-nox
+        # gnuplot-nox for headless rendering (no X11)
+
+    - name: Clone third_party sources
+      run: |
+        cd third_party
+        # matplotplusplus (with GCC patch applied at cmake time)
+        if [ ! -d matplotplusplus ]; then
+          git clone --depth 1 --branch v1.2.1 https://github.com/alandefreitas/matplotplusplus.git
+        fi
+        # libsndfile chain
+        for dep in ogg vorbis flac opus; do
+          if [ ! -d $dep ] && [ ! -d lib$dep ]; then
+            case $dep in
+              ogg)    git clone --depth 1 --branch v1.3.5 https://github.com/xiph/ogg.git ;;
+              vorbis) git clone --depth 1 --branch v1.3.7 https://github.com/xiph/vorbis.git ;;
+              flac)   git clone --depth 1 --branch 1.4.3 https://github.com/xiph/flac.git ;;
+              opus)   git clone --depth 1 --branch v1.5.2 https://github.com/xiph/opus.git ;;
+            esac
+          fi
+        done
+        if [ ! -d libsndfile ]; then
+          git clone --depth 1 --branch 1.2.2 https://github.com/libsndfile/libsndfile.git
+        fi
+
+    - name: Configure
+      run: |
+        mkdir -p build && cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DINSIGHT_USE_MATPLOT=ON \
+          -DINSIGHT_USE_SNDFILE=ON \
+          -DINSIGHT_WITH_CUDA=OFF \
+          -DINSIGHT_USE_FFTW3=ON \
+          -DINSIGHT_USE_OPENBLAS=ON \
+          -DINSIGHT_BUILD_TESTS=ON
+
+    - name: Build
+      run: cmake --build build -j$(nproc)
+
+    - name: Run plot tests
+      run: |
+        cd build
+        ./tests/insight_tests_cpu --gtest_filter="PlotTestCPU.*" --gtest_color=yes
+
+    - name: Run full CPU tests (no regression)
+      run: |
+        cd build
+        ./tests/insight_tests_cpu --gtest_color=yes
