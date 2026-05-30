@@ -94,9 +94,7 @@ TEST_F(EstimationTestCPU, KalmanFilterPredictWithF) {
 // KalmanFilter update
 // ============================================================================
 
-// KalmanFilter update and cycle tests require full batched matmul support
-// with 3D arrays. Mark as known limitation for now.
-TEST_F(EstimationTestCPU, DISABLED_KalmanFilterUpdate) {
+TEST_F(EstimationTestCPU, KalmanFilterUpdate) {
   KalmanFilter kf(2, 1, 0, 1, DType::F64);
 
   // Set initial state
@@ -157,7 +155,7 @@ TEST_F(EstimationTestCPU, KalmanFilterF32) {
 // KalmanFilter predict-update cycle
 // ============================================================================
 
-TEST_F(EstimationTestCPU, DISABLED_KalmanFilterCycle) {
+TEST_F(EstimationTestCPU, KalmanFilterCycle) {
   KalmanFilter kf(2, 1, 0, 1, DType::F64);
 
   // Initialize

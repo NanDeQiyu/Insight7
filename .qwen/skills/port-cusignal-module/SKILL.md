@@ -254,9 +254,16 @@ Then use those values in C++ `EXPECT_NEAR` assertions.
 1. **FFT length mismatch**: cuSignal uses `next_fast_len` for FFT padding — Insight7 has `fft::next_fast_len`, use it
 2. **Axis conventions**: cuSignal follows NumPy axis conventions (last axis = -1), Insight7 does too
 3. **Complex type handling**: cuSignal uses CuPy complex, Insight7 uses `std::complex<float/double>` on CPU and `cuFloatComplex/cuDoubleComplex` on CUDA
-4. **Window symmetry**: cuSignal's `sym=True` means periodic window, `sym=False` means symmetric — match this exactly
+4. **Window symmetry**: Insight7 `sym=True` = scipy `fftbins=False` (periodic). The conventions are swapped vs scipy's default.
 5. **Boundary modes**: convolution modes ("full", "same", "valid") and boundary modes ("fill", "wrap", "symmetric") must match scipy exactly
 6. **dtype preservation**: cuSignal often preserves input dtype, do the same
+7. **`Shape` uses `.dim(i)` not `[i]`**: The `Shape` class has no `operator[]`. Always use `shape().dim(i)`.
+8. **`linalg::` is not a namespace**: Functions like `matmul`, `inv`, `solve` are in `namespace ins` directly. From `namespace ins::signal`, call them as just `matmul(a, b)`.
+9. **No `dtype_sizeof`**: Use `insight_dtype_size(static_cast<int32_t>(dtype))` from `insight/c_api/dtype.h`.
+10. **Tests MUST init device**: All CPU test classes need `SetUpTestSuite()` with `ins::init({"cpu"}); set_device(CPUPlace());`. Without this, `get_device()` throws "Device interface not available".
+11. **`to_array` needs `#include "insight/ops/creation.h"`**: The `to_array` and `zeros` functions are in this header.
+12. **Julia `_dtype_code` helper**: For Julia bindings that need dtype codes, check if the helper exists in Insight.jl before creating new ones.
+13. **Python `firwin` cutoff must be Sequence**: The Python binding for `firwin` expects `cutoff` as a `Sequence`, not a scalar float. Pass `[0.3]` not `0.3`.
 
 ## Build Verification
 
