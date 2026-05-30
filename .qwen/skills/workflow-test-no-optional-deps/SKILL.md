@@ -62,6 +62,41 @@ The main CI workflow should:
 1. Build with all optional deps (FFTW, OpenBLAS) → full test suite
 2. Optionally: build without FFTW as a smoke test (accept FFT test failures)
 
+## FFTW Skip Guards
+
+To prevent CI failures when FFTW is not available, add `#ifndef INSIGHT_USE_FFTW3` guards to FFT-dependent test files:
+
+```cpp
+// In SetUpTestSuite — skip entire suite
+static void SetUpTestSuite() {
+    ins::init({"cpu"});
+    set_device(CPUPlace());
+#ifndef INSIGHT_USE_FFTW3
+    GTEST_SKIP() << "FFTW3 not available, skipping FFT-dependent tests";
+#endif
+}
+```
+
+Or for individual tests (when only some tests in a suite use FFT):
+
+```cpp
+TEST_F(RadarTestCPU, PulseCompressionBasic) {
+#ifndef INSIGHT_USE_FFTW3
+    GTEST_SKIP() << "FFTW3 not available";
+#endif
+    // ... test body
+}
+```
+
+**Which test files need guards:**
+- `test_signal_convolution.cpp` — all tests use fftconvolve/correlate
+- `test_signal_filter_design.cpp` — firwin2 uses FFT
+- `test_signal_filtering.cpp` — hilbert, lfilter, filtfilt, decimate, resample use FFT
+- `test_signal_spectral.cpp` — all tests use FFT
+- `test_signal_radar.cpp` — only pulse_compression, pulse_doppler, mvdr (NOT cfar_alpha, ca_cfar)
+
+**Expected result without FFTW:** 481 pass, 0 fail, rest skipped (was 46 fails before guards).
+
 ## Cleanup
 
 ```bash

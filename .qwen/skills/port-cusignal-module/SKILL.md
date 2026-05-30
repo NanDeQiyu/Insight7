@@ -265,6 +265,39 @@ Then use those values in C++ `EXPECT_NEAR` assertions.
 12. **Julia `_dtype_code` helper**: For Julia bindings that need dtype codes, check if the helper exists in Insight.jl before creating new ones.
 13. **Python `firwin` cutoff must be Sequence**: The Python binding for `firwin` expects `cutoff` as a `Sequence`, not a scalar float. Pass `[0.3]` not `0.3`.
 
+## Phase 2+3 Module Patterns
+
+### Estimation (KalmanFilter class)
+- Stateful class with batched matrix operations
+- Uses 3D arrays: `[points, dim_x, dim_x]` for matrices, `[points, dim_x, 1]` for vectors
+- **Critical**: batched matmul must only broadcast batch dimensions (see `fix-batched-matmul-3d` skill)
+- predict/update use `matmul` for F*P, H*P, etc.
+- Small matrix inverse (dim_z×dim_z) done inline with Gauss-Jordan
+
+### Radar (pulse_compression, pulse_doppler, ca_cfar, mvdr, ambgfun)
+- `pulse_compression`: FFT-based matched filter — iterate over pulses, rfft→multiply→irfft
+- `pulse_doppler`: FFT along pulse dimension (axis 0)
+- `ca_cfar`: 2D cumsum for O(1) cell averaging
+- `mvdr`: R = X*X^T/N, w = R^{-1}*sv / (sv^T*R^{-1}*sv)
+- All work on CPU with data transfer for GPU
+
+### Peak Finding (argrelextrema, argrelmax, argrelmin)
+- CPU implementation with stride-aware comparison
+- `boolrelextrema` internal helper: for each element, compare with `order` neighbors on each side
+- Returns `std::vector<Array>` (one index array per dimension)
+- GPU: transfer to CPU, compute, transfer back
+
+### Demod (fm_demod)
+- Pure composite: `unwrap(angle(x))` then `diff`
+- `angle(x) = atan2(imag(x), real(x))` computed manually for complex arrays
+- `unwrap` and `diff` are existing Insight7 primitives
+
+### I/O (read_bin, write_bin, pack_bin, unpack_bin, read_sigmf, write_sigmf)
+- Pure CPU implementation (file I/O)
+- `pack_bin`/`unpack_bin`: byte-level endianness conversion
+- `read_sigmf`: parse `.sigmf-meta` JSON for dtype/endianness, then read+unpack `.sigmf-data`
+- SigMF metadata parsing uses simple string matching (no json library dependency)
+
 ## Build Verification
 
 ```bash
