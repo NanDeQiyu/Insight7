@@ -53,7 +53,13 @@ export Array, zeros, ones, full, arange, linspace, eye,
        morlet, ricker,
        mel2hz, hz2mel, mel_frequencies, hz2bark, bark2hz,
        fm_demod, argrelmax, argrelmin, cfar_alpha,
-       read_bin, write_bin, pack_bin, unpack_bin,
+       pulse_compression, pulse_doppler, mvdr,
+       read_bin, write_bin, pack_bin, unpack_bin, read_sigmf, write_sigmf,
+       cosine_win, general_hamming, parzen_win, bohman_win, barthann_win,
+       exponential_win, general_gaussian_win,
+       firwin2, convolve2d, correlate2d,
+       hilbert2, wiener, firfilter, lfilter_zi, resample_poly,
+       morlet2,
        # Device info
        device_name, cuda_version, driver_version, compute_capability,
        device_memory, gpu_count,
@@ -76,6 +82,22 @@ end
 # Auto-initialize CPU backend on module load
 function __init__()
     ccall((:insight_jl_init_cpu, LIB_INSIGHT), Cvoid, ())
+end
+
+# DType enum mapping (matches InsightDType in c_api/dtype.h)
+function _dtype_code(dt::DataType)::Int32
+    dt === Bool && return Int32(1)      # INSIGHT_DTYPE_BOOL
+    dt === UInt8 && return Int32(2)     # INSIGHT_DTYPE_U8
+    dt === Int8 && return Int32(3)      # INSIGHT_DTYPE_I8
+    dt === Int16 && return Int32(4)     # INSIGHT_DTYPE_I16
+    dt === Int32 && return Int32(5)     # INSIGHT_DTYPE_I32
+    dt === Int64 && return Int32(6)     # INSIGHT_DTYPE_I64
+    dt === Float32 && return Int32(9)   # INSIGHT_DTYPE_F32
+    dt === Float64 && return Int32(10)  # INSIGHT_DTYPE_F64
+    dt === UInt16 && return Int32(15)   # INSIGHT_DTYPE_U16
+    dt === UInt32 && return Int32(16)   # INSIGHT_DTYPE_U32
+    dt === UInt64 && return Int32(17)   # INSIGHT_DTYPE_U64
+    error("Unsupported dtype: $dt")
 end
 
 # ============================================================================
@@ -1484,10 +1506,150 @@ end
 
 # --- Radar ---
 function cfar_alpha(pfa::Float64, N::Int)::Float64
-    ptr = ccall((:insight_jl_cfar_alpha, LIB_INSIGHT), Ptr{Cvoid},
-                (Float64, Int32), pfa, Int32(N))
-    val = to_f64(InsightArray(ptr))
-    return val
+    return ccall((:insight_jl_cfar_alpha, LIB_INSIGHT), Float64,
+                 (Float64, Int32), pfa, Int32(N))
+end
+
+function pulse_compression(x::InsightArray, tpl::InsightArray,
+                           normalize::Bool = false)::InsightArray
+    ptr = ccall((:insight_jl_pulse_compression, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Cvoid}, Int32), x, tpl, Int32(normalize ? 1 : 0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function pulse_doppler(x::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_pulse_doppler, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid},), x)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function mvdr(x::InsightArray, sv::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_mvdr, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Cvoid}), x, sv)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+# --- Additional Windows ---
+function cosine_win(M::Int, sym::Bool = true)::InsightArray
+    ptr = ccall((:insight_jl_cosine_win, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Int32), Int64(M), Int32(sym ? 1 : 0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function general_hamming(M::Int, alpha::Float64, sym::Bool = true)::InsightArray
+    ptr = ccall((:insight_jl_general_hamming, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Float64, Int32), Int64(M), alpha, Int32(sym ? 1 : 0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function parzen_win(M::Int, sym::Bool = true)::InsightArray
+    ptr = ccall((:insight_jl_parzen, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Int32), Int64(M), Int32(sym ? 1 : 0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function bohman_win(M::Int, sym::Bool = true)::InsightArray
+    ptr = ccall((:insight_jl_bohman, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Int32), Int64(M), Int32(sym ? 1 : 0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function barthann_win(M::Int, sym::Bool = true)::InsightArray
+    ptr = ccall((:insight_jl_barthann, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Int32), Int64(M), Int32(sym ? 1 : 0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function exponential_win(M::Int, center::Float64 = -1.0, tau::Float64 = 1.0,
+                         sym::Bool = true)::InsightArray
+    ptr = ccall((:insight_jl_exponential_win, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Float64, Float64, Int32), Int64(M), center, tau, Int32(sym ? 1 : 0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function general_gaussian_win(M::Int, p::Float64, sig::Float64,
+                              sym::Bool = true)::InsightArray
+    ptr = ccall((:insight_jl_general_gaussian, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Float64, Float64, Int32), Int64(M), p, sig, Int32(sym ? 1 : 0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+# --- Additional Filter Design ---
+function firwin2(numtaps::Int, freq::Vector{Float64}, gain::Vector{Float64},
+                 window::String = "hamming")::InsightArray
+    ptr = ccall((:insight_jl_firwin2, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Ptr{Float64}, Int32, Ptr{Float64}, Int32, Cstring),
+                Int64(numtaps), freq, Int32(length(freq)), gain, Int32(length(gain)), window)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+# --- Additional Convolution ---
+function convolve2d(in1::InsightArray, in2::InsightArray,
+                   mode::String = "full")::InsightArray
+    ptr = ccall((:insight_jl_convolve2d, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Cvoid}, Cstring), in1, in2, mode)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function correlate2d(in1::InsightArray, in2::InsightArray,
+                     mode::String = "full")::InsightArray
+    ptr = ccall((:insight_jl_correlate2d, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Cvoid}, Cstring), in1, in2, mode)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+# --- Additional Filtering ---
+function hilbert2(x::InsightArray, N::Int = -1)::InsightArray
+    ptr = ccall((:insight_jl_hilbert2, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int64), x, Int64(N))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function wiener(im::InsightArray, noise::Float64 = -1.0)::InsightArray
+    ptr = ccall((:insight_jl_wiener, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Float64), im, noise)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function firfilter(b::InsightArray, x::InsightArray,
+                   axis::Int = -1)::InsightArray
+    ptr = ccall((:insight_jl_firfilter, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Cvoid}, Int32), b, x, Int32(axis))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function lfilter_zi(b::InsightArray, a::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_lfilter_zi, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Cvoid}), b, a)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function resample_poly(x::InsightArray, up::Int, down::Int,
+                       axis::Int = -1)::InsightArray
+    ptr = ccall((:insight_jl_resample_poly, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int64, Int64, Int32), x, Int64(up), Int64(down), Int32(axis))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+# --- Additional Wavelets ---
+function morlet2(M::Int, s::Float64, w::Float64 = 5.0)::InsightArray
+    ptr = ccall((:insight_jl_morlet2, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Float64, Float64), Int64(M), s, w)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+# --- Additional I/O ---
+function read_sigmf(data_file::String, meta_file::String = "",
+                    num_samples::Int = 0, offset::Int = 0)::InsightArray
+    ptr = ccall((:insight_jl_read_sigmf, LIB_INSIGHT), Ptr{Cvoid},
+                (Cstring, Cstring, Int64, Int64),
+                data_file, meta_file, Int64(num_samples), Int64(offset))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function write_sigmf(data_file::String, data::InsightArray, append::Bool = true)
+    ccall((:insight_jl_write_sigmf, LIB_INSIGHT), Cvoid,
+          (Cstring, Ptr{Cvoid}, Int32), data_file, data, Int32(append ? 1 : 0))
 end
 
 # --- Signal I/O ---

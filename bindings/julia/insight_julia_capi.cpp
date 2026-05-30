@@ -552,9 +552,103 @@ int64_t insight_jl_argrelmin(const Array *data, int32_t axis, int32_t order,
 // Radar
 // ============================================================================
 
-Array *insight_jl_cfar_alpha(double pfa, int32_t N) {
-  double alpha = signal::cfar_alpha(pfa, N);
-  return new Array(alpha);
+double insight_jl_cfar_alpha(double pfa, int32_t N) {
+  return signal::cfar_alpha(pfa, N);
+}
+
+Array *insight_jl_pulse_compression(const Array *x, const Array *tpl,
+                                    int32_t normalize) {
+  return new Array(signal::pulse_compression(*x, *tpl, normalize != 0));
+}
+
+Array *insight_jl_pulse_doppler(const Array *x) {
+  return new Array(signal::pulse_doppler(*x));
+}
+
+Array *insight_jl_mvdr(const Array *x, const Array *sv) {
+  return new Array(signal::mvdr(*x, *sv));
+}
+
+Array *insight_jl_general_cosine(int64_t M, const double *a, int32_t a_len,
+                                 int32_t sym) {
+  std::vector<double> av(a, a + a_len);
+  return new Array(signal::general_cosine(M, av, sym != 0));
+}
+
+Array *insight_jl_parzen(int64_t M, int32_t sym) {
+  return new Array(signal::parzen(M, sym != 0));
+}
+
+Array *insight_jl_bohman(int64_t M, int32_t sym) {
+  return new Array(signal::bohman(M, sym != 0));
+}
+
+Array *insight_jl_barthann(int64_t M, int32_t sym) {
+  return new Array(signal::barthann(M, sym != 0));
+}
+
+Array *insight_jl_exponential_win(int64_t M, double center, double tau,
+                                  int32_t sym) {
+  return new Array(signal::exponential(M, center, tau, sym != 0));
+}
+
+Array *insight_jl_general_gaussian(int64_t M, double p, double sig,
+                                   int32_t sym) {
+  return new Array(signal::general_gaussian(M, p, sig, sym != 0));
+}
+
+Array *insight_jl_firwin2(int64_t numtaps, const double *freq, int32_t freq_len,
+                          const double *gain, int32_t gain_len,
+                          const char *window) {
+  std::vector<double> fv(freq, freq + freq_len);
+  std::vector<double> gv(gain, gain + gain_len);
+  return new Array(signal::firwin2(numtaps, fv, gv, 0, window));
+}
+
+Array *insight_jl_convolve2d(const Array *in1, const Array *in2,
+                             const char *mode) {
+  return new Array(signal::convolve2d(*in1, *in2, mode));
+}
+
+Array *insight_jl_correlate2d(const Array *in1, const Array *in2,
+                              const char *mode) {
+  return new Array(signal::correlate2d(*in1, *in2, mode));
+}
+
+Array *insight_jl_hilbert2(const Array *x, int64_t N) {
+  return new Array(signal::hilbert2(*x, N));
+}
+
+Array *insight_jl_wiener(const Array *im, double noise) {
+  return new Array(signal::wiener(*im, {}, noise));
+}
+
+Array *insight_jl_firfilter(const Array *b, const Array *x, int32_t axis) {
+  return new Array(signal::firfilter(*b, *x, axis));
+}
+
+Array *insight_jl_lfilter_zi(const Array *b, const Array *a) {
+  return new Array(signal::lfilter_zi(*b, *a));
+}
+
+Array *insight_jl_resample_poly(const Array *x, int64_t up, int64_t down,
+                                int32_t axis) {
+  return new Array(signal::resample_poly(*x, up, down, axis));
+}
+
+Array *insight_jl_morlet2(int64_t M, double s, double w) {
+  return new Array(signal::morlet2(M, s, w));
+}
+
+void insight_jl_write_sigmf(const char *data_file, const Array *data,
+                            int32_t append) {
+  signal::write_sigmf(data_file, *data, append != 0);
+}
+
+Array *insight_jl_read_sigmf(const char *data_file, const char *meta_file,
+                             int64_t num_samples, int64_t offset) {
+  return new Array(
+      signal::read_sigmf(data_file, meta_file, num_samples, offset));
 }
 
 // ============================================================================

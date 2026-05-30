@@ -144,7 +144,6 @@ class TestSignalFiltering:
     def test_detrend(self):
         x = np.linspace(0, 10, 100) + np.random.randn(100) * 0.1
 
-        scipy_out = scipy_signal.detrend(x)
         ins_out = to_numpy(ins.signal.detrend(to_insight(x)))
         # Both should remove the trend (mean should be near 0)
         assert abs(np.mean(ins_out)) < 1.0, "Detrend should reduce mean"
