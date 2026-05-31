@@ -340,7 +340,14 @@ static void save_plots(const Task1Result &result, const char *prefix) {
 }
 
 int main() {
-  ins::init({"cpu", "cuda"});
+  ins::init({"cpu"});
+  bool has_gpu = false;
+  try {
+    ins::init({"cuda"});
+    has_gpu = true;
+  } catch (...) {
+    printf("[提示] CUDA 不可用，仅运行 CPU 版本\n");
+  }
 
   separator("比赛任务1：雷达目标检测与多普勒分析");
 
@@ -375,7 +382,7 @@ int main() {
   save_plots(cpu, "task1_cpu");
 
   // GPU
-  if (gpu_available()) {
+  if (has_gpu) {
     separator("GPU 运行");
     set_device(GPUPlace(0));
     Task1Result gpu = run_task1(GPUPlace(0));
