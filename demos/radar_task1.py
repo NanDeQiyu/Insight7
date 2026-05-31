@@ -27,9 +27,6 @@ PC_OFFSET = (N - 1) // 2
 def run_task1(device="cpu"):
     if device == "gpu":
         ins.load_backend("cuda")
-        place = ins.GPUPlace(0)
-    else:
-        place = ins.CPUPlace()
 
     t = np.arange(N) / FS
 

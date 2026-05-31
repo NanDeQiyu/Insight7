@@ -20,12 +20,12 @@ repos:
         files: \.py$
         exclude: third_party/|build/|out/
 
-  # Lua formatting (stylua - local)
+  # Lua formatting (stylua)
   - repo: local
     hooks:
       - id: stylua
         name: stylua
-        entry: /home/aistudio/.local/bin/stylua --indent-type Spaces --indent-width 2
+        entry: stylua --indent-type Spaces --indent-width 2
         language: system
         files: \.lua$
         exclude: third_party/|build/|out/

@@ -30,6 +30,7 @@ cmake_install.cmake
 CTestTestfile.cmake
 *.cmake
 !CMakeLists.txt
+!cmake/*.cmake
 compile_commands.json
 
 # Test files
