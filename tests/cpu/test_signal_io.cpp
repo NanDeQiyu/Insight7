@@ -15,13 +15,12 @@ protected:
   static void SetUpTestSuite() {
     ins::init({"cpu"});
     set_device(CPUPlace());
+    std::filesystem::create_directories("/tmp/insight_io_test");
   }
-  void SetUp() override {
-    tmp_dir = "/tmp/insight_io_test";
-    std::filesystem::create_directories(tmp_dir);
+  static void TearDownTestSuite() {
+    std::filesystem::remove_all("/tmp/insight_io_test");
   }
-
-  void TearDown() override { std::filesystem::remove_all(tmp_dir); }
+  void SetUp() override { tmp_dir = "/tmp/insight_io_test"; }
 
   std::string tmp_dir;
 };
