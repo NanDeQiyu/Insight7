@@ -99,6 +99,63 @@ std::vector<Place> get_available_devices();
 std::vector<std::string> get_available_device_strings();
 
 // ========================================================================
+// Device information queries
+// ========================================================================
+
+/**
+ * @brief Get the name of a device (e.g., "NVIDIA A800-SXM4-80GB").
+ *
+ * Returns "CPU" for CPU devices. Requires the backend to be loaded.
+ *
+ * @param kind Device kind
+ * @param device_id Device index
+ * @return Device name string, or empty string on error
+ */
+std::string device_name(DeviceKind kind, int device_id = 0);
+
+/**
+ * @brief Get the CUDA runtime version (major * 1000 + minor * 10).
+ *
+ * Returns 0 if CUDA backend is not loaded.
+ *
+ * @return CUDA runtime version, or 0 if not available
+ */
+int cuda_version();
+
+/**
+ * @brief Get the CUDA driver version (major * 1000 + minor * 10).
+ *
+ * Returns 0 if CUDA backend is not loaded.
+ *
+ * @return CUDA driver version, or 0 if not available
+ */
+int driver_version();
+
+/**
+ * @brief Get the compute capability of a GPU device (e.g., 80 for SM 8.0).
+ *
+ * @param device_id GPU device index
+ * @return Compute capability, or 0 if not available
+ */
+int compute_capability(int device_id = 0);
+
+/**
+ * @brief Device memory information.
+ */
+struct DeviceMemoryInfo {
+  size_t total; ///< Total memory in bytes
+  size_t free;  ///< Free memory in bytes
+};
+
+/**
+ * @brief Get memory information for a GPU device.
+ *
+ * @param device_id GPU device index
+ * @return DeviceMemoryInfo with total and free memory
+ */
+DeviceMemoryInfo device_memory(int device_id = 0);
+
+// ========================================================================
 // Factory functions for creating Place objects
 // ========================================================================
 

@@ -21,7 +21,14 @@ jobs:
       - name: Install pre-commit
         run: |
           pip install pre-commit
-      
+
+      - name: Install stylua
+        run: |
+          curl -sL https://github.com/JohnnyMorganz/StyLua/releases/download/v2.1.0/stylua-linux-x86_64.zip -o stylua.zip
+          unzip stylua.zip
+          sudo mv stylua /usr/local/bin/
+          rm stylua.zip
+
       - name: Run clang-format check
         run: |
           pre-commit run --all-files --show-diff-on-failure

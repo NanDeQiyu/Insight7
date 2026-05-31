@@ -28,4 +28,14 @@ bool is_initialized();
  */
 bool has_device(DeviceKind kind);
 
+/**
+ * @brief Load an additional backend after init().
+ *
+ * Useful for loading GPU backends after the framework is already initialized
+ * with CPU only. Safe to call multiple times (no-op if already loaded).
+ *
+ * @param backend Backend name: "cpu", "cuda", "rocm", etc.
+ */
+void load_backend(const std::string &backend);
+
 } // namespace ins

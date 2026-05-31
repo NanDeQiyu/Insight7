@@ -5,12 +5,12 @@ Run with:
     # or with wrapper:
     PYTHONPATH=bindings/python:build/bindings/python python -m pytest tests/bindings/test_python_binding.py -v
 """
+
 import sys
 import os
-import math
 
 # Add wrapper package and native module directories to the path
-_root = os.path.join(os.path.dirname(__file__), "..", "..")
+_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 sys.path.insert(0, os.path.join(_root, "bindings", "python"))
 sys.path.insert(0, os.path.join(_root, "build", "bindings", "python"))
 
@@ -276,6 +276,204 @@ class TestSlicing:
         a = ins.ones(ins.Shape([4, 4]), ins.float32)
         b = a[":,1:-1"]
         assert b.defined()
+
+
+class TestComplex:
+    """Complex number operations."""
+
+    def test_is_complex(self):
+        a = ins.ones(ins.Shape([3]), ins.float32)
+        assert not ins.is_complex(a)
+
+    def test_to_complex(self):
+        a = ins.ones(ins.Shape([3]), ins.float32)
+        c = ins.to_complex(a)
+        assert c.defined()
+        assert ins.is_complex(c)
+
+    def test_to_complex_two_args(self):
+        r = ins.ones(ins.Shape([3]), ins.float32)
+        i = ins.zeros(ins.Shape([3]), ins.float32)
+        c = ins.to_complex(r, i)
+        assert c.defined()
+
+    def test_real_imag(self):
+        a = ins.ones(ins.Shape([3]), ins.float32)
+        c = ins.to_complex(a)
+        assert ins.real(c).defined()
+        assert ins.imag(c).defined()
+
+
+class TestPhaseDUnary:
+    """Additional unary operations (Phase D)."""
+
+    def test_exp2(self):
+        a = ins.ones(ins.Shape([4]), ins.float32)
+        assert ins.exp2(a).defined()
+
+    def test_expm1(self):
+        a = ins.ones(ins.Shape([4]), ins.float32)
+        assert ins.expm1(a).defined()
+
+    def test_log1p(self):
+        a = ins.ones(ins.Shape([4]), ins.float32)
+        assert ins.log1p(a).defined()
+
+    def test_cbrt(self):
+        a = ins.ones(ins.Shape([4]), ins.float32)
+        assert ins.cbrt(a).defined()
+
+    def test_reciprocal(self):
+        a = ins.ones(ins.Shape([4]), ins.float32)
+        assert ins.reciprocal(a).defined()
+
+    def test_trunc(self):
+        a = ins.ones(ins.Shape([4]), ins.float32)
+        assert ins.trunc(a).defined()
+
+    def test_deg2rad(self):
+        a = ins.ones(ins.Shape([4]), ins.float32)
+        assert ins.deg2rad(a).defined()
+
+    def test_rad2deg(self):
+        a = ins.ones(ins.Shape([4]), ins.float32)
+        assert ins.rad2deg(a).defined()
+
+
+class TestPhaseDReduction:
+    """Additional reduction operations (Phase D)."""
+
+    def test_cummax(self):
+        a = ins.ones(ins.Shape([3, 4]), ins.float32)
+        assert ins.cummax(a, 0).defined()
+
+    def test_cummin(self):
+        a = ins.ones(ins.Shape([3, 4]), ins.float32)
+        assert ins.cummin(a, 0).defined()
+
+    def test_count_nonzero(self):
+        a = ins.ones(ins.Shape([3, 4]), ins.float32)
+        assert ins.count_nonzero(a).defined()
+
+    def test_median(self):
+        a = ins.ones(ins.Shape([3, 4]), ins.float32)
+        assert ins.median(a).defined()
+
+    def test_quantile(self):
+        a = ins.ones(ins.Shape([3, 4]), ins.float32)
+        assert ins.quantile(a, 0.5).defined()
+
+    def test_nansum(self):
+        a = ins.ones(ins.Shape([3, 4]), ins.float32)
+        assert ins.nansum(a).defined()
+
+    def test_nanmean(self):
+        a = ins.ones(ins.Shape([3, 4]), ins.float32)
+        assert ins.nanmean(a).defined()
+
+
+class TestPhaseDManipulation:
+    """Additional manipulation operations (Phase D)."""
+
+    def test_permute(self):
+        a = ins.ones(ins.Shape([2, 3, 4]), ins.float32)
+        b = ins.permute(a, [2, 0, 1])
+        assert b.defined()
+        assert b.numel() == 24
+
+    def test_swapaxes(self):
+        a = ins.ones(ins.Shape([2, 3]), ins.float32)
+        b = ins.swapaxes(a, 0, 1)
+        assert b.defined()
+
+    def test_fliplr(self):
+        a = ins.ones(ins.Shape([2, 3]), ins.float32)
+        assert ins.fliplr(a).defined()
+
+    def test_flipud(self):
+        a = ins.ones(ins.Shape([2, 3]), ins.float32)
+        assert ins.flipud(a).defined()
+
+    def test_tril(self):
+        a = ins.ones(ins.Shape([3, 3]), ins.float32)
+        assert ins.tril(a).defined()
+
+    def test_triu(self):
+        a = ins.ones(ins.Shape([3, 3]), ins.float32)
+        assert ins.triu(a).defined()
+
+    def test_diff(self):
+        a = ins.ones(ins.Shape([5]), ins.float32)
+        assert ins.diff(a).defined()
+
+
+class TestPhaseDIndexing:
+    """Additional indexing operations (Phase D)."""
+
+    def test_unique(self):
+        np = pytest.importorskip("numpy")
+        a = ins.from_numpy(np.array([1, 2, 2, 3, 3, 3], dtype=np.float32))
+        r = ins.unique(a)
+        assert r.unique.defined()
+        assert r.unique.numel() == 3
+
+    def test_topk(self):
+        np = pytest.importorskip("numpy")
+        a = ins.from_numpy(np.array([1, 5, 3, 4, 2], dtype=np.float32))
+        vals, idx = ins.topk(a, 3)
+        assert vals.defined()
+        assert vals.numel() == 3
+
+
+class TestPhaseDRandom:
+    """Additional random operations (Phase D)."""
+
+    def test_seed(self):
+        ins.seed(42)
+
+    def test_get_seed(self):
+        s = ins.get_seed()
+        assert isinstance(s, int)
+
+    def test_rand_like(self):
+        a = ins.zeros(ins.Shape([3, 4]), ins.float32)
+        r = ins.rand_like(a)
+        assert r.defined()
+        assert r.numel() == 12
+
+    def test_exponential(self):
+        r = ins.exponential(1.0, ins.Shape([3, 4]))
+        assert r.defined()
+        assert r.numel() == 12
+
+
+class TestDeviceInfo:
+    """Device information queries."""
+
+    def test_device_name_cpu(self):
+        name = ins.device_name("cpu")
+        assert name == "CPU"
+
+    def test_cuda_version(self):
+        v = ins.cuda_version()
+        assert isinstance(v, int)
+
+    def test_driver_version(self):
+        v = ins.driver_version()
+        assert isinstance(v, int)
+
+    def test_compute_capability(self):
+        v = ins.compute_capability()
+        assert isinstance(v, int)
+
+    def test_device_memory(self):
+        total, free = ins.device_memory()
+        assert isinstance(total, int)
+        assert isinstance(free, int)
+
+    def test_device_count(self):
+        c = ins.device_count()
+        assert isinstance(c, int)
 
 
 if __name__ == "__main__":

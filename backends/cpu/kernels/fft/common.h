@@ -47,6 +47,8 @@ typedef enum {
 typedef struct {
   fftw_plan plan_f64;  ///< Double precision plan
   fftwf_plan plan_f32; ///< Single precision plan
+  void *buf_f64;       ///< Buffer used to create f64 plan
+  void *buf_f32;       ///< Buffer used to create f32 plan
   int64_t n;           ///< FFT length
   int64_t batch;       ///< Number of transforms
   int direction;       ///< FFTW_FORWARD or FFTW_BACKWARD
@@ -73,6 +75,8 @@ static inline void fft_invalidate_cache(void) {
     fftwf_destroy_plan(cache->plan_f32);
     cache->plan_f32 = NULL;
   }
+  cache->buf_f64 = NULL;
+  cache->buf_f32 = NULL;
   cache->n = 0;
   cache->batch = 0;
   cache->direction = 0;
@@ -82,26 +86,24 @@ static inline void fft_invalidate_cache(void) {
 /**
  * @brief Ensure FFTW plan exists for given parameters (double precision).
  *
- * @param n        FFT length
- * @param batch    Number of transforms
- * @param direction FFTW_FORWARD or FFTW_BACKWARD
- * @param kind     Transform kind (C2C, R2C, C2R)
- * @return fftw_plan Valid plan
- */
-fftw_plan fft_ensure_plan_f64(int n, int64_t batch, int direction,
-                              FFTKind kind);
-
-/**
- * @brief Ensure FFTW plan exists for given parameters (single precision).
+ * For C2C transforms, creates plan with the actual buffer (required for
+ * correctness at n>=64). For R2C/C2R, uses dummy buffers (faster).
  *
  * @param n        FFT length
  * @param batch    Number of transforms
  * @param direction FFTW_FORWARD or FFTW_BACKWARD
  * @param kind     Transform kind (C2C, R2C, C2R)
- * @return fftwf_plan Valid plan
+ * @param buf      Actual data buffer (used for C2C plan creation)
+ * @return fftw_plan Valid plan
+ */
+fftw_plan fft_ensure_plan_f64(int n, int64_t batch, int direction, FFTKind kind,
+                              void *buf);
+
+/**
+ * @brief Ensure FFTW plan exists for given parameters (single precision).
  */
 fftwf_plan fft_ensure_plan_f32(int n, int64_t batch, int direction,
-                               FFTKind kind);
+                               FFTKind kind, void *buf);
 
 #ifdef __cplusplus
 }

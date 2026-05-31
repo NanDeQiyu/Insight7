@@ -4,6 +4,22 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 
+// Sub-modules
+#include "insight/ops/signal/acoustics.h"
+#include "insight/ops/signal/bsplines.h"
+#include "insight/ops/signal/convolution.h"
+#include "insight/ops/signal/demod.h"
+#include "insight/ops/signal/estimation.h"
+#include "insight/ops/signal/filter_design.h"
+#include "insight/ops/signal/filtering.h"
+#include "insight/ops/signal/io.h"
+#include "insight/ops/signal/peak_finding.h"
+#include "insight/ops/signal/radar.h"
+#include "insight/ops/signal/spectral_analysis.h"
+#include "insight/ops/signal/waveforms.h"
+#include "insight/ops/signal/wavelets.h"
+#include "insight/ops/signal/windows.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif

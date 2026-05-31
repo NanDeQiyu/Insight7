@@ -116,25 +116,62 @@ Array matmul(const Array &a, const Array &b) {
   }
   // Case 5: batched matrix multiplication
   else {
-    INS_CHECK(ndim_a >= 1 && ndim_b >= 1, "matmul: invalid dimensions");
+    INS_CHECK(ndim_a >= 2 && ndim_b >= 2, "matmul: batched requires >= 2D");
 
-    Shape bc_shape = broadcast_shape(a.shape(), b.shape());
-    int ndim = bc_shape.ndim();
+    int64_t m = a.shape().dim(ndim_a - 2);
+    int64_t k_a = a.shape().dim(ndim_a - 1);
+    int64_t k_b = b.shape().dim(ndim_b - 2);
+    int64_t n = b.shape().dim(ndim_b - 1);
 
-    int64_t m = bc_shape.dim(ndim - 2);
-    int64_t n = bc_shape.dim(ndim - 1);
-    int64_t k_a = (ndim_a >= 2) ? a.shape().dim(ndim_a - 1) : 1;
-    int64_t k_b = (ndim_b >= 2) ? b.shape().dim(ndim_b - 2) : 1;
+    INS_CHECK(k_a == k_b, "matmul: shape mismatch for batch matrices");
 
-    if (ndim_a == 1) {
-      INS_CHECK(k_a == k_b, "matmul: shape mismatch for vector-matrix batch");
-    } else if (ndim_b == 1) {
-      INS_CHECK(k_a == k_b, "matmul: shape mismatch for matrix-vector batch");
-    } else {
-      INS_CHECK(k_a == k_b, "matmul: shape mismatch for batch matrices");
+    // Broadcast batch dimensions (all except last 2)
+    int max_batch_ndim = std::max(ndim_a - 2, ndim_b - 2);
+    std::vector<int64_t> batch_dims(max_batch_ndim);
+    for (int i = 0; i < max_batch_ndim; ++i) {
+      int64_t a_dim = (i < ndim_a - 2) ? a.shape().dim(ndim_a - 3 - i) : 1;
+      int64_t b_dim = (i < ndim_b - 2) ? b.shape().dim(ndim_b - 3 - i) : 1;
+      if (a_dim != 1 && b_dim != 1 && a_dim != b_dim) {
+        INS_THROW("matmul: batch dimensions not broadcastable");
+      }
+      batch_dims[max_batch_ndim - 1 - i] = std::max(a_dim, b_dim);
     }
 
-    out_shape = bc_shape;
+    // Build output shape: batch_dims + [m, n]
+    std::vector<int64_t> out_dims(batch_dims);
+    out_dims.push_back(m);
+    out_dims.push_back(n);
+    out_shape = Shape(out_dims);
+
+    // Broadcast inputs to match batch dimensions
+    std::vector<int64_t> a_batch, b_batch;
+    for (int i = 0; i < ndim_a - 2; ++i)
+      a_batch.push_back(a.shape().dim(i));
+    for (int i = 0; i < ndim_b - 2; ++i)
+      b_batch.push_back(b.shape().dim(i));
+    while ((int)a_batch.size() < max_batch_ndim)
+      a_batch.insert(a_batch.begin(), 1);
+    while ((int)b_batch.size() < max_batch_ndim)
+      b_batch.insert(b_batch.begin(), 1);
+
+    bool need_bc = false;
+    for (int i = 0; i < max_batch_ndim; ++i) {
+      if (a_batch[i] != batch_dims[i] || b_batch[i] != batch_dims[i]) {
+        need_bc = true;
+        break;
+      }
+    }
+
+    if (need_bc) {
+      std::vector<int64_t> a_full(batch_dims);
+      a_full.push_back(m);
+      a_full.push_back(k_a);
+      std::vector<int64_t> b_full(batch_dims);
+      b_full.push_back(k_b);
+      b_full.push_back(n);
+      a_work = broadcast_to(a_work, Shape(a_full));
+      b_work = broadcast_to(b_work, Shape(b_full));
+    }
   }
 
   Array result(out_shape, working_dtype, a_work.place());

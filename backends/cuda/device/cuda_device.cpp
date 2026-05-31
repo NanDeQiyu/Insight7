@@ -594,6 +594,21 @@ static C_Status cuda_get_max_grid_dim_size(C_Device device, size_t dims[3]) {
   return C_SUCCESS;
 }
 
+static C_Status cuda_get_device_name(C_Device device, char *buf,
+                                     size_t buf_size) {
+  if (!buf || buf_size == 0 || !device)
+    return C_FAILED;
+  cudaDeviceProp prop;
+  cudaError_t err = cudaGetDeviceProperties(&prop, device->id);
+  if (err != cudaSuccess) {
+    gpu_set_last_error(cudaGetErrorString(err));
+    return C_FAILED;
+  }
+  std::strncpy(buf, prop.name, buf_size - 1);
+  buf[buf_size - 1] = '\0';
+  return C_SUCCESS;
+}
+
 // ========================================================================
 // Profiler (Optional)
 // ========================================================================
@@ -689,6 +704,7 @@ INSIGHT_GPU_API C_Status InitPluginGPU(CustomRuntimeParams *params) {
   iface->get_max_threads_per_mp = cuda_get_max_threads_per_mp;
   iface->get_max_threads_per_block = cuda_get_max_threads_per_block;
   iface->get_max_grid_dim_size = cuda_get_max_grid_dim_size;
+  iface->get_device_name = cuda_get_device_name;
 
   // Profiler
   iface->profiler_create = cuda_profiler_create;

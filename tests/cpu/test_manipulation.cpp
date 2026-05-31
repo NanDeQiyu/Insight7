@@ -331,6 +331,60 @@ TEST_F(ManipulationTest, PadConstant) {
   expect_float_equal<float>(b, expected);
 }
 
+TEST_F(ManipulationTest, PadC64) {
+  std::vector<std::complex<double>> data = {{1, 2}, {3, 4}, {5, 6}};
+  Array a = to_array(data, Shape({3}), DType::C64, CPUPlace());
+
+  Array b = pad(a, {2, 2}, 0);
+  EXPECT_EQ(b.shape(), Shape({7}));
+  EXPECT_EQ(b.dtype(), DType::C64);
+
+  const std::complex<double> *bd =
+      reinterpret_cast<const std::complex<double> *>(b.data<char>());
+  // [0, 0, 1+2j, 3+4j, 5+6j, 0, 0]
+  EXPECT_EQ(bd[0], std::complex<double>(0, 0));
+  EXPECT_EQ(bd[1], std::complex<double>(0, 0));
+  EXPECT_EQ(bd[2], std::complex<double>(1, 2));
+  EXPECT_EQ(bd[3], std::complex<double>(3, 4));
+  EXPECT_EQ(bd[4], std::complex<double>(5, 6));
+  EXPECT_EQ(bd[5], std::complex<double>(0, 0));
+  EXPECT_EQ(bd[6], std::complex<double>(0, 0));
+}
+
+TEST_F(ManipulationTest, PadC32) {
+  std::vector<std::complex<float>> data = {{1, 2}, {3, 4}};
+  Array a = to_array(data, Shape({2}), DType::C32, CPUPlace());
+
+  Array b = pad(a, {1, 1}, 0);
+  EXPECT_EQ(b.shape(), Shape({4}));
+  EXPECT_EQ(b.dtype(), DType::C32);
+
+  const std::complex<float> *bd =
+      reinterpret_cast<const std::complex<float> *>(b.data<char>());
+  EXPECT_EQ(bd[0], std::complex<float>(0, 0));
+  EXPECT_EQ(bd[1], std::complex<float>(1, 2));
+  EXPECT_EQ(bd[2], std::complex<float>(3, 4));
+  EXPECT_EQ(bd[3], std::complex<float>(0, 0));
+}
+
+TEST_F(ManipulationTest, PadC64_2D) {
+  std::vector<std::complex<double>> data = {{1, 0}, {2, 0}, {3, 0}, {4, 0}};
+  Array a = to_array(data, Shape({2, 2}), DType::C64, CPUPlace());
+
+  Array b = pad(a, {1, 1, 1, 1}, 0);
+  EXPECT_EQ(b.shape(), Shape({4, 4}));
+
+  const std::complex<double> *bd =
+      reinterpret_cast<const std::complex<double> *>(b.data<char>());
+  // Padded 4x4: [[0,0,0,0],[0,1,2,0],[0,3,4,0],[0,0,0,0]]
+  EXPECT_EQ(bd[0], std::complex<double>(0, 0));
+  // Row 1: [0, 1, 2, 0]
+  EXPECT_EQ(bd[4], std::complex<double>(0, 0));
+  EXPECT_EQ(bd[5], std::complex<double>(1, 0));
+  EXPECT_EQ(bd[6], std::complex<double>(2, 0));
+  EXPECT_EQ(bd[7], std::complex<double>(0, 0));
+}
+
 // ========== roll ==========
 
 TEST_F(ManipulationTest, RollAlongAxis) {

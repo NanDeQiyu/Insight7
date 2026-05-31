@@ -216,4 +216,21 @@ bool has_device(DeviceKind kind) {
   return get_device_interface(kind) != nullptr;
 }
 
+void load_backend(const std::string &backend) {
+  if (backend == "cpu") {
+    if (!get_device_interface(DeviceKind::CPU)) {
+#ifdef INSIGHT_CPU_BACKEND_EXPORTS
+      load_backend_plugin(DeviceKind::CPU, "insight_cpu_backend");
+#else
+      init_static_backend(DeviceKind::CPU, InitPluginCPU);
+#endif
+    }
+  } else {
+    if (!get_device_interface(DeviceKind::GPU)) {
+      std::string lib_name = "insight_" + backend + "_backend";
+      load_backend_plugin(DeviceKind::GPU, lib_name.c_str());
+    }
+  }
+}
+
 } // namespace ins

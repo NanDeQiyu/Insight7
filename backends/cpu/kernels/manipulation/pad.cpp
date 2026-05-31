@@ -17,6 +17,7 @@
  */
 
 #include "common.h"
+#include <complex>
 #include <cstring>
 
 // ============================================================================
@@ -201,6 +202,20 @@ C_Status pad_kernel_cpu(void **inputs, void **outputs) {
     pad_impl<double>((const double *)x->data, (double *)out->data, ndim,
                      in_dims, out_dims, pad_before, constant_value);
     break;
+  case INSIGHT_DTYPE_C32: {
+    std::complex<float> cval((float)constant_value, 0.0f);
+    pad_impl<std::complex<float>>((const std::complex<float> *)x->data,
+                                  (std::complex<float> *)out->data, ndim,
+                                  in_dims, out_dims, pad_before, cval);
+    break;
+  }
+  case INSIGHT_DTYPE_C64: {
+    std::complex<double> cval(constant_value, 0.0);
+    pad_impl<std::complex<double>>((const std::complex<double> *)x->data,
+                                   (std::complex<double> *)out->data, ndim,
+                                   in_dims, out_dims, pad_before, cval);
+    break;
+  }
   default:
     cpu_set_last_error("pad: unsupported dtype");
     return C_FAILED;
@@ -225,3 +240,5 @@ REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_U32, pad_kernel_cpu);
 REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_U64, pad_kernel_cpu);
 REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_F32, pad_kernel_cpu);
 REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_F64, pad_kernel_cpu);
+REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_C32, pad_kernel_cpu);
+REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_C64, pad_kernel_cpu);

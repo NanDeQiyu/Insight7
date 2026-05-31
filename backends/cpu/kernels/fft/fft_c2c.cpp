@@ -43,11 +43,10 @@ C_Status fft_c2c_kernel_cpu(void **inputs, void **outputs) {
   // Double precision
   if (x->dtype == INSIGHT_DTYPE_F64 || x->dtype == INSIGHT_DTYPE_C64) {
     double *data = (double *)out->data;
-    // Copy input to output (in-place transform)
     memcpy(data, x->data, total_complex * 2 * sizeof(double));
 
     fftw_plan plan =
-        fft_ensure_plan_f64(fft_len, batch_size, direction, FFT_KIND_C2C);
+        fft_ensure_plan_f64(fft_len, batch_size, direction, FFT_KIND_C2C, data);
     fftw_execute_dft(plan, (fftw_complex *)data, (fftw_complex *)data);
   }
   // Single precision
@@ -56,7 +55,7 @@ C_Status fft_c2c_kernel_cpu(void **inputs, void **outputs) {
     memcpy(data, x->data, total_complex * 2 * sizeof(float));
 
     fftwf_plan plan =
-        fft_ensure_plan_f32(fft_len, batch_size, direction, FFT_KIND_C2C);
+        fft_ensure_plan_f32(fft_len, batch_size, direction, FFT_KIND_C2C, data);
     fftwf_execute_dft(plan, (fftwf_complex *)data, (fftwf_complex *)data);
   } else {
     cpu_set_last_error("fft_c2c: unsupported dtype");

@@ -635,6 +635,16 @@ typedef struct C_DeviceInterface {
    */
   C_Status (*get_max_grid_dim_size)(C_Device device, size_t dims[3]);
 
+  /**
+   * @brief Get the device name (optional).
+   *
+   * @param device Device to query
+   * @param buf Output buffer to receive the device name string
+   * @param buf_size Size of the output buffer
+   * @return C_SUCCESS on success, error code otherwise
+   */
+  C_Status (*get_device_name)(C_Device device, char *buf, size_t buf_size);
+
   /*==========================================================================
    * Profiler (Optional)
    *========================================================================*/

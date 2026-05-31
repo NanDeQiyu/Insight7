@@ -1,30 +1,70 @@
 # bindings/lua/CMakeLists.txt
 #
 # Lua/LuaJIT bindings via sol2 (header-only).
+#
+# Usage:
+#   # Auto-detect LuaJIT, then Lua 5.3, then Lua 5.1:
+#   cmake .. -DINSIGHT_BUILD_LUA=ON
+#
+#   # Explicit LuaJIT:
+#   cmake .. -DINSIGHT_BUILD_LUA=ON -DLUA_DIR=$HOME/public/luajit
+#
+#   # Explicit Lua 5.3:
+#   cmake .. -DINSIGHT_BUILD_LUA=ON -DLUA_DIR=/usr
+#
+# The built module is always _insight.so, loadable by require("_insight").
 
-# Find LuaJIT — search system paths first, then ~/public/luajit
-find_library(LUAJIT_LIB
-    NAMES luajit-5.1 luajit
-    HINTS "${LUAJIT_DIR}/lib"
-)
-
-find_path(LUAJIT_INCLUDE_DIR
-    NAMES lua.h
-    HINTS "${LUAJIT_DIR}/include/luajit-2.1"
-    PATHS /usr/include/luajit-2.1 /usr/local/include/luajit-2.1
-)
-
-if(NOT LUAJIT_LIB OR NOT LUAJIT_INCLUDE_DIR)
-    message(WARNING "LuaJIT not found at ${LUAJIT_DIR}, skipping Lua bindings")
-    message(STATUS "  LUAJIT_LIB: ${LUAJIT_LIB}")
-    message(STATUS "  LUAJIT_INCLUDE_DIR: ${LUAJIT_INCLUDE_DIR}")
+option(INSIGHT_BUILD_LUA "Build Lua bindings" ON)
+if(NOT INSIGHT_BUILD_LUA)
     return()
 endif()
 
-message(STATUS "LuaJIT found: ${LUAJIT_LIB}")
-message(STATUS "LuaJIT headers: ${LUAJIT_INCLUDE_DIR}")
+if(LUA_DIR)
+    # User-specified Lua installation
+    find_library(LUA_LIB
+        NAMES luajit-5.1 luajit lua5.3 lua-5.3 lua5.1 lua-5.1 lua
+        HINTS "${LUA_DIR}/lib" "${LUA_DIR}/lib/x86_64-linux-gnu"
+        NO_DEFAULT_PATH
+    )
+    find_path(LUA_INCLUDE_DIR
+        NAMES lua.h
+        HINTS "${LUA_DIR}/include/luajit-2.1"
+              "${LUA_DIR}/include/lua5.3"
+              "${LUA_DIR}/include/lua5.1"
+              "${LUA_DIR}/include"
+        NO_DEFAULT_PATH
+    )
+else()
+    # Auto-detect: prefer LuaJIT, then Lua 5.3, then Lua 5.1
+    find_library(LUA_LIB
+        NAMES luajit-5.1 luajit
+        HINTS "$ENV{HOME}/public/luajit/lib"
+    )
+    find_path(LUA_INCLUDE_DIR
+        NAMES lua.h
+        HINTS "$ENV{HOME}/public/luajit/include/luajit-2.1"
+        PATHS /usr/include/luajit-2.1 /usr/local/include/luajit-2.1
+    )
+    if(NOT LUA_LIB OR NOT LUA_INCLUDE_DIR)
+        find_library(LUA_LIB
+            NAMES lua5.3 lua-5.3 lua
+            PATHS /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib
+        )
+        find_path(LUA_INCLUDE_DIR
+            NAMES lua.h
+            PATHS /usr/include/lua5.3 /usr/local/include/lua5.3
+        )
+    endif()
+endif()
 
-# Build Lua module as shared library (loadable by require())
+if(NOT LUA_LIB OR NOT LUA_INCLUDE_DIR)
+    message(STATUS "Lua not found, skipping Lua bindings (set -DLUA_DIR=...)")
+    return()
+endif()
+
+message(STATUS "Lua binding: ${LUA_LIB}")
+message(STATUS "Lua headers: ${LUA_INCLUDE_DIR}")
+
 add_library(insight_lua SHARED insight_lua.cpp)
 set_target_properties(insight_lua PROPERTIES
     PREFIX ""
@@ -34,16 +74,15 @@ set_target_properties(insight_lua PROPERTIES
 
 target_include_directories(insight_lua PRIVATE
     ${CMAKE_SOURCE_DIR}/include
-    ${LUAJIT_INCLUDE_DIR}
+    ${LUA_INCLUDE_DIR}
     ${CMAKE_SOURCE_DIR}/third_party/sol2/include
 )
 
 target_link_libraries(insight_lua PRIVATE
     insight_core
-    ${LUAJIT_LIB}
+    ${LUA_LIB}
 )
 
-# sol2 needs C++17
 target_compile_features(insight_lua PRIVATE cxx_std_17)
 
-message(STATUS "Lua bindings enabled (sol2 + LuaJIT)")
+message(STATUS "Lua bindings enabled")

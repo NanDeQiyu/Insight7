@@ -1,0 +1,7 @@
+# Ruff configuration
+line-length = 100
+target-version = "py38"
+exclude = ["third_party/", "build/", "out/"]
+
+[lint]
+ignore = ["F405", "F403", "F401", "E402"]
