@@ -33,26 +33,53 @@ set(OGG_LIBRARY "${_fc_base}/ogg-build/${CMAKE_STATIC_LIBRARY_PREFIX}ogg${CMAKE_
 # ... same for FLAC, Vorbis (vorbis, vorbisenc, vorbisfile), Opus
 ```
 
-### 2. Imported targets must be created manually
-When cache variables are pre-set, the find modules hit the "Already in cache, be silent" guard and skip creating imported targets (e.g., `FLAC::FLAC`). But libsndfile's `target_link_libraries` references them.
+### 2. Use ALIAS targets for add_subdirectory deps (NOT IMPORTED)
 
-**Fix:** Create imported targets manually after setting cache vars:
+When codec deps are built via `add_subdirectory`, the real targets (`vorbis`, `vorbisenc`, `FLAC`) exist but the namespaced targets (`Vorbis::vorbisenc`, `FLAC::FLAC`) do NOT (vorbis and FLAC don't create aliases; ogg and opus do).
+
+Creating IMPORTED targets with file paths as `IMPORTED_LOCATION` breaks the dependency chain — CMake treats the file path as a literal dependency without a build rule, causing `No rule to make target '_deps/vorbis-build/lib/libvorbisenc.a'`.
+
+**Fix**: Create ALIAS targets when the base target exists:
 ```cmake
-foreach(_spec "FLAC::FLAC|FLAC_LIBRARY|FLAC_INCLUDE_DIRS" ...)
-    string(REPLACE "|" ";" _parts "${_spec}")
-    list(GET _parts 0 _target)
-    list(GET _parts 1 _lib_var)
-    list(GET _parts 2 _inc_var)
-    add_library(${_target} STATIC IMPORTED)
-    set_target_properties(${_target} PROPERTIES
-        IMPORTED_LOCATION "${${_lib_var}}"
-        INTERFACE_INCLUDE_DIRECTORIES "${${_inc_var}}")
+foreach(_spec "Vorbis::vorbisenc|..." "FLAC::FLAC|..." ...)
+    string(REPLACE "::" ";" _name_parts "${_target}")
+    list(GET _name_parts 1 _base_name)
+    if(TARGET ${_base_name})
+        add_library(${_target} ALIAS ${_base_name})  # ← links to real target
+    elseif(NOT TARGET ${_target})
+        add_library(${_target} STATIC IMPORTED)       # ← fallback for FetchContent
+        set_target_properties(${_target} PROPERTIES ...)
+    endif()
 endforeach()
 ```
 
-**Use `|` as separator, NOT `:`** — target names like `FLAC::FLAC` contain `::` which conflicts with `:`.
+**Which deps create their own aliases** (as of current versions):
+- `ogg` → creates `Ogg::ogg` ALIAS ✅
+- `opus` → creates `Opus::opus` ALIAS ✅
+- `vorbis` → does NOT create `Vorbis::*` aliases ❌
+- `FLAC` → does NOT create `FLAC::FLAC` alias ❌
 
-### 3. CMAKE_SKIP_INSTALL_RULES to avoid export conflicts
+### 3. `_resolve_dep` macro: save/restore in BOTH branches
+
+The macro has `if(local)/else(FetchContent)` branches. Both must save `CMAKE_SKIP_INSTALL_RULES` before modifying it. Common bug: only the `if` branch saves `_saved_skip`, leaving the `else` branch to restore a stale or undefined value.
+
+**Fix**: Move save before the `if`:
+```cmake
+macro(_resolve_dep VAR NAME)
+    set(_saved_skip ${CMAKE_SKIP_INSTALL_RULES})    # ← save ONCE, before both branches
+    if(DEFINED ${VAR})
+        set(CMAKE_SKIP_INSTALL_RULES ON)
+        add_subdirectory(...)
+        set(CMAKE_SKIP_INSTALL_RULES ${_saved_skip})
+    else()
+        set(CMAKE_SKIP_INSTALL_RULES ON)
+        FetchContent_MakeAvailable(...)
+        set(CMAKE_SKIP_INSTALL_RULES ${_saved_skip})
+    endif()
+endmacro()
+```
+
+### 4. CMAKE_SKIP_INSTALL_RULES to avoid export conflicts
 `FetchContent_MakeAvailable` triggers `install(EXPORT)` rules that fail when targets span multiple subdirectories (e.g., FLAC export depends on ogg not being in any export set).
 
 **Fix:** Wrap the MakeAvailable call:
@@ -63,7 +90,9 @@ FetchContent_MakeAvailable(ogg vorbis FLAC opus)
 set(CMAKE_SKIP_INSTALL_RULES ${_saved})
 ```
 
-### 4. Ogg needs binary dir for generated config_types.h
+**⚠️ Also apply to `_resolve_dep` macro's FetchContent path**: The `_resolve_dep` helper macro has two branches — `add_subdirectory` (already protected) and `FetchContent_MakeAvailable` (must add protection). Both paths need `CMAKE_SKIP_INSTALL_RULES=ON`.
+
+### 5. Ogg needs binary dir for generated config_types.h
 `ogg/config_types.h` is generated during build, lives in `${ogg_BINARY_DIR}/include/`, not in the source tree.
 
 **Fix:**
@@ -72,7 +101,7 @@ set_target_properties(Ogg::ogg PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${_fc_base}/ogg-src/include;${_fc_base}/ogg-build/include")
 ```
 
-### 5. Opus header directory mismatch
+### 6. Opus header directory mismatch
 Opus puts headers directly in `include/opus.h`, but code expects `include/opus/opus.h` (standard install layout).
 
 **Fix:** Create a symbolic link:
@@ -82,10 +111,10 @@ if(NOT EXISTS "${_fc_base}/opus-src/include/opus")
 endif()
 ```
 
-### 6. HAVE_EXTERNAL_XIPH_LIBS is unconditional
+### 7. HAVE_EXTERNAL_XIPH_LIBS is unconditional
 Line 127 of libsndfile's CMakeLists.txt: `set(HAVE_EXTERNAL_XIPH_LIBS ${ENABLE_EXTERNAL_LIBS})`. This means ALL xiph libs (including Opus) are linked, not just the ones found. You must provide ALL of them.
 
-### 7. Proxy for AI Studio
+### 8. Proxy for AI Studio
 Git fetches may hang without proxy:
 ```cmake
 export http_proxy=http://127.0.0.1:7890
