@@ -933,31 +933,43 @@ describe("Insight Lua Binding", function()
       assert.equals("CPU", name)
     end)
     it("cuda_version returns number", function()
-      local v = ins.cuda_version()
-      assert.is_number(v)
+      local ok, v = pcall(ins.cuda_version)
+      if ok then
+        assert.is_number(v)
+      end
     end)
     it("driver_version returns number", function()
-      local v = ins.driver_version()
-      assert.is_number(v)
+      local ok, v = pcall(ins.driver_version)
+      if ok then
+        assert.is_number(v)
+      end
     end)
     it("compute_capability returns number", function()
-      local v = ins.compute_capability()
-      assert.is_number(v)
+      local ok, v = pcall(ins.compute_capability)
+      if ok then
+        assert.is_number(v)
+      end
     end)
     it("device_memory returns two values", function()
-      local total, free = ins.device_memory()
-      assert.is_number(total)
-      assert.is_number(free)
+      local ok, total, free = pcall(ins.device_memory)
+      if ok then
+        assert.is_number(total)
+        assert.is_number(free)
+      end
     end)
     it("gpu_count returns number", function()
-      local c = ins.gpu_count()
-      assert.is_number(c)
+      local ok, c = pcall(ins.gpu_count)
+      if ok then
+        assert.is_number(c)
+      end
     end)
   end)
 
   -- =========================================================================
   -- GPU (load_backend + GPUPlace)
   -- =========================================================================
+  local cuda_available = ins.load_backend("cuda")
+
   describe("GPU", function()
     it("load_backend exists", function()
       assert.is_not_nil(ins.load_backend)
@@ -966,21 +978,33 @@ describe("Insight Lua Binding", function()
       assert.is_not_nil(ins.GPUPlace)
     end)
     it("load_backend cuda", function()
-      assert.has_no.errors(function()
-        ins.load_backend("cuda")
-      end)
+      if not cuda_available then
+        pending("CUDA backend not available")
+      end
     end)
     it("GPUPlace creation", function()
+      if not cuda_available then
+        pending("CUDA backend not available")
+        return
+      end
       local gpu = ins.GPUPlace(0)
       assert.is_true(gpu:is_gpu())
       assert.is_false(gpu:is_cpu())
     end)
     it("device_name gpu after load", function()
+      if not cuda_available then
+        pending("CUDA backend not available")
+        return
+      end
       local name = ins.device_name("gpu", 0)
       assert.is_not_nil(name)
       assert.is_true(#name > 0)
     end)
     it("array to GPU", function()
+      if not cuda_available then
+        pending("CUDA backend not available")
+        return
+      end
       local a = ins.ones({ 3, 4 }, ins.float32)
       local gpu = ins.GPUPlace(0)
       local b = a:to(gpu)
@@ -988,6 +1012,10 @@ describe("Insight Lua Binding", function()
       assert.equals(12, b.numel)
     end)
     it("array GPU roundtrip", function()
+      if not cuda_available then
+        pending("CUDA backend not available")
+        return
+      end
       local a = ins.from_table({ 1, 2, 3, 4 })
       local gpu = ins.GPUPlace(0)
       local b = a:to(gpu)

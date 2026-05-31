@@ -290,7 +290,13 @@ PYBIND11_MODULE(_insight, m) {
         "Check if Insight is initialized");
   m.def(
       "load_backend",
-      [](const std::string &backend) { ins::load_backend(backend); },
+      [](const std::string &backend) {
+        try {
+          ins::load_backend(backend);
+        } catch (const std::exception &e) {
+          throw py::value_error(e.what());
+        }
+      },
       py::arg("backend"),
       "Load an additional backend after init() (e.g., 'cuda', 'rocm')");
 

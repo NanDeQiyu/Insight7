@@ -116,6 +116,9 @@ TEST_F(RadarTestCPU, MvdrBasic) {
 #ifndef INSIGHT_USE_FFTW3
   GTEST_SKIP() << "FFTW3 not available, skipping FFT-dependent test";
 #endif
+#ifndef INSIGHT_USE_OPENBLAS
+  GTEST_SKIP() << "OpenBLAS not available, skipping LAPACK-dependent test";
+#endif
   // Simple 2-sensor, 10-sample case with independent data
   int M = 2, N = 10;
   std::vector<double> x_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10,

@@ -183,6 +183,9 @@ TEST_F(SignalFilteringTestCPU, LfilterIIRBasic) {
 // ========== lfilter_zi ==========
 
 TEST_F(SignalFilteringTestCPU, LfilterZiFIR) {
+#ifndef INSIGHT_USE_OPENBLAS
+  GTEST_SKIP() << "OpenBLAS not available, skipping LAPACK-dependent test";
+#endif
   // FIR: b=[1,1], a=[1] -> zi should be empty or trivial
   std::vector<double> b_data = {1.0, 1.0};
   std::vector<double> a_data = {1.0};
@@ -196,6 +199,9 @@ TEST_F(SignalFilteringTestCPU, LfilterZiFIR) {
 }
 
 TEST_F(SignalFilteringTestCPU, LfilterZiIIR) {
+#ifndef INSIGHT_USE_OPENBLAS
+  GTEST_SKIP() << "OpenBLAS not available, skipping LAPACK-dependent test";
+#endif
   // b=[1], a=[1, -0.5] -> zi = b[1]-a[1]*b[0] / (1-a[1]) = 0.5/0.5 = 1.0
   std::vector<double> b_data = {1.0};
   std::vector<double> a_data = {1.0, -0.5};

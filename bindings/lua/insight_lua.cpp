@@ -244,8 +244,13 @@ extern "C" int luaopen__insight(lua_State *L) {
   };
 
   // Load additional backend after init
-  m["load_backend"] = [](const std::string &backend) {
-    ins::load_backend(backend);
+  m["load_backend"] = [](const std::string &backend) -> bool {
+    try {
+      ins::load_backend(backend);
+      return true;
+    } catch (...) {
+      return false;
+    }
   };
 
   // ===== Device information =====

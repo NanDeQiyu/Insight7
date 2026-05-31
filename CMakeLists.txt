@@ -205,9 +205,9 @@ if(INSIGHT_USE_SNDFILE)
 
         # Determine source dir for each dependency
         macro(_resolve_dep VAR NAME)
+            set(_saved_skip ${CMAKE_SKIP_INSTALL_RULES})
             if(DEFINED ${VAR})
                 set(_${NAME}_src "${${VAR}}")
-                set(_saved_skip ${CMAKE_SKIP_INSTALL_RULES})
                 set(CMAKE_SKIP_INSTALL_RULES ON)
                 add_subdirectory("${${VAR}}" "${CMAKE_BINARY_DIR}/_deps/${NAME}-build")
                 set(CMAKE_SKIP_INSTALL_RULES ${_saved_skip})
@@ -253,10 +253,18 @@ if(INSIGHT_USE_SNDFILE)
             list(GET _parts 1 _lib_var)
             list(GET _parts 2 _inc_var)
             if(NOT TARGET ${_target})
-                add_library(${_target} STATIC IMPORTED)
-                set_target_properties(${_target} PROPERTIES
-                    IMPORTED_LOCATION "${${_lib_var}}"
-                    INTERFACE_INCLUDE_DIRECTORIES "${${_inc_var}}")
+                # Check if the base target exists (from add_subdirectory)
+                # If so, create an ALIAS; otherwise create an IMPORTED target
+                string(REPLACE "::" ";" _name_parts "${_target}")
+                list(GET _name_parts 1 _base_name)
+                if(TARGET ${_base_name})
+                    add_library(${_target} ALIAS ${_base_name})
+                else()
+                    add_library(${_target} STATIC IMPORTED)
+                    set_target_properties(${_target} PROPERTIES
+                        IMPORTED_LOCATION "${${_lib_var}}"
+                        INTERFACE_INCLUDE_DIRECTORIES "${${_inc_var}}")
+                endif()
             endif()
         endforeach()
         # Link dependencies (only for imported targets we created, not add_subdirectory targets)
