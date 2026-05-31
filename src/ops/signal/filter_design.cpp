@@ -1,6 +1,7 @@
 // src/ops/signal/filter_design.cpp
 #include "insight/ops/signal/filter_design.h"
 #include "insight/core/exception.h"
+#include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
 #include "insight/ops/fft.h"
@@ -63,18 +64,15 @@ bool parse_pass_zero(const std::string &pz) {
   return true;
 }
 
-// Compute windowed sinc FIR filter on CPU (scalar reads require CPU arrays)
 Array firwin_cpu(int64_t numtaps, const std::vector<double> &cutoff,
                  const std::string &window, bool pass_zero, bool scale) {
   Place cpu = CPUPlace();
   int64_t n = numtaps;
   double alpha = 0.5 * (n - 1);
 
-  // Build m indices on CPU
   Array m_arr = arange(0.0, static_cast<double>(n), 1.0, DType::F64, cpu);
   Array m_minus_alpha = sub(m_arr, full({n}, alpha, DType::F64, cpu));
 
-  // Start with zeros (bandpass) or ones (bandstop/lowpass)
   Array result;
   if (pass_zero) {
     result = ones({n}, DType::F64, cpu);
@@ -82,7 +80,6 @@ Array firwin_cpu(int64_t numtaps, const std::vector<double> &cutoff,
     result = zeros({n}, DType::F64, cpu);
   }
 
-  // Add/subtract ideal lowpass responses for each cutoff
   for (size_t i = 0; i < cutoff.size(); ++i) {
     double c = cutoff[i];
     INS_CHECK(c > 0.0 && c < 1.0, "firwin: cutoff must be in (0, 1), got ", c);
@@ -99,40 +96,37 @@ Array firwin_cpu(int64_t numtaps, const std::vector<double> &cutoff,
     Array h = mul(sinc_val, full({n}, c, DType::F64, cpu));
 
     if (i % 2 == 0) {
-      if (pass_zero)
-        result = sub(result, h);
-      else
-        result = add(result, h);
+      result = pass_zero ? sub(result, h) : add(result, h);
     } else {
-      if (pass_zero)
-        result = add(result, h);
-      else
-        result = sub(result, h);
+      result = pass_zero ? add(result, h) : sub(result, h);
     }
   }
 
-  // Apply window — build on CPU to avoid device mismatch
-  // Use get_window with CPU transfer
+  // Apply window
   Array win = get_window(window, numtaps, false);
-  if (win.place().kind() != DeviceKind::CPU) {
+  if (win.place().kind() != DeviceKind::CPU)
     win = win.to(cpu);
-  }
   result = mul(result, win);
 
-  // Scale
+  // Scale using composite ops
   if (scale) {
-    double scale_factor = 0.0;
-    const double *hd = result.data<double>();
+    Array scale_factor;
     if (pass_zero) {
-      for (int64_t k = 0; k < result.numel(); ++k)
-        scale_factor += hd[k];
+      scale_factor = sum(result);
     } else {
-      for (int64_t k = 0; k < result.numel(); ++k) {
-        scale_factor += hd[k] * (k % 2 == 0 ? 1.0 : -1.0);
-      }
+      // Alternating sign sum: sum(result * [1, -1, 1, -1, ...])
+      std::vector<double> alt(n);
+      for (int64_t k = 0; k < n; ++k)
+        alt[k] = (k % 2 == 0) ? 1.0 : -1.0;
+      Array alt_arr = to_array(alt, DType::F64, cpu);
+      scale_factor = sum(mul(result, alt_arr));
     }
-    if (std::abs(scale_factor) > 1e-15) {
-      result = div(result, full(result.shape(), scale_factor, DType::F64, cpu));
+
+    double sf = (result.dtype() == DType::F64)
+                    ? scale_factor.item<double>()
+                    : static_cast<double>(scale_factor.item<float>());
+    if (std::abs(sf) > 1e-15) {
+      result = div(result, full(result.shape(), sf, DType::F64, cpu));
     }
   }
 
@@ -183,10 +177,8 @@ Array firwin2(int64_t numtaps, const std::vector<double> &freq,
     double f = i * df;
     while (j + 1 < freq.size() - 1 && freq[j + 1] < f)
       ++j;
-    double f0 = freq[j];
-    double f1 = freq[j + 1];
-    double g0 = gain[j];
-    double g1 = gain[j + 1];
+    double f0 = freq[j], f1 = freq[j + 1];
+    double g0 = gain[j], g1 = gain[j + 1];
     double t = (f1 > f0) ? (f - f0) / (f1 - f0) : 0.0;
     response[i] = g0 + t * (g1 - g0);
   }
@@ -202,8 +194,7 @@ Array firwin2(int64_t numtaps, const std::vector<double> &freq,
         full_response[k] =
             response[k] * std::exp(std::complex<double>(0, -k * phase_shift));
       } else {
-        int64_t mirror = fft_len - k;
-        full_response[k] = std::conj(full_response[mirror]);
+        full_response[k] = std::conj(full_response[fft_len - k]);
       }
     }
   } else {
@@ -211,46 +202,30 @@ Array firwin2(int64_t numtaps, const std::vector<double> &freq,
       if (k < n_half) {
         full_response[k] = response[k];
       } else {
-        int64_t mirror = fft_len - k;
-        full_response[k] = response[mirror];
+        full_response[k] = response[fft_len - k];
       }
     }
   }
 
-  // IFFT (on CPU)
+  // IFFT
   Array resp_arr = to_array(full_response, DType::C64, cpu);
   Array h_full = fft::ifft(resp_arr);
 
-  // Extract real part
-  std::vector<double> h_vals(numtaps);
-  if (h_full.dtype() == DType::C64) {
-    const std::complex<double> *data =
-        reinterpret_cast<const std::complex<double> *>(h_full.data<char>());
-    for (int64_t i = 0; i < numtaps; ++i) {
-      h_vals[i] = data[i].real();
-    }
-  } else {
-    const double *data = h_full.data<double>();
-    for (int64_t i = 0; i < numtaps; ++i) {
-      h_vals[i] = data[i];
-    }
-  }
+  // Extract real part using framework API
+  Array h_real = real(h_full);
+  Array h = slice(h_real, {0}, {0}, {static_cast<int>(numtaps)});
+  if (h.dtype() != DType::F64)
+    h = h.to(DType::F64);
 
-  Array h = to_array(h_vals, DType::F64, cpu);
-
-  // Apply window (force CPU)
+  // Apply window
   Array win = get_window(window, numtaps, false);
-  if (win.place().kind() != DeviceKind::CPU) {
+  if (win.place().kind() != DeviceKind::CPU)
     win = win.to(cpu);
-  }
   h = mul(h, win);
 
   // Scale
   if (gain[0] != 0.0) {
-    const double *hd = h.data<double>();
-    double dc = 0.0;
-    for (int64_t i = 0; i < h.numel(); ++i)
-      dc += hd[i];
+    double dc = sum(h).item<double>();
     if (std::abs(dc) > 1e-15) {
       h = div(h, full(h.shape(), dc / gain[0], DType::F64, cpu));
     }
@@ -260,56 +235,35 @@ Array firwin2(int64_t numtaps, const std::vector<double> &freq,
 }
 
 // ============================================================================
-// cmplx_sort
+// cmplx_sort — Sort complex values by magnitude
 // ============================================================================
 
 Array cmplx_sort(const Array &p) {
   INS_CHECK(p.defined(), "cmplx_sort: input is undefined");
 
   Place cpu = CPUPlace();
+  Array p_cpu = (p.place().kind() == DeviceKind::CPU) ? p : p.to(cpu);
 
-  // Transfer to CPU if needed (scalar sort is inherently serial)
-  Array p_cpu = p;
-  if (p.place().kind() != DeviceKind::CPU) {
-    p_cpu = p.to(cpu);
+  // Sort by magnitude — compute |z|^2 = re^2 + im^2 to stay in real domain
+  // abs() on complex may return complex in some implementations
+  if (is_complex(p_cpu)) {
+    Array re = real(p_cpu);
+    Array im = imag(p_cpu);
+    Array mag_sq = add(square(re), square(im));
+    Array sort_idx = argsort(mag_sq, 0, false);
+    Array sorted = take(p_cpu, sort_idx);
+    if (p.place().kind() != DeviceKind::CPU)
+      sorted = sorted.to(p.place());
+    return sorted;
   }
 
-  int64_t n = p_cpu.numel();
-
-  if (p_cpu.dtype() == DType::C64) {
-    const std::complex<double> *data =
-        reinterpret_cast<const std::complex<double> *>(p_cpu.data<char>());
-    std::vector<std::complex<double>> vals(data, data + n);
-    std::sort(vals.begin(), vals.end(),
-              [](const std::complex<double> &a, const std::complex<double> &b) {
-                return std::abs(a) < std::abs(b);
-              });
-    return to_array(vals, DType::C64, cpu);
-  } else if (p_cpu.dtype() == DType::C32) {
-    const std::complex<float> *data =
-        reinterpret_cast<const std::complex<float> *>(p_cpu.data<char>());
-    std::vector<std::complex<float>> vals(data, data + n);
-    std::sort(vals.begin(), vals.end(),
-              [](const std::complex<float> &a, const std::complex<float> &b) {
-                return std::abs(a) < std::abs(b);
-              });
-    return to_array(vals, DType::C32, cpu);
-  } else if (p_cpu.dtype() == DType::F64) {
-    const double *data = p_cpu.data<double>();
-    std::vector<double> vals(data, data + n);
-    std::sort(vals.begin(), vals.end(),
-              [](double a, double b) { return std::abs(a) < std::abs(b); });
-    return to_array(vals, DType::F64, cpu);
-  } else if (p_cpu.dtype() == DType::F32) {
-    const float *data = p_cpu.data<float>();
-    std::vector<float> vals(data, data + n);
-    std::sort(vals.begin(), vals.end(),
-              [](float a, float b) { return std::abs(a) < std::abs(b); });
-    return to_array(vals, DType::F32, cpu);
-  }
-
-  INS_CHECK(false, "cmplx_sort: unsupported dtype");
-  return Array();
+  // Real values: sort by absolute value
+  Array mag_sq = square(p_cpu);
+  Array sort_idx = argsort(mag_sq, 0, false);
+  Array sorted = take(p_cpu, sort_idx);
+  if (p.place().kind() != DeviceKind::CPU)
+    sorted = sorted.to(p.place());
+  return sorted;
 }
 
 } // namespace signal

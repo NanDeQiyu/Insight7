@@ -1,11 +1,14 @@
 // src/ops/signal/radar.cpp
 #include "insight/ops/signal/radar.h"
 #include "insight/core/exception.h"
+#include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
 #include "insight/ops/fft.h"
+#include "insight/ops/indexing.h"
 #include "insight/ops/linalg.h"
 #include "insight/ops/manipulation.h"
+#include "insight/ops/operator.h"
 #include "insight/ops/reduction.h"
 #include "insight/ops/signal/windows.h"
 #include "insight/ops/unary.h"
@@ -42,102 +45,75 @@ Array pulse_compression(const Array &x, const Array &template_tx,
   if (nfft == 0)
     nfft = samples_per_pulse;
 
-  Place cpu = CPUPlace();
-  Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
-  Array tpl = (template_tx.place().kind() == DeviceKind::CPU)
-                  ? template_tx
-                  : template_tx.to(cpu);
-
   // Apply window to template if specified
+  Array tpl = template_tx;
   if (!window.empty()) {
-    int64_t Nx = tpl.numel();
-    Array W = get_window(window, Nx, false);
+    Array W = get_window(window, tpl.numel(), false);
     tpl = mul(tpl, W);
   }
 
-  // Normalize template if requested
+  // Normalize template
   if (normalize) {
-    double norm_val = 0.0;
-    if (tpl.dtype() == DType::F64) {
-      const double *d = tpl.data<double>();
-      for (int64_t i = 0; i < tpl.numel(); ++i)
-        norm_val += d[i] * d[i];
-      norm_val = std::sqrt(norm_val);
-      std::vector<double> norm_data(tpl.numel());
-      for (int64_t i = 0; i < tpl.numel(); ++i)
-        norm_data[i] = d[i] / norm_val;
-      tpl = to_array(norm_data, DType::F64, cpu);
-    } else {
-      const float *d = tpl.data<float>();
-      for (int64_t i = 0; i < tpl.numel(); ++i)
-        norm_val += d[i] * d[i];
-      norm_val = std::sqrt(norm_val);
-      std::vector<float> norm_data(tpl.numel());
-      for (int64_t i = 0; i < tpl.numel(); ++i)
-        norm_data[i] = d[i] / norm_val;
-      tpl = to_array(norm_data, DType::F32, cpu);
-    }
+    double norm_val = std::sqrt(sum(square(tpl)).item<double>());
+    tpl = div(tpl, full(tpl.shape(), norm_val, tpl.dtype(), tpl.place()));
   }
 
-  // FFT of template, conjugate, tile to match num_pulses
+  // FFT of template, conjugate
+  DType work_dtype = (tpl.dtype() == DType::F32) ? DType::F32 : DType::F64;
+  if (tpl.dtype() != work_dtype)
+    tpl = tpl.to(work_dtype);
   Array fft_tpl = fft::rfft(tpl, nfft);
+  Array conj_fft_tpl = conj(fft_tpl);
 
-  // Conjugate and tile
+  // Process each pulse: rfft → multiply → irfft
+  Place cpu = CPUPlace();
   int64_t fft_len = nfft / 2 + 1;
-  std::vector<std::complex<double>> conj_tpl(fft_len);
-  if (fft_tpl.dtype() == DType::C64) {
-    const std::complex<double> *d =
-        reinterpret_cast<const std::complex<double> *>(fft_tpl.data<char>());
-    for (int64_t i = 0; i < fft_len; ++i)
-      conj_tpl[i] = std::conj(d[i]);
-  } else {
-    const std::complex<float> *d =
-        reinterpret_cast<const std::complex<float> *>(fft_tpl.data<char>());
-    for (int64_t i = 0; i < fft_len; ++i)
-      conj_tpl[i] = std::conj(d[i]);
-  }
+  DType cdtype = (work_dtype == DType::F32) ? DType::C32 : DType::C64;
 
-  // Process each pulse
+  // Move all data to CPU for per-pulse extraction
+  Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
+  if (x_cpu.dtype() != work_dtype)
+    x_cpu = x_cpu.to(work_dtype);
+  if (conj_fft_tpl.place().kind() != DeviceKind::CPU)
+    conj_fft_tpl = conj_fft_tpl.to(cpu);
+
   std::vector<std::complex<double>> result_data(num_pulses * nfft);
+
   for (int64_t p = 0; p < num_pulses; ++p) {
-    // Extract pulse p
-    std::vector<double> pulse_data(samples_per_pulse);
-    if (x_cpu.dtype() == DType::F64) {
+    // Extract pulse p as vector
+    std::vector<double> pulse_vec(samples_per_pulse);
+    if (work_dtype == DType::F64) {
       const double *xd = x_cpu.data<double>();
       for (int64_t i = 0; i < samples_per_pulse; ++i)
-        pulse_data[i] = xd[p * samples_per_pulse + i];
+        pulse_vec[i] = xd[p * samples_per_pulse + i];
     } else {
       const float *xd = x_cpu.data<float>();
       for (int64_t i = 0; i < samples_per_pulse; ++i)
-        pulse_data[i] = xd[p * samples_per_pulse + i];
+        pulse_vec[i] = xd[p * samples_per_pulse + i];
     }
 
-    Array pulse_arr = to_array(pulse_data, DType::F64, cpu);
-    Array fft_pulse = fft::rfft(pulse_arr, nfft);
+    Array pulse = to_array(pulse_vec, work_dtype, cpu);
+    Array fft_pulse = fft::rfft(pulse, nfft);
+    Array product = mul(fft_pulse, conj_fft_tpl);
+    Array ifft_result = fft::irfft(product, nfft);
 
-    // Multiply in frequency domain
-    const std::complex<double> *fp =
-        reinterpret_cast<const std::complex<double> *>(fft_pulse.data<char>());
-
-    std::vector<std::complex<double>> prod(fft_len);
-    for (int64_t i = 0; i < fft_len; ++i) {
-      prod[i] = fp[i] * conj_tpl[i];
-    }
-
-    Array prod_arr = to_array(prod, DType::C64, cpu);
-    Array ifft_result = fft::irfft(prod_arr, nfft);
-
-    const double *ird = ifft_result.data<double>();
-    for (int64_t i = 0; i < nfft; ++i) {
-      result_data[p * nfft + i] = std::complex<double>(ird[i], 0.0);
+    // Store result as complex
+    if (work_dtype == DType::F64) {
+      const double *ird = ifft_result.data<double>();
+      for (int64_t i = 0; i < nfft; ++i) {
+        result_data[p * nfft + i] = std::complex<double>(ird[i], 0.0);
+      }
+    } else {
+      const float *ird = ifft_result.data<float>();
+      for (int64_t i = 0; i < nfft; ++i) {
+        result_data[p * nfft + i] = std::complex<double>(ird[i], 0.0);
+      }
     }
   }
 
-  Array result =
-      to_array(result_data, Shape({num_pulses, nfft}), DType::C64, cpu);
-  if (x.place().kind() != DeviceKind::CPU) {
+  Array result = to_array(result_data, Shape({num_pulses, nfft}), cdtype, cpu);
+  if (x.place().kind() != DeviceKind::CPU)
     result = result.to(x.place());
-  }
   return result;
 }
 
@@ -156,58 +132,38 @@ Array pulse_doppler(const Array &x, const std::string &window, int64_t nfft) {
   if (nfft == 0)
     nfft = num_pulses;
 
-  Place cpu = CPUPlace();
-  Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
-
-  // Apply window along pulse dimension if specified
+  // Apply window along pulse dimension (axis 0)
+  Array x_work = x;
   if (!window.empty()) {
     Array W = get_window(window, num_pulses, false);
-    // Multiply each column by window
-    if (x_cpu.dtype() == DType::F64) {
-      const double *wd = W.data<double>();
-      const double *xd = x_cpu.data<double>();
-      std::vector<double> windowed(x_cpu.numel());
-      for (int64_t p = 0; p < num_pulses; ++p) {
-        for (int64_t s = 0; s < samples_per_pulse; ++s) {
-          windowed[p * samples_per_pulse + s] =
-              xd[p * samples_per_pulse + s] * wd[p];
-        }
-      }
-      x_cpu = to_array(windowed, x_cpu.shape(), DType::F64, cpu);
-    } else {
-      const float *wd = W.data<float>();
-      const float *xd = x_cpu.data<float>();
-      std::vector<float> windowed(x_cpu.numel());
-      for (int64_t p = 0; p < num_pulses; ++p) {
-        for (int64_t s = 0; s < samples_per_pulse; ++s) {
-          windowed[p * samples_per_pulse + s] =
-              xd[p * samples_per_pulse + s] * wd[p];
-        }
-      }
-      x_cpu = to_array(windowed, x_cpu.shape(), DType::F32, cpu);
-    }
+    // Reshape W for broadcasting: [num_pulses, 1]
+    W = reshape(W, {num_pulses, 1});
+    x_work = mul(x_work, W);
   }
 
   // FFT along pulse dimension (axis 0)
-  // We need to transpose, FFT along last axis, then transpose back
-  // Or do FFT column-by-column
+  // Transpose → FFT along last axis → transpose back
+  Array x_t = transpose(x_work); // [samples_per_pulse, num_pulses]
+
+  // Convert to complex for FFT
+  DType cdtype = (x.dtype() == DType::F32) ? DType::C32 : DType::C64;
+  DType work_dtype = (x.dtype() == DType::F32) ? DType::F32 : DType::F64;
+  if (x_t.dtype() != work_dtype)
+    x_t = x_t.to(work_dtype);
+
+  // FFT each row (which corresponds to a column of original)
+  // Process row by row
+  Place cpu = CPUPlace();
+  Array x_t_cpu = (x_t.place().kind() == DeviceKind::CPU) ? x_t : x_t.to(cpu);
+
   std::vector<std::complex<double>> result_data(nfft * samples_per_pulse);
-
   for (int64_t s = 0; s < samples_per_pulse; ++s) {
-    // Extract column s
-    std::vector<double> col(num_pulses);
-    if (x_cpu.dtype() == DType::F64) {
-      const double *xd = x_cpu.data<double>();
-      for (int64_t p = 0; p < num_pulses; ++p)
-        col[p] = xd[p * samples_per_pulse + s];
-    } else {
-      const float *xd = x_cpu.data<float>();
-      for (int64_t p = 0; p < num_pulses; ++p)
-        col[p] = xd[p * samples_per_pulse + s];
-    }
+    Array col =
+        slice(x_t_cpu, {0}, {static_cast<int>(s)}, {static_cast<int>(s + 1)});
+    col = reshape(col, {num_pulses});
 
-    Array col_arr = to_array(col, DType::F64, cpu);
-    Array fft_col = fft::fft(col_arr, nfft);
+    Array col_cpx = to_complex(col);
+    Array fft_col = fft::fft(col_cpx, nfft);
 
     const std::complex<double> *fd =
         reinterpret_cast<const std::complex<double> *>(fft_col.data<char>());
@@ -217,10 +173,9 @@ Array pulse_doppler(const Array &x, const std::string &window, int64_t nfft) {
   }
 
   Array result =
-      to_array(result_data, Shape({nfft, samples_per_pulse}), DType::C64, cpu);
-  if (x.place().kind() != DeviceKind::CPU) {
+      to_array(result_data, Shape({nfft, samples_per_pulse}), cdtype, cpu);
+  if (x.place().kind() != DeviceKind::CPU)
     result = result.to(x.place());
-  }
   return result;
 }
 
@@ -233,7 +188,7 @@ double cfar_alpha(double pfa, int N) {
 }
 
 // ============================================================================
-// ca_cfar
+// ca_cfar — Cell-Averaging CFAR (sequential, requires backend kernel)
 // ============================================================================
 
 std::pair<Array, Array> ca_cfar(const Array &data,
@@ -249,10 +204,11 @@ std::pair<Array, Array> ca_cfar(const Array &data,
   int ndim = data.shape().ndim();
   INS_CHECK(ndim <= 2, "ca_cfar: supports 1D and 2D arrays only");
 
+  DType work_dtype = (data.dtype() == DType::F32) ? DType::F32 : DType::F64;
+
   double alpha = cfar_alpha(
       pfa, (int)reference_cells.size() > 0 ? (2 * reference_cells[0]) : 2);
 
-  // For 2D: alpha is product of per-dimension alphas
   if (ndim == 2) {
     int N_row = 2 * reference_cells[0];
     int N_col = reference_cells.size() > 1 ? 2 * reference_cells[1] : N_row;
@@ -260,7 +216,7 @@ std::pair<Array, Array> ca_cfar(const Array &data,
   }
 
   int64_t total = data_cpu.numel();
-  Array threshold = zeros(data.shape(), data.dtype(), cpu);
+  Array threshold = zeros(data.shape(), work_dtype, cpu);
   Array detections = zeros(data.shape(), DType::BOOL, cpu);
 
   if (ndim == 1) {
@@ -268,7 +224,7 @@ std::pair<Array, Array> ca_cfar(const Array &data,
     int g = guard_cells.empty() ? 1 : guard_cells[0];
     int r = reference_cells.empty() ? 1 : reference_cells[0];
 
-    if (data.dtype() == DType::F64) {
+    if (work_dtype == DType::F64) {
       const double *src = data_cpu.data<double>();
       double *th = threshold.data<double>();
       bool *det = detections.data<bool>();
@@ -297,7 +253,7 @@ std::pair<Array, Array> ca_cfar(const Array &data,
         th[i] = noise_level * alpha;
         det[i] = src[i] > th[i];
       }
-    } else if (data.dtype() == DType::F32) {
+    } else {
       const float *src = data_cpu.data<float>();
       float *th = threshold.data<float>();
       bool *det = detections.data<bool>();
@@ -334,8 +290,7 @@ std::pair<Array, Array> ca_cfar(const Array &data,
     int rr = reference_cells.empty() ? 1 : reference_cells[0];
     int rc = reference_cells.size() > 1 ? reference_cells[1] : rr;
 
-    // 2D CFAR using 2D cumsum
-    if (data.dtype() == DType::F64) {
+    if (work_dtype == DType::F64) {
       const double *src = data_cpu.data<double>();
       double *th = threshold.data<double>();
       bool *det = detections.data<bool>();
@@ -352,7 +307,6 @@ std::pair<Array, Array> ca_cfar(const Array &data,
 
       for (int64_t r = 0; r < rows; ++r) {
         for (int64_t c = 0; c < cols; ++c) {
-          // Reference window: cells between guard and reference boundaries
           int64_t r0 = std::max((int64_t)0, r - gr - rr);
           int64_t r1 = std::max((int64_t)0, r - gr);
           int64_t r2 = std::min(rows, r + gr + 1);
@@ -362,7 +316,6 @@ std::pair<Array, Array> ca_cfar(const Array &data,
           int64_t c2 = std::min(cols, c + gc + 1);
           int64_t c3 = std::min(cols, c + gc + rc + 1);
 
-          // Sum of reference cells (outer region minus guard region)
           double outer = cs[r3 * (cols + 1) + c3] - cs[r0 * (cols + 1) + c3] -
                          cs[r3 * (cols + 1) + c0] + cs[r0 * (cols + 1) + c0];
           double inner = cs[r2 * (cols + 1) + c2] - cs[r1 * (cols + 1) + c2] -
@@ -381,7 +334,7 @@ std::pair<Array, Array> ca_cfar(const Array &data,
           det[r * cols + c] = src[r * cols + c] > th[r * cols + c];
         }
       }
-    } else if (data.dtype() == DType::F32) {
+    } else {
       const float *src = data_cpu.data<float>();
       float *th = threshold.data<float>();
       bool *det = detections.data<bool>();
@@ -435,117 +388,64 @@ std::pair<Array, Array> ca_cfar(const Array &data,
 }
 
 // ============================================================================
-// mvdr
+// mvdr — MVDR Beamformer using composite ops
 // ============================================================================
 
 Array mvdr(const Array &x, const Array &sv, bool calc_cov) {
   INS_CHECK(x.defined(), "mvdr: x is undefined");
   INS_CHECK(sv.defined(), "mvdr: sv is undefined");
 
-  Place cpu = CPUPlace();
-  Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
-  Array sv_cpu = (sv.place().kind() == DeviceKind::CPU) ? sv : sv.to(cpu);
-
-  INS_CHECK(x_cpu.shape().dim(0) <= x_cpu.shape().dim(1),
+  INS_CHECK(x.shape().dim(0) <= x.shape().dim(1),
             "mvdr: matrix has more sensors than samples");
-  INS_CHECK(x_cpu.shape().dim(0) == sv_cpu.numel(),
+  INS_CHECK(x.shape().dim(0) == sv.numel(),
             "mvdr: steering vector and input data do not align");
 
-  // Compute covariance matrix if needed
+  Place cpu = CPUPlace();
+  DType work_dtype = (x.dtype() == DType::F32) ? DType::F32 : DType::F64;
+
+  // Compute covariance matrix if needed: R = (1/N) * X * X^T
   Array R;
   if (calc_cov) {
-    // R = (1/N) * X * X^H
-    int64_t M = x_cpu.shape().dim(0);
-    int64_t N = x_cpu.shape().dim(1);
-
-    // Convert to complex for covariance computation
-    // For simplicity, compute as real: R = X * X^T / N
-    std::vector<double> R_data(M * M, 0.0);
-    if (x_cpu.dtype() == DType::F64) {
-      const double *xd = x_cpu.data<double>();
-      for (int64_t i = 0; i < M; ++i) {
-        for (int64_t j = 0; j < M; ++j) {
-          double sum = 0.0;
-          for (int64_t k = 0; k < N; ++k) {
-            sum += xd[i * N + k] * xd[j * N + k];
-          }
-          R_data[i * M + j] = sum / N;
-        }
-      }
-    } else {
-      const float *xd = x_cpu.data<float>();
-      for (int64_t i = 0; i < M; ++i) {
-        for (int64_t j = 0; j < M; ++j) {
-          double sum = 0.0;
-          for (int64_t k = 0; k < N; ++k) {
-            sum += static_cast<double>(xd[i * N + k]) * xd[j * N + k];
-          }
-          R_data[i * M + j] = sum / N;
-        }
-      }
-    }
-    R = to_array(R_data, Shape({M, M}), DType::F64, cpu);
+    int64_t N = x.shape().dim(1);
+    Array x_work = x.dtype() == work_dtype ? x : x.to(work_dtype);
+    Array xT = transpose(x_work);
+    R = div(matmul(x_work, xT), full({1}, static_cast<double>(N), work_dtype));
   } else {
-    R = x_cpu;
+    R = x.dtype() == work_dtype ? x : x.to(work_dtype);
   }
 
   // R_inv = inv(R)
   Array R_inv = inv(R);
 
   // sv as column vector
+  Array sv_work = sv.dtype() == work_dtype ? sv : sv.to(work_dtype);
   Array sv_col;
-  if (sv_cpu.shape().ndim() == 1) {
-    // Reshape to [M, 1]
-    std::vector<double> sv_data(sv_cpu.numel());
-    if (sv_cpu.dtype() == DType::F64) {
-      const double *sd = sv_cpu.data<double>();
-      for (int64_t i = 0; i < sv_cpu.numel(); ++i)
-        sv_data[i] = sd[i];
-    } else {
-      const float *sd = sv_cpu.data<float>();
-      for (int64_t i = 0; i < sv_cpu.numel(); ++i)
-        sv_data[i] = sd[i];
-    }
-    sv_col = to_array(sv_data, Shape({sv_cpu.numel(), 1}), DType::F64, cpu);
+  if (sv_work.shape().ndim() == 1) {
+    sv_col = reshape(sv_work, {sv_work.numel(), 1});
   } else {
-    sv_col = sv_cpu;
+    sv_col = sv_work;
   }
 
-  // w = R_inv * sv / (sv^H * R_inv * sv)
+  // w = R_inv * sv / (sv^T * R_inv * sv)
   Array wB = matmul(R_inv, sv_col);
-
-  // sv^T (transpose for real case)
-  std::vector<double> sv_t_data(sv_col.numel());
-  const double *svd = sv_col.data<double>();
-  for (int64_t i = 0; i < sv_col.numel(); ++i)
-    sv_t_data[i] = svd[i];
-  Array sv_t = to_array(sv_t_data, Shape({1, sv_col.numel()}), DType::F64, cpu);
-
+  Array sv_t = transpose(sv_col);
   Array wA = matmul(sv_t, wB);
 
-  // w = wB / wA (scalar division)
-  double wA_val = 0.0;
-  if (wA.dtype() == DType::F64) {
-    wA_val = wA.data<double>()[0];
-  } else {
-    wA_val = wA.data<float>()[0];
-  }
+  // Scalar division using item()
+  double wA_val = (work_dtype == DType::F64)
+                      ? wA.item<double>()
+                      : static_cast<double>(wA.item<float>());
 
-  std::vector<double> w_data(wB.numel());
-  const double *wb = wB.data<double>();
-  for (int64_t i = 0; i < wB.numel(); ++i) {
-    w_data[i] = wb[i] / wA_val;
-  }
-  Array result = to_array(w_data, DType::F64, cpu);
+  Array result = div(wB, full(wB.shape(), wA_val, work_dtype));
+  result = reshape(result, {sv.numel()});
 
-  if (x.place().kind() != DeviceKind::CPU) {
+  if (x.place().kind() != DeviceKind::CPU)
     result = result.to(x.place());
-  }
   return result;
 }
 
 // ============================================================================
-// ambgfun
+// ambgfun — Ambiguity Function (sequential, requires backend kernel)
 // ============================================================================
 
 Array ambgfun(const Array &x, double fs, double prf, const Array &y,
@@ -554,122 +454,91 @@ Array ambgfun(const Array &x, double fs, double prf, const Array &y,
 
   Place cpu = CPUPlace();
   Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
-  Array y_cpu;
-  if (y.defined()) {
-    y_cpu = (y.place().kind() == DeviceKind::CPU) ? y : y.to(cpu);
-  } else {
-    y_cpu = x_cpu;
-  }
+  Array y_cpu = y.defined()
+                    ? ((y.place().kind() == DeviceKind::CPU) ? y : y.to(cpu))
+                    : x_cpu;
 
   int64_t N = x_cpu.numel();
   int64_t M = y_cpu.numel();
 
-  // Compute ambiguity function
-  // ambgfun is essentially: |sum_n x(n) * conj(y(n-tau)) * exp(j*2*pi*f*n/fs)|
-  // For the 2D case, we compute for all delay and Doppler values
+  INS_CHECK(cut == "2d", "ambgfun: only '2d' cut is currently supported");
 
-  if (cut == "2d") {
-    int64_t delay_len = N + M - 1;
-    int64_t doppler_len = N;
-
-    std::vector<double> ambg(delay_len * doppler_len, 0.0);
-
-    // Get data as complex
-    std::vector<std::complex<double>> x_data(N), y_data(M);
-    if (x_cpu.dtype() == DType::C64) {
-      const std::complex<double> *xd =
-          reinterpret_cast<const std::complex<double> *>(x_cpu.data<char>());
-      for (int64_t i = 0; i < N; ++i)
-        x_data[i] = xd[i];
-    } else if (x_cpu.dtype() == DType::F64) {
-      const double *xd = x_cpu.data<double>();
-      for (int64_t i = 0; i < N; ++i)
-        x_data[i] = std::complex<double>(xd[i], 0.0);
-    } else if (x_cpu.dtype() == DType::C32) {
-      const std::complex<float> *xd =
-          reinterpret_cast<const std::complex<float> *>(x_cpu.data<char>());
-      for (int64_t i = 0; i < N; ++i)
-        x_data[i] = xd[i];
+  // Convert to complex vectors
+  std::vector<std::complex<double>> x_data(N), y_data(M);
+  auto to_cpx = [](const Array &arr, std::vector<std::complex<double>> &out) {
+    int64_t n = arr.numel();
+    if (arr.dtype() == DType::C64) {
+      const std::complex<double> *d =
+          reinterpret_cast<const std::complex<double> *>(arr.data<char>());
+      for (int64_t i = 0; i < n; ++i)
+        out[i] = d[i];
+    } else if (arr.dtype() == DType::C32) {
+      const std::complex<float> *d =
+          reinterpret_cast<const std::complex<float> *>(arr.data<char>());
+      for (int64_t i = 0; i < n; ++i)
+        out[i] = d[i];
+    } else if (arr.dtype() == DType::F64) {
+      const double *d = arr.data<double>();
+      for (int64_t i = 0; i < n; ++i)
+        out[i] = {d[i], 0.0};
     } else {
-      const float *xd = x_cpu.data<float>();
-      for (int64_t i = 0; i < N; ++i)
-        x_data[i] = std::complex<double>(xd[i], 0.0);
+      const float *d = arr.data<float>();
+      for (int64_t i = 0; i < n; ++i)
+        out[i] = {d[i], 0.0};
     }
+  };
+  to_cpx(x_cpu, x_data);
+  to_cpx(y_cpu, y_data);
 
-    if (y_cpu.dtype() == DType::C64) {
-      const std::complex<double> *yd =
-          reinterpret_cast<const std::complex<double> *>(y_cpu.data<char>());
-      for (int64_t i = 0; i < M; ++i)
-        y_data[i] = yd[i];
-    } else if (y_cpu.dtype() == DType::F64) {
-      const double *yd = y_cpu.data<double>();
-      for (int64_t i = 0; i < M; ++i)
-        y_data[i] = std::complex<double>(yd[i], 0.0);
-    } else if (y_cpu.dtype() == DType::C32) {
-      const std::complex<float> *yd =
-          reinterpret_cast<const std::complex<float> *>(y_cpu.data<char>());
-      for (int64_t i = 0; i < M; ++i)
-        y_data[i] = yd[i];
-    } else {
-      const float *yd = y_cpu.data<float>();
-      for (int64_t i = 0; i < M; ++i)
-        y_data[i] = std::complex<double>(yd[i], 0.0);
-    }
+  // Normalize
+  double x_norm = 0, y_norm = 0;
+  for (auto &v : x_data)
+    x_norm += std::norm(v);
+  for (auto &v : y_data)
+    y_norm += std::norm(v);
+  x_norm = std::sqrt(x_norm);
+  y_norm = std::sqrt(y_norm);
+  for (auto &v : x_data)
+    v /= x_norm;
+  for (auto &v : y_data)
+    v /= y_norm;
 
-    // Normalize
-    double x_norm = 0, y_norm = 0;
-    for (auto &v : x_data)
-      x_norm += std::norm(v);
-    for (auto &v : y_data)
-      y_norm += std::norm(v);
-    x_norm = std::sqrt(x_norm);
-    y_norm = std::sqrt(y_norm);
+  int64_t delay_len = N + M - 1;
+  int64_t doppler_len = N;
+  std::vector<double> ambg(delay_len * doppler_len, 0.0);
 
-    for (auto &v : x_data)
-      v /= x_norm;
-    for (auto &v : y_data)
-      v /= y_norm;
+  for (int64_t fd = 0; fd < doppler_len; ++fd) {
+    double freq = (fd - doppler_len / 2.0) * fs / doppler_len;
+    double omega = 2.0 * M_PI * freq / fs;
 
-    // For each Doppler frequency
-    for (int64_t fd = 0; fd < doppler_len; ++fd) {
-      double freq = (fd - doppler_len / 2.0) * fs / doppler_len;
-      double omega = 2.0 * M_PI * freq / fs;
+    for (int64_t tau = 0; tau < delay_len; ++tau) {
+      int64_t tau_shift = tau - (M - 1);
 
-      // For each delay
-      for (int64_t tau = 0; tau < delay_len; ++tau) {
-        int64_t tau_shift = tau - (M - 1);
-
-        std::complex<double> sum(0.0, 0.0);
-        for (int64_t n = 0; n < N; ++n) {
-          int64_t m = n - tau_shift;
-          if (m >= 0 && m < M) {
-            double phase = omega * n;
-            sum += x_data[n] * std::conj(y_data[m]) *
-                   std::exp(std::complex<double>(0.0, phase));
-          }
+      std::complex<double> sum_val(0.0, 0.0);
+      for (int64_t n = 0; n < N; ++n) {
+        int64_t m = n - tau_shift;
+        if (m >= 0 && m < M) {
+          double phase = omega * n;
+          sum_val += x_data[n] * std::conj(y_data[m]) *
+                     std::exp(std::complex<double>(0.0, phase));
         }
-        ambg[fd * delay_len + tau] = std::abs(sum);
       }
+      ambg[fd * delay_len + tau] = std::abs(sum_val);
     }
-
-    // Normalize peak to 1
-    double peak = 0;
-    for (auto &v : ambg)
-      peak = std::max(peak, v);
-    if (peak > 0) {
-      for (auto &v : ambg)
-        v /= peak;
-    }
-
-    Array result =
-        to_array(ambg, Shape({doppler_len, delay_len}), DType::F64, cpu);
-    if (x.place().kind() != DeviceKind::CPU)
-      result = result.to(x.place());
-    return result;
   }
 
-  // For "delay" and "doppler" cuts, compute 1D slices
-  INS_THROW("ambgfun: only '2d' cut is currently supported");
+  // Normalize peak to 1
+  double peak = *std::max_element(ambg.begin(), ambg.end());
+  if (peak > 0) {
+    for (auto &v : ambg)
+      v /= peak;
+  }
+
+  Array result =
+      to_array(ambg, Shape({doppler_len, delay_len}), DType::F64, cpu);
+  if (x.place().kind() != DeviceKind::CPU)
+    result = result.to(x.place());
+  return result;
 }
 
 } // namespace signal

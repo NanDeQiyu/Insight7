@@ -1,116 +1,86 @@
 // src/ops/signal/demod.cpp
 #include "insight/ops/signal/demod.h"
 #include "insight/core/exception.h"
+#include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
+#include "insight/ops/elementwise.h"
+#include "insight/ops/indexing.h"
+#include "insight/ops/manipulation.h"
 #include "insight/ops/signal.h"
-#include "insight/ops/signal/filtering.h"
+#include "insight/ops/unary.h"
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 namespace ins {
 namespace signal {
+
+// Compute angle(z) = atan2(imag(z), real(z)) using composite ops
+static Array complex_angle(const Array &z) {
+  Array re = real(z);
+  Array im = imag(z);
+
+  // angle = atan(im/re) with quadrant correction
+  // For re > 0: atan(im/re)
+  // For re < 0, im >= 0: atan(im/re) + pi
+  // For re < 0, im < 0: atan(im/re) - pi
+  // For re == 0, im > 0: pi/2
+  // For re == 0, im < 0: -pi/2
+  Array ratio = div(im, re);
+  Array base_angle = atan(ratio);
+
+  DType dtype = base_angle.dtype();
+  auto place = base_angle.place();
+  Array pi = full(base_angle.shape(), M_PI, dtype, place);
+  Array neg_pi = full(base_angle.shape(), -M_PI, dtype, place);
+  Array half_pi = full(base_angle.shape(), M_PI / 2.0, dtype, place);
+  Array neg_half_pi = full(base_angle.shape(), -M_PI / 2.0, dtype, place);
+  Array zero = zeros(base_angle.shape(), dtype, place);
+
+  // re < 0 && im >= 0 → add pi
+  Array re_neg = less_than(re, zero);
+  Array im_nneg = greater_equal(im, zero);
+  Array case1 = logical_and(re_neg, im_nneg);
+  base_angle = where(case1, add(base_angle, pi), base_angle);
+
+  // re < 0 && im < 0 → subtract pi
+  Array im_neg = less_than(im, zero);
+  Array case2 = logical_and(re_neg, im_neg);
+  base_angle = where(case2, add(base_angle, neg_pi), base_angle);
+
+  // re == 0 && im > 0 → pi/2
+  Array re_zero = equal(re, zero);
+  Array im_pos = greater_than(im, zero);
+  Array case3 = logical_and(re_zero, im_pos);
+  base_angle = where(case3, half_pi, base_angle);
+
+  // re == 0 && im < 0 → -pi/2
+  Array case4 = logical_and(re_zero, im_neg);
+  base_angle = where(case4, neg_half_pi, base_angle);
+
+  return base_angle;
+}
 
 Array fm_demod(const Array &x, int axis) {
   INS_CHECK(x.defined(), "fm_demod: input is undefined");
   INS_CHECK(x.dtype() == DType::C32 || x.dtype() == DType::C64,
             "fm_demod: input must be complex-valued");
 
-  // angle(x) — compute phase of complex signal
-  // We need to implement this using available ops
-  // angle(x) = atan2(imag(x), real(x))
-  // For complex arrays, we can compute element-wise
-
-  Place cpu = CPUPlace();
-  Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
-
-  int ndim = x_cpu.shape().ndim();
+  int ndim = x.shape().ndim();
   if (axis < 0)
     axis += ndim;
 
-  int64_t n = x_cpu.shape().dim(axis);
+  // Compute angle(x) = atan2(imag, real)
+  Array x_angle = complex_angle(x);
 
-  // Compute angle of complex input
-  Array x_angle;
-  {
-    // Extract real and imaginary parts
-    int64_t total = x_cpu.numel();
-    if (x.dtype() == DType::C64) {
-      const std::complex<double> *src =
-          reinterpret_cast<const std::complex<double> *>(x_cpu.data<char>());
-      std::vector<double> angle_data(total);
-      for (int64_t i = 0; i < total; ++i) {
-        angle_data[i] = std::arg(src[i]);
-      }
-      x_angle = to_array(angle_data, x_cpu.shape(), DType::F64, cpu);
-    } else {
-      const std::complex<float> *src =
-          reinterpret_cast<const std::complex<float> *>(x_cpu.data<char>());
-      std::vector<float> angle_data(total);
-      for (int64_t i = 0; i < total; ++i) {
-        angle_data[i] = std::arg(src[i]);
-      }
-      x_angle = to_array(angle_data, x_cpu.shape(), DType::F32, cpu);
-    }
-  }
+  // Unwrap along axis
+  Array x_unwrapped = unwrap(x_angle, axis);
 
-  // unwrap along axis
-  Array x_unwrapped = ins::unwrap(x_angle, axis);
+  // Diff along axis
+  Array result = diff(x_unwrapped, 1, axis);
 
-  // diff along axis
-  // diff reduces length by 1 along axis
-  // We need to implement diff manually since it may not be available
-  // Actually, let's check if ins::signal has diff... it's in manipulation
-  // Let's compute it directly
-
-  Shape out_shape = x_unwrapped.shape();
-  int64_t out_n = n - 1;
-  std::vector<int64_t> shape_vec;
-  for (int d = 0; d < ndim; ++d) {
-    if (d == axis)
-      shape_vec.push_back(out_n);
-    else
-      shape_vec.push_back(x_unwrapped.shape().dim(d));
-  }
-  out_shape = Shape(shape_vec);
-
-  DType out_dtype = (x.dtype() == DType::C64) ? DType::F64 : DType::F32;
-  Array result = zeros(out_shape, out_dtype, cpu);
-
-  // Compute diff along axis
-  int64_t total_out = result.numel();
-  Strides in_strides = x_unwrapped.strides();
-  Strides out_strides = result.strides();
-
-  if (out_dtype == DType::F64) {
-    const double *in_data = x_unwrapped.data<double>();
-    double *out_data = result.data<double>();
-    for (int64_t i = 0; i < total_out; ++i) {
-      // Compute multi-dimensional index from linear index using out_strides
-      int64_t remaining = i;
-      int64_t in_off = 0;
-      for (int d = 0; d < ndim; ++d) {
-        int64_t idx = remaining / out_strides[d];
-        remaining %= out_strides[d];
-        in_off += idx * in_strides[d];
-      }
-      out_data[i] = in_data[in_off + in_strides[axis]] - in_data[in_off];
-    }
-  } else {
-    const float *in_data = x_unwrapped.data<float>();
-    float *out_data = result.data<float>();
-    for (int64_t i = 0; i < total_out; ++i) {
-      int64_t remaining = i;
-      int64_t in_off = 0;
-      for (int d = 0; d < ndim; ++d) {
-        int64_t idx = remaining / out_strides[d];
-        remaining %= out_strides[d];
-        in_off += idx * in_strides[d];
-      }
-      out_data[i] = in_data[in_off + in_strides[axis]] - in_data[in_off];
-    }
-  }
-
-  if (x.place().kind() != DeviceKind::CPU) {
-    result = result.to(x.place());
-  }
   return result;
 }
 

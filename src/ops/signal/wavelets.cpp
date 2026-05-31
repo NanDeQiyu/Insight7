@@ -3,6 +3,7 @@
 #include "insight/core/exception.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
+#include "insight/ops/fft.h"
 #include "insight/ops/manipulation.h"
 #include "insight/ops/signal/convolution.h"
 #include "insight/ops/unary.h"
@@ -113,10 +114,28 @@ Array cwt(const Array &data, std::function<Array(int64_t, double)> wavelet,
   bool is_complex =
       (test_w.dtype() == DType::C64 || test_w.dtype() == DType::C32);
 
-  std::vector<double> result_real(nw * n, 0.0);
-  std::vector<double> result_imag(nw * n, 0.0);
+  // Prepare data as complex for FFT convolution
+  DType work_dtype = DType::C64;
+  Array data_cpx = data_cpu;
+  if (data_cpu.dtype() != DType::C64 && data_cpu.dtype() != DType::C32) {
+    // Convert real to complex
+    std::vector<std::complex<double>> data_vec(n);
+    if (data_cpu.dtype() == DType::F64) {
+      const double *d = data_cpu.data<double>();
+      for (int64_t i = 0; i < n; ++i)
+        data_vec[i] = {d[i], 0.0};
+    } else {
+      const float *d = data_cpu.data<float>();
+      for (int64_t i = 0; i < n; ++i)
+        data_vec[i] = {d[i], 0.0};
+    }
+    data_cpx = to_array(data_vec, work_dtype, cpu);
+  }
 
-  const double *d_data = data_cpu.data<double>();
+  // Precompute FFT of data
+  Array data_fft = fft::fft(data_cpx, n);
+
+  std::vector<std::complex<double>> result_all(nw * n);
 
   for (int64_t ind = 0; ind < nw; ++ind) {
     double width = widths[ind];
@@ -124,8 +143,9 @@ Array cwt(const Array &data, std::function<Array(int64_t, double)> wavelet,
     if (N < 1)
       N = 1;
 
-    // Get wavelet and conjugate+reverse
+    // Get wavelet, conjugate, and reverse
     Array w_arr = wavelet(N, width);
+
     // Conjugate and reverse
     std::vector<std::complex<double>> w_data(N);
     if (w_arr.dtype() == DType::C64) {
@@ -134,6 +154,12 @@ Array cwt(const Array &data, std::function<Array(int64_t, double)> wavelet,
       for (int64_t i = 0; i < N; ++i) {
         w_data[N - 1 - i] = std::conj(wd[i]);
       }
+    } else if (w_arr.dtype() == DType::C32) {
+      const std::complex<float> *wd =
+          reinterpret_cast<const std::complex<float> *>(w_arr.data<char>());
+      for (int64_t i = 0; i < N; ++i) {
+        w_data[N - 1 - i] = std::conj(std::complex<double>(wd[i]));
+      }
     } else {
       const double *wd = w_arr.data<double>();
       for (int64_t i = 0; i < N; ++i) {
@@ -141,31 +167,36 @@ Array cwt(const Array &data, std::function<Array(int64_t, double)> wavelet,
       }
     }
 
-    // Convolve data with wavelet (using "same" mode)
-    // Manual convolution for same-mode output
+    // Zero-pad wavelet to length n and compute FFT
+    std::vector<std::complex<double>> w_padded(n, {0.0, 0.0});
+    for (int64_t i = 0; i < N; ++i)
+      w_padded[i] = w_data[i];
+    Array w_arr_padded = to_array(w_padded, work_dtype, cpu);
+    Array w_fft = fft::fft(w_arr_padded, n);
+
+    // Multiply in frequency domain and inverse FFT
+    Array conv_fft = mul(data_fft, w_fft);
+    Array conv_result = fft::ifft(conv_fft, n);
+
+    // Extract "same" mode: center portion starting at N/2
+    int64_t start = N / 2;
+    const std::complex<double> *conv_data =
+        reinterpret_cast<const std::complex<double> *>(
+            conv_result.data<char>());
     for (int64_t i = 0; i < n; ++i) {
-      std::complex<double> val = {0.0, 0.0};
-      for (int64_t j = 0; j < N; ++j) {
-        int64_t idx = i - N / 2 + j;
-        if (idx >= 0 && idx < n) {
-          val += d_data[idx] * w_data[j];
-        }
-      }
-      result_real[ind * n + i] = val.real();
-      if (is_complex) {
-        result_imag[ind * n + i] = val.imag();
-      }
+      result_all[ind * n + i] = conv_data[(start + i) % n];
     }
   }
 
   if (is_complex) {
-    std::vector<std::complex<double>> result_cpx(nw * n);
-    for (int64_t i = 0; i < nw * n; ++i) {
-      result_cpx[i] = {result_real[i], result_imag[i]};
-    }
-    return to_array(result_cpx, Shape({nw, n}), DType::C64, cpu);
+    return to_array(result_all, Shape({nw, n}), DType::C64, cpu);
   }
 
+  // Extract real part
+  std::vector<double> result_real(nw * n);
+  for (int64_t i = 0; i < nw * n; ++i) {
+    result_real[i] = result_all[i].real();
+  }
   return to_array(result_real, Shape({nw, n}), DType::F64, cpu);
 }
 

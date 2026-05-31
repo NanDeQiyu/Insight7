@@ -5,14 +5,83 @@
 #include "insight/ops/elementwise.h"
 #include "insight/ops/indexing.h"
 #include "insight/ops/manipulation.h"
+#include "insight/ops/operator.h"
 #include "insight/ops/reduction.h"
 #include "insight/ops/unary.h"
-#include <algorithm>
 
 namespace ins {
 namespace signal {
 
 namespace {
+
+// Build shifted arrays with clip-mode boundary handling
+// Returns arrays of "right neighbor" and "left neighbor" values
+// For clip mode: boundary values repeat the edge element
+void build_neighbors(const Array &data, int axis, int64_t shift,
+                     Array &right_out, Array &left_out) {
+  int ndim = data.shape().ndim();
+  int64_t datalen = data.shape().dim(axis);
+
+  // Right neighbor: data[min(i+shift, n-1)]
+  // Left neighbor: data[max(i-shift, 0)]
+  // Use roll + edge padding for clip mode
+
+  // For right: shift data right by `shift`, pad left edge with first element
+  // For left: shift data left by `shift`, pad right edge with last element
+
+  // Simpler approach: build using index gathering
+  // Create index arrays for right and left neighbors
+  Place cpu = CPUPlace();
+  Array data_cpu =
+      (data.place().kind() == DeviceKind::CPU) ? data : data.to(cpu);
+
+  // Build right indices: min(i+shift, n-1) for each i
+  std::vector<int64_t> right_idx(datalen), left_idx(datalen);
+  for (int64_t i = 0; i < datalen; ++i) {
+    right_idx[i] = std::min(i + shift, datalen - 1);
+    left_idx[i] = std::max(i - shift, (int64_t)0);
+  }
+
+  // Flatten data for gathering
+  Array flat = reshape(data_cpu, {data_cpu.numel()});
+
+  // Compute axis stride
+  int64_t axis_stride = 1;
+  for (int d = axis + 1; d < ndim; ++d) {
+    axis_stride *= data.shape().dim(d);
+  }
+  int64_t outer_count = data_cpu.numel() / datalen;
+
+  // For each element, compute the flat index of its right and left neighbors
+  int64_t total = data_cpu.numel();
+  std::vector<int64_t> right_flat_idx(total), left_flat_idx(total);
+
+  for (int64_t idx = 0; idx < total; ++idx) {
+    int64_t axis_pos = (idx / axis_stride) % datalen;
+    int64_t outer_base = idx - (axis_pos * axis_stride);
+
+    int64_t r_pos = std::min(axis_pos + shift, datalen - 1);
+    int64_t l_pos = std::max(axis_pos - shift, (int64_t)0);
+
+    right_flat_idx[idx] = outer_base + r_pos * axis_stride;
+    left_flat_idx[idx] = outer_base + l_pos * axis_stride;
+  }
+
+  Array right_idx_arr = to_array(right_flat_idx, DType::I64, cpu);
+  Array left_idx_arr = to_array(left_flat_idx, DType::I64, cpu);
+
+  right_out = take(flat, right_idx_arr);
+  right_out = reshape(right_out, data.shape());
+
+  left_out = take(flat, left_idx_arr);
+  left_out = reshape(left_out, data.shape());
+
+  // Transfer back to original device
+  if (data.place().kind() != DeviceKind::CPU) {
+    right_out = right_out.to(data.place());
+    left_out = left_out.to(data.place());
+  }
+}
 
 Array boolrelextrema(const Array &data, const std::string &comparator, int axis,
                      int order, const std::string &mode) {
@@ -20,266 +89,30 @@ Array boolrelextrema(const Array &data, const std::string &comparator, int axis,
   if (axis < 0)
     axis += ndim;
 
-  int64_t datalen = data.shape().dim(axis);
+  // Start with all true
+  Array results = ones(data.shape(), DType::BOOL, data.place());
 
-  // Work on CPU
-  Place cpu = CPUPlace();
-  Array data_cpu =
-      (data.place().kind() == DeviceKind::CPU) ? data : data.to(cpu);
-
-  // Initialize results to true
-  Array results = ones(data.shape(), DType::BOOL, cpu);
-
-  // Get main data along axis
   for (int64_t shift = 1; shift <= order; ++shift) {
-    // Compare data[..., i, ...] with data[..., i+shift, ...] and
-    // data[..., i-shift, ...]
-    // For "clip" mode, out-of-bounds indices are clamped
+    // Build neighbor arrays with clip-mode boundary handling
+    Array right, left;
+    build_neighbors(data, axis, shift, right, left);
 
-    int64_t n = datalen;
-    for (int64_t i = 0; i < n; ++i) {
-      int64_t p_idx = std::min(i + shift, n - 1);
-      int64_t m_idx = std::max(i - shift, (int64_t)0);
-
-      // For each element along other axes, compare
-      // This is done element-by-element for correctness
-      // We'll use a flat iteration with stride computation
-    }
-  }
-
-  // More efficient approach: use array slicing
-  // For each position i, check if data[i] > data[i+1:i+order+1] AND
-  // data[i] > data[i-order:i] (for "greater" comparator)
-
-  // Re-implement using flat CPU data for simplicity
-  if (data.dtype() == DType::F64) {
-    const double *src = data_cpu.data<double>();
-    bool *dst = results.data<bool>();
-    int64_t total = data_cpu.numel();
-
-    // Compute strides for the axis
-    int64_t axis_stride = 1;
-    for (int d = axis + 1; d < ndim; ++d) {
-      axis_stride *= data.shape().dim(d);
-    }
-    int64_t outer_count = total / datalen; // elements per slice along axis
-
-    // For each "outer" position (all dims except axis)
-    for (int64_t outer = 0; outer < outer_count; ++outer) {
-      // Compute base offset for this outer index
-      int64_t outer_rem = outer;
-      int64_t base = 0;
-      for (int d = 0; d < ndim; ++d) {
-        if (d == axis)
-          continue;
-        int64_t dim_size = data.shape().dim(d);
-        int64_t stride_d = 1;
-        for (int dd = d + 1; dd < ndim; ++dd) {
-          if (dd != axis)
-            stride_d *= data.shape().dim(dd);
-          else if (dd > axis)
-            stride_d *= data.shape().dim(dd);
-        }
-        // Simpler: just iterate over flattened non-axis dims
-      }
-
-      // Actually, let's use a simpler approach: iterate over all elements
-      // and for each, check its axis neighbors
+    // Compare center with both neighbors
+    Array cmp_right, cmp_left;
+    if (comparator == "greater") {
+      cmp_right = greater(data, right);
+      cmp_left = greater(data, left);
+    } else {
+      cmp_right = less(data, right);
+      cmp_left = less(data, left);
     }
 
-    // Simplest correct approach: iterate over all elements
-    for (int64_t idx = 0; idx < total; ++idx) {
-      if (!dst[idx])
-        continue; // already marked as not-extremum
+    // Both must be true
+    Array both = logical_and(cmp_right, cmp_left);
 
-      // Compute position along axis
-      int64_t axis_pos = (idx / axis_stride) % datalen;
-
-      bool is_extremum = true;
-
-      for (int64_t s = 1; s <= order; ++s) {
-        // Compute neighbor indices
-        int64_t p_pos = axis_pos + s;
-        int64_t m_pos = axis_pos - s;
-
-        if (mode == "clip") {
-          p_pos = std::min(p_pos, datalen - 1);
-          m_pos = std::max(m_pos, (int64_t)0);
-        }
-
-        int64_t p_idx = idx + (p_pos - axis_pos) * axis_stride;
-        int64_t m_idx = idx + (m_pos - axis_pos) * axis_stride;
-
-        double val = src[idx];
-        double p_val = src[p_idx];
-        double m_val = src[m_idx];
-
-        if (comparator == "greater") {
-          if (!(val > p_val) || !(val > m_val)) {
-            is_extremum = false;
-            break;
-          }
-        } else { // "less"
-          if (!(val < p_val) || !(val < m_val)) {
-            is_extremum = false;
-            break;
-          }
-        }
-      }
-
-      dst[idx] = is_extremum;
-    }
-  } else if (data.dtype() == DType::F32) {
-    const float *src = data_cpu.data<float>();
-    bool *dst = results.data<bool>();
-    int64_t total = data_cpu.numel();
-
-    int64_t axis_stride = 1;
-    for (int d = axis + 1; d < ndim; ++d) {
-      axis_stride *= data.shape().dim(d);
-    }
-
-    for (int64_t idx = 0; idx < total; ++idx) {
-      if (!dst[idx])
-        continue;
-
-      int64_t axis_pos = (idx / axis_stride) % datalen;
-      bool is_extremum = true;
-
-      for (int64_t s = 1; s <= order; ++s) {
-        int64_t p_pos = axis_pos + s;
-        int64_t m_pos = axis_pos - s;
-
-        if (mode == "clip") {
-          p_pos = std::min(p_pos, datalen - 1);
-          m_pos = std::max(m_pos, (int64_t)0);
-        }
-
-        int64_t p_idx = idx + (p_pos - axis_pos) * axis_stride;
-        int64_t m_idx = idx + (m_pos - axis_pos) * axis_stride;
-
-        float val = src[idx];
-        float p_val = src[p_idx];
-        float m_val = src[m_idx];
-
-        if (comparator == "greater") {
-          if (!(val > p_val) || !(val > m_val)) {
-            is_extremum = false;
-            break;
-          }
-        } else {
-          if (!(val < p_val) || !(val < m_val)) {
-            is_extremum = false;
-            break;
-          }
-        }
-      }
-
-      dst[idx] = is_extremum;
-    }
-  } else if (data.dtype() == DType::I32) {
-    const int32_t *src = data_cpu.data<int32_t>();
-    bool *dst = results.data<bool>();
-    int64_t total = data_cpu.numel();
-
-    int64_t axis_stride = 1;
-    for (int d = axis + 1; d < ndim; ++d) {
-      axis_stride *= data.shape().dim(d);
-    }
-
-    for (int64_t idx = 0; idx < total; ++idx) {
-      if (!dst[idx])
-        continue;
-
-      int64_t axis_pos = (idx / axis_stride) % datalen;
-      bool is_extremum = true;
-
-      for (int64_t s = 1; s <= order; ++s) {
-        int64_t p_pos = axis_pos + s;
-        int64_t m_pos = axis_pos - s;
-
-        if (mode == "clip") {
-          p_pos = std::min(p_pos, datalen - 1);
-          m_pos = std::max(m_pos, (int64_t)0);
-        }
-
-        int64_t p_idx = idx + (p_pos - axis_pos) * axis_stride;
-        int64_t m_idx = idx + (m_pos - axis_pos) * axis_stride;
-
-        int32_t val = src[idx];
-        int32_t p_val = src[p_idx];
-        int32_t m_val = src[m_idx];
-
-        if (comparator == "greater") {
-          if (!(val > p_val) || !(val > m_val)) {
-            is_extremum = false;
-            break;
-          }
-        } else {
-          if (!(val < p_val) || !(val < m_val)) {
-            is_extremum = false;
-            break;
-          }
-        }
-      }
-
-      dst[idx] = is_extremum;
-    }
-  } else if (data.dtype() == DType::I64) {
-    const int64_t *src = data_cpu.data<int64_t>();
-    bool *dst = results.data<bool>();
-    int64_t total = data_cpu.numel();
-
-    int64_t axis_stride = 1;
-    for (int d = axis + 1; d < ndim; ++d) {
-      axis_stride *= data.shape().dim(d);
-    }
-
-    for (int64_t idx = 0; idx < total; ++idx) {
-      if (!dst[idx])
-        continue;
-
-      int64_t axis_pos = (idx / axis_stride) % datalen;
-      bool is_extremum = true;
-
-      for (int64_t s = 1; s <= order; ++s) {
-        int64_t p_pos = axis_pos + s;
-        int64_t m_pos = axis_pos - s;
-
-        if (mode == "clip") {
-          p_pos = std::min(p_pos, datalen - 1);
-          m_pos = std::max(m_pos, (int64_t)0);
-        }
-
-        int64_t p_idx = idx + (p_pos - axis_pos) * axis_stride;
-        int64_t m_idx = idx + (m_pos - axis_pos) * axis_stride;
-
-        int64_t val = src[idx];
-        int64_t p_val = src[p_idx];
-        int64_t m_val = src[m_idx];
-
-        if (comparator == "greater") {
-          if (!(val > p_val) || !(val > m_val)) {
-            is_extremum = false;
-            break;
-          }
-        } else {
-          if (!(val < p_val) || !(val < m_val)) {
-            is_extremum = false;
-            break;
-          }
-        }
-      }
-
-      dst[idx] = is_extremum;
-    }
-  } else {
-    INS_THROW("peak_finding: unsupported dtype");
-  }
-
-  // Transfer back if needed
-  if (data.place().kind() != DeviceKind::CPU) {
-    results = results.to(data.place());
+    // Update results: element is extremum only if it was extremum for all
+    // previous shifts AND this one
+    results = logical_and(results, both);
   }
 
   return results;
@@ -297,38 +130,52 @@ std::vector<Array> argrelextrema(const Array &data,
 
   Array mask = boolrelextrema(data, comparator, axis, order, mode);
 
-  // Find nonzero indices (returns vector of index arrays, one per dim)
+  // Use nonzero() to find flat indices where mask is true
   Place cpu = CPUPlace();
   Array mask_cpu =
       (mask.place().kind() == DeviceKind::CPU) ? mask : mask.to(cpu);
 
-  // Get indices where mask is true
-  const bool *mask_data = mask_cpu.data<bool>();
-  int64_t total = mask_cpu.numel();
-  int ndim = data.shape().ndim();
+  Array flat_idx = nonzero(mask_cpu);
 
-  std::vector<std::vector<int64_t>> indices(ndim);
-  for (int64_t i = 0; i < total; ++i) {
-    if (mask_data[i]) {
-      int64_t rem = i;
-      for (int d = 0; d < ndim; ++d) {
-        int64_t stride = 1;
-        for (int dd = d + 1; dd < ndim; ++dd)
-          stride *= data.shape().dim(dd);
-        indices[d].push_back(rem / stride);
-        rem %= stride;
-      }
-    }
+  // Convert flat indices to multi-dimensional indices
+  int ndim = data.shape().ndim();
+  if (axis < 0)
+    axis += ndim;
+
+  int64_t axis_stride = 1;
+  for (int d = axis + 1; d < ndim; ++d) {
+    axis_stride *= data.shape().dim(d);
   }
 
+  // axis_idx = (flat_idx / axis_stride) % datalen
+  Array axis_stride_arr = full(flat_idx.shape(), axis_stride, DType::I64, cpu);
+  Array datalen_arr =
+      full(flat_idx.shape(), data.shape().dim(axis), DType::I64, cpu);
+  Array axis_idx = mod(div(flat_idx, axis_stride_arr), datalen_arr);
+
   std::vector<Array> result;
-  Place original_place = data.place();
+  result.push_back(axis_idx);
+
+  // For multi-dimensional, also compute indices for other dimensions
   for (int d = 0; d < ndim; ++d) {
-    Array idx_arr = to_array(indices[d], DType::I64, cpu);
-    if (original_place.kind() != DeviceKind::CPU) {
-      idx_arr = idx_arr.to(original_place);
+    if (d == axis)
+      continue;
+    int64_t d_stride = 1;
+    for (int dd = d + 1; dd < ndim; ++dd) {
+      d_stride *= data.shape().dim(dd);
     }
-    result.push_back(idx_arr);
+    Array d_stride_arr = full(flat_idx.shape(), d_stride, DType::I64, cpu);
+    Array d_dim_arr =
+        full(flat_idx.shape(), data.shape().dim(d), DType::I64, cpu);
+    Array d_idx = mod(div(flat_idx, d_stride_arr), d_dim_arr);
+    result.push_back(d_idx);
+  }
+
+  // Transfer back to original place if needed
+  if (data.place().kind() != DeviceKind::CPU) {
+    for (auto &arr : result) {
+      arr = arr.to(data.place());
+    }
   }
 
   return result;
