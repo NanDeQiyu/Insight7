@@ -321,6 +321,52 @@ extern "C" int luaopen__insight(lua_State *L) {
   array_type["is_contiguous"] = sol::property(&Array::is_contiguous);
   array_type["defined"] = sol::property(&Array::defined);
 
+  // Scalar extraction
+  array_type["item"] = [](const Array &a, sol::this_state ts) -> sol::object {
+    if (a.numel() != 1) {
+      return sol::make_object(ts.lua_state(), sol::lua_nil);
+    }
+    Array cpu = (a.place().kind() == DeviceKind::CPU) ? a : a.to(CPUPlace());
+    double val = 0;
+    switch (cpu.dtype()) {
+    case DType::F64:
+      val = cpu.data<double>()[0];
+      break;
+    case DType::F32:
+      val = (double)cpu.data<float>()[0];
+      break;
+    case DType::I64:
+      val = (double)cpu.data<int64_t>()[0];
+      break;
+    case DType::I32:
+      val = (double)cpu.data<int32_t>()[0];
+      break;
+    case DType::BOOL:
+      val = (double)cpu.data<bool>()[0];
+      break;
+    default:
+      return sol::make_object(ts.lua_state(), sol::lua_nil);
+    }
+    return sol::make_object(ts.lua_state(), val);
+  };
+  array_type["get"] = [](const Array &a, int64_t idx) -> double {
+    Array cpu = (a.place().kind() == DeviceKind::CPU) ? a : a.to(CPUPlace());
+    if (idx < 0 || idx >= cpu.numel())
+      return 0.0;
+    switch (cpu.dtype()) {
+    case DType::F64:
+      return cpu.data<double>()[idx];
+    case DType::F32:
+      return (double)cpu.data<float>()[idx];
+    case DType::I64:
+      return (double)cpu.data<int64_t>()[idx];
+    case DType::I32:
+      return (double)cpu.data<int32_t>()[idx];
+    default:
+      return 0.0;
+    }
+  };
+
   // View ops
   array_type["contiguous"] = &Array::contiguous;
   array_type["reshape"] = [](const Array &a, sol::table new_shape) {

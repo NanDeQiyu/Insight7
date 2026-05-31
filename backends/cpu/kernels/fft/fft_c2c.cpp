@@ -47,7 +47,7 @@ C_Status fft_c2c_kernel_cpu(void **inputs, void **outputs) {
 
     fftw_plan plan =
         fft_ensure_plan_f64(fft_len, batch_size, direction, FFT_KIND_C2C, data);
-    fftw_execute(plan);
+    fftw_execute_dft(plan, (fftw_complex *)data, (fftw_complex *)data);
   }
   // Single precision
   else if (x->dtype == INSIGHT_DTYPE_F32 || x->dtype == INSIGHT_DTYPE_C32) {
@@ -56,7 +56,7 @@ C_Status fft_c2c_kernel_cpu(void **inputs, void **outputs) {
 
     fftwf_plan plan =
         fft_ensure_plan_f32(fft_len, batch_size, direction, FFT_KIND_C2C, data);
-    fftwf_execute(plan);
+    fftwf_execute_dft(plan, (fftwf_complex *)data, (fftwf_complex *)data);
   } else {
     cpu_set_last_error("fft_c2c: unsupported dtype");
     return C_FAILED;
