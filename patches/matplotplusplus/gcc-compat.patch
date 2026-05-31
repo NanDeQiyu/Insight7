@@ -1,0 +1,87 @@
+diff --git a/source/matplot/core/axes_type.h b/source/matplot/core/axes_type.h
+index 227003f..b0bab2f 100644
+--- a/source/matplot/core/axes_type.h
++++ b/source/matplot/core/axes_type.h
+@@ -797,13 +797,15 @@ namespace matplot {
+         template <class... Args>
+         auto plot3(const std::vector<double> &x, const std::vector<double> &y,
+                    const std::vector<double> &z, const std::vector<double> &x2,
++                   const std::vector<double> &y2,
++                   const std::vector<double> &z2,
+                    Args &&...args) {
+             std::vector<line_handle> result;
+             std::vector<line_handle> result_a = vectorize(this->plot3(x, y, z));
+             bool p = this->next_plot_replace();
+             this->next_plot_replace(false);
+             std::vector<line_handle> result_b =
+-                vectorize(this->plot3(x2, std::forward<Args>(args)...));
++                vectorize(this->plot3(x2, y2, z2, std::forward<Args>(args)...));
+             this->next_plot_replace(p);
+             result.insert(result.end(), result_a.begin(), result_a.end());
+             result.insert(result.end(), result_b.begin(), result_b.end());
+@@ -1852,12 +1854,15 @@ namespace matplot {
+                          line_spec, std::forward<Args>(args)...);
+         }
+ 
+-        template <class T1, class T2, class T3, class T4, class... Args>
++        template <class T1, class T2, class T3, class T4, class T5, class T6,
++                  class... Args>
+         auto plot3(const IterableValues<T1> &x, const IterableValues<T2> &y,
+                    const IterableValues<T3> &z, const IterableValues<T4> &x2,
++                   const IterableValues<T5> &y2, const IterableValues<T6> &z2,
+                    Args &&...args) {
+             return plot3(to_vector_1d(x), to_vector_1d(y), to_vector_1d(z),
+-                         to_vector_1d(x2), std::forward<Args>(args)...);
++                         to_vector_1d(x2), to_vector_1d(y2), to_vector_1d(z2),
++                         std::forward<Args>(args)...);
+         }
+ 
+         template <class T1, class... Args>
+@@ -2581,20 +2586,20 @@ namespace matplot {
+                              const IterableValues<T2> &weights = {},
+                              size_t n_vertices = 0,
+                              std::string_view line_spec = "-o") {
+-            return graph(to_vector_1d<T1, std::pair<size_t, size_t>>(edges),
++            return graph(to_vector_1d<T1>(edges),
+                          to_vector_1d(weights), n_vertices, line_spec);
+         }
+ 
+         template <class T1>
+         network_handle graph(const IterableValues<T1> &edges,
+                              std::string_view line_spec) {
+-            return graph(to_vector_1d<T1, std::pair<size_t, size_t>>(edges),
++            return graph(to_vector_1d<T1>(edges),
+                          line_spec);
+         }
+ 
+         template <class T1>
+         matrix_handle imshow(const IterableIterables<T1> &gray_scale_img) {
+-            return imshow(to_vector_2d<T1, unsigned char>(gray_scale_img));
++            return imshow(to_vector_2d<T1>(gray_scale_img));
+         }
+ 
+         template <class T1, class T2, class T3, class T4>
+@@ -2603,10 +2608,10 @@ namespace matplot {
+                              const IterableIterables<T3> &b_channel,
+                              const IterableIterables<T4> &a_channel =
+                                  std::vector<std::vector<unsigned char>>{}) {
+-            return imshow(to_vector_2d<T1, unsigned char>(r_channel),
+-                          to_vector_2d<T1, unsigned char>(g_channel),
+-                          to_vector_2d<T1, unsigned char>(b_channel),
+-                          to_vector_2d<T1, unsigned char>(a_channel));
++            return imshow(to_vector_2d<T1>(r_channel),
++                          to_vector_2d<T2>(g_channel),
++                          to_vector_2d<T3>(b_channel),
++                          to_vector_2d<T4>(a_channel));
+         }
+ 
+         template <class T1>
+@@ -2614,7 +2619,7 @@ namespace matplot {
+             std::vector<std::vector<std::vector<unsigned char>>> v_img(
+                 img.size());
+             for (size_t i = 0; i < img.size(); ++i) {
+-                v_img[i] = to_vector_2d<T1, unsigned char>(img[i]);
++                v_img[i] = to_vector_2d<T1>(img[i]);
+             }
+             return imshow(v_img);
+         }
