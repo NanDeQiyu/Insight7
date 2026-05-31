@@ -199,18 +199,21 @@ try:
         GPUPlace,
     )
 
-    # Signal submodule (ins.signal.*)
-    from ._insight import signal as _signal_module
+    # Signal submodule (ins.signal.*) — uses wrapper layer
+    from . import signal as _signal_module
 
     signal = _signal_module
 
-    # Re-export signal functions at top level for convenience
-    from ._insight.signal import (  # noqa: F401
-        # Structs & Enums
+    # Import result types from native binding (not wrapped in submodule)
+    from ._insight.signal import (
         SpectralResult,
         SpectrogramResult,
         GaussPulseResult,
         ChirpMethod,
+    )
+
+    # Re-export signal functions at top level for convenience
+    from .signal import (  # noqa: F401
         # Windows
         general_cosine,
         get_window,
