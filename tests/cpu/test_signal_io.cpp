@@ -2,6 +2,7 @@
 #include "insight/insight.h"
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <vector>
@@ -16,17 +17,11 @@ protected:
     set_device(CPUPlace());
   }
   void SetUp() override {
-    // Create temp directory for test files
     tmp_dir = "/tmp/insight_io_test";
-    std::string cmd = "mkdir -p " + tmp_dir;
-    system(cmd.c_str());
+    std::filesystem::create_directories(tmp_dir);
   }
 
-  void TearDown() override {
-    // Clean up
-    std::string cmd = "rm -rf " + tmp_dir;
-    system(cmd.c_str());
-  }
+  void TearDown() override { std::filesystem::remove_all(tmp_dir); }
 
   std::string tmp_dir;
 };

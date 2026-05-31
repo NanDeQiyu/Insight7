@@ -68,6 +68,7 @@ void write_bin(const std::string &file, const Array &data, bool append) {
   int64_t dtype_size = insight_dtype_size(static_cast<int32_t>(data.dtype()));
   ofs.write(reinterpret_cast<const char *>(data_cpu.data<char>()),
             data_cpu.numel() * dtype_size);
+  ofs.close();
 }
 
 // ============================================================================

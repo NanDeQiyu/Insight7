@@ -158,7 +158,7 @@ jobs:
             -DLUA_DIR=/usr
 
       - name: Build
-        run: cd build && cmake --build . -j$(nproc) --target insight_lua
+        run: cd build && cmake --build . -j$(nproc) --target insight_lua --target insight_cpu_backend
 
       - name: Test Lua 5.3 binding
         run: |
