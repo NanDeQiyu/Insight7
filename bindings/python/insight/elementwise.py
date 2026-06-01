@@ -8,13 +8,45 @@ Functions:
     logical_and(a, b), logical_or(a, b), logical_xor(a, b)
     logical_not(x)
 """
+
 from insight._insight import (
-    add, sub, mul, div, pow, mod, maximum, minimum,
-    equal, not_equal, greater, less, greater_equal, less_equal,
-    logical_and, logical_or, logical_xor, logical_not,
+    add,
+    sub,
+    mul,
+    div,
+    pow,
+    mod,
+    maximum,
+    minimum,
+    equal,
+    not_equal,
+    greater,
+    less,
+    greater_equal,
+    less_equal,
+    logical_and,
+    logical_or,
+    logical_xor,
+    logical_not,
 )
+
 __all__ = [
-    "add", "sub", "mul", "div", "pow", "mod", "maximum", "minimum",
-    "equal", "not_equal", "greater", "less", "greater_equal", "less_equal",
-    "logical_and", "logical_or", "logical_xor", "logical_not",
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "pow",
+    "mod",
+    "maximum",
+    "minimum",
+    "equal",
+    "not_equal",
+    "greater",
+    "less",
+    "greater_equal",
+    "less_equal",
+    "logical_and",
+    "logical_or",
+    "logical_xor",
+    "logical_not",
 ]
