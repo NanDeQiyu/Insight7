@@ -43,21 +43,18 @@ try:
 
     # Core types and infrastructure (native)
     from ._insight import (
-        DType,
-        Place,
-        Shape,
-        Slice,
-        Array,
         init,
         is_initialized,
         load_backend,
-        CPUPlace,
-        GPUPlace,
         # Signal top-level aliases (native)
         convolve,
         unwrap,
         sinc,
     )
+
+    # Core types (wrapped with docstrings)
+    from .types import DType, Place, Shape, Slice, CPUPlace, GPUPlace
+    from .array import Array
 
     # Wrapper modules — each provides docstrings and argument validation
     from .creation import *  # noqa: F401,F403

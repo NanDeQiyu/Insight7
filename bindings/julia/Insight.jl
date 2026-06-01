@@ -234,6 +234,25 @@ end
 # Array creation
 # ============================================================================
 
+"""
+    zeros(dims::Vector{Int64}, dtype_val::Int32=float32, device::Int32=CPU) -> InsightArray
+
+Create an array filled with zeros.
+
+# Arguments
+- `dims`: Shape of the array, e.g. `[2, 3]`.
+- `dtype_val`: Data type (default `float32`).
+- `device`: Device placement (default `CPU`).
+
+# Returns
+- `InsightArray`: Array of zeros with the given shape and dtype.
+
+# Example
+```julia
+a = Insight.zeros([2, 3], Insight.float32)
+Insight.numel(a)  # 6
+```
+"""
 function zeros(dims::Vector{Int64}, dtype_val::Int32=float32,
                device::Int32=CPU)::InsightArray
     ptr = ccall((:insight_jl_zeros, LIB_INSIGHT), Ptr{Cvoid},
@@ -244,6 +263,19 @@ function zeros(dims::Vector{Int64}, dtype_val::Int32=float32,
     return arr
 end
 
+"""
+    ones(dims::Vector{Int64}, dtype_val::Int32=float32, device::Int32=CPU) -> InsightArray
+
+Create an array filled with ones.
+
+# Arguments
+- `dims`: Shape of the array, e.g. `[2, 3]`.
+- `dtype_val`: Data type (default `float32`).
+- `device`: Device placement (default `CPU`).
+
+# Returns
+- `InsightArray`: Array of ones with the given shape and dtype.
+"""
 function ones(dims::Vector{Int64}, dtype_val::Int32=float32,
               device::Int32=CPU)::InsightArray
     ptr = ccall((:insight_jl_ones, LIB_INSIGHT), Ptr{Cvoid},
@@ -587,6 +619,19 @@ end
 # Reduction
 # ============================================================================
 
+"""
+    sum(x::InsightArray; axis::Union{Int,Nothing}=nothing, keepdims::Bool=false) -> InsightArray
+
+Sum of array elements over a given axis.
+
+# Arguments
+- `x`: Input array.
+- `axis`: Axis along which to sum (default: sum over all elements).
+- `keepdims`: If `true`, retains reduced axes with size 1.
+
+# Returns
+- `InsightArray`: Sum result.
+"""
 function sum(x::InsightArray; axis::Union{Int,Nothing}=nothing,
              keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)

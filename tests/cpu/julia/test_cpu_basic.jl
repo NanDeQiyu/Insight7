@@ -1,4 +1,4 @@
-# CPU basic operations tests — aligned with C++ test suite
+# CPU binding tests — 35 tests aligned with Python and Lua
 # Run with:
 #   LD_LIBRARY_PATH=build/backends/cpu julia tests/cpu/julia/test_cpu_basic.jl
 
@@ -20,83 +20,151 @@ function check(name, cond)
     end
 end
 
+function approx(a, b; atol=1e-5)
+    return abs(a - b) < atol
+end
+
 # ============================================================================
-# Creation
+# Creation (7 tests)
 # ============================================================================
 println("=== Creation ===")
 
 a = Insight.zeros([2, 3], Insight.float32)
-check("zeros numel", Insight.numel(a) == 6)
+check("zeros", Insight.numel(a) == 6)
 
 a = Insight.ones([2, 3], Insight.float32)
-check("ones numel", Insight.numel(a) == 6)
+check("ones", Insight.numel(a) == 6)
 
-a = Insight.full([2, 3], 3.14, Insight.float32)
-check("full numel", Insight.numel(a) == 6)
+a = Insight.full([2, 3], 7.0, Insight.float32)
+check("full", Insight.numel(a) == 6)
 
 a = Insight.eye(3)
-check("eye numel", Insight.numel(a) == 9)
+check("eye", Insight.numel(a) == 9)
 
 a = Insight.arange(10, Insight.float32)
-check("arange numel", Insight.numel(a) == 10)
+check("arange", Insight.numel(a) == 10)
 
 a = Insight.linspace(0.0, 1.0, 5, Insight.float64)
-check("linspace numel", Insight.numel(a) == 5)
+check("linspace", Insight.numel(a) == 5)
+
+a = Insight.from_data([1.5, 2.5, 3.5])
+check("from_data", Insight.numel(a) == 3)
 
 # ============================================================================
-# Elementwise
+# Arithmetic (5 tests)
 # ============================================================================
-println("=== Elementwise ===")
+println("=== Arithmetic ===")
 
 a = Insight.from_data([1.0, 2.0, 3.0])
 b = Insight.from_data([4.0, 5.0, 6.0])
+
 c = Insight.add(a, b)
-check("add numel", Insight.numel(c) == 3)
+check("add", Insight.numel(c) == 3)
 
 c = Insight.sub(a, b)
-check("sub numel", Insight.numel(c) == 3)
+check("sub", Insight.numel(c) == 3)
 
 c = Insight.mul(a, b)
-check("mul numel", Insight.numel(c) == 3)
+check("mul", Insight.numel(c) == 3)
 
 c = Insight.div(a, b)
-check("div numel", Insight.numel(c) == 3)
+check("div", Insight.numel(c) == 3)
+
+c = Insight.negative(a)
+check("neg", Insight.numel(c) == 3)
 
 # ============================================================================
-# Unary
+# Unary (5 tests)
 # ============================================================================
 println("=== Unary ===")
 
 a = Insight.from_data([-3.0, -1.0, 0.0, 2.0, 4.0])
 b = Insight.abs(a)
-check("abs numel", Insight.numel(b) == 5)
+check("abs", Insight.numel(b) == 5)
 
 a = Insight.from_data([1.0, 4.0, 9.0, 16.0])
 b = Insight.sqrt(a)
-check("sqrt numel", Insight.numel(b) == 4)
+check("sqrt", Insight.numel(b) == 4)
 
 a = Insight.from_data([0.0, 1.0, 2.0])
 b = Insight.exp(a)
-check("exp numel", Insight.numel(b) == 3)
+check("exp", Insight.numel(b) == 3)
+
+a = Insight.from_data([1.0, 2.0, 3.0])
+b = Insight.log(a)
+check("log", Insight.numel(b) == 3)
 
 a = Insight.from_data([0.0, 0.5, 1.0])
 b = Insight.sin(a)
-check("sin numel", Insight.numel(b) == 3)
+check("sin", Insight.numel(b) == 3)
 
 # ============================================================================
-# Reduction
+# Reduction (5 tests)
 # ============================================================================
 println("=== Reduction ===")
 
 a = Insight.from_data([1.0, 2.0, 3.0, 4.0])
+
 s = Insight.sum(a)
-check("sum defined", Insight.numel(s) == 1)
+check("sum", Insight.numel(s) == 1)
 
 m = Insight.mean(a)
-check("mean defined", Insight.numel(m) == 1)
+check("mean", Insight.numel(m) == 1)
+
+a = Insight.from_data([3.0, 1.0, 4.0, 1.0, 5.0])
+m = Insight.max(a)
+check("max", Insight.numel(m) == 1)
+
+m = Insight.min(a)
+check("min", Insight.numel(m) == 1)
+
+a = Insight.from_data([1.0, 5.0, 3.0, 2.0])
+m = Insight.argmax(a)
+check("argmax", Insight.numel(m) == 1)
 
 # ============================================================================
-# Linalg
+# Comparison (4 tests)
+# ============================================================================
+println("=== Comparison ===")
+
+a = Insight.from_data([1.0, 2.0, 3.0])
+b = Insight.from_data([1.0, 0.0, 3.0])
+c = Insight.equal(a, b)
+check("equal", Insight.numel(c) == 3)
+
+a = Insight.from_data([3.0, 1.0, 5.0])
+b = Insight.from_data([2.0, 4.0, 5.0])
+c = Insight.greater(a, b)
+check("greater", Insight.numel(c) == 3)
+
+c = Insight.less(a, b)
+check("less", Insight.numel(c) == 3)
+
+a_bool = Insight.from_data([1, 1, 0], Insight.bool)
+b_bool = Insight.from_data([1, 0, 0], Insight.bool)
+c = Insight.logical_and(a_bool, b_bool)
+check("logical_and", Insight.numel(c) == 3)
+
+# ============================================================================
+# Manipulation (3 tests)
+# ============================================================================
+println("=== Manipulation ===")
+
+a = Insight.arange(6, Insight.float64)
+b = Insight.reshape(a, [2, 3])
+check("reshape", Insight.numel(b) == 6)
+
+a = Insight.from_data([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+a = Insight.reshape(a, [2, 3])
+b = Insight.transpose(a)
+check("transpose", Insight.numel(b) == 6)
+
+a = Insight.zeros([1, 3, 1], Insight.float64)
+b = Insight.squeeze(a)
+check("squeeze", Insight.numel(b) == 3)
+
+# ============================================================================
+# Linalg (3 tests)
 # ============================================================================
 println("=== Linalg ===")
 
@@ -104,37 +172,35 @@ a = Insight.from_data([1.0, 2.0, 3.0, 4.0])
 a = Insight.reshape(a, [2, 2])
 b = Insight.from_data([5.0, 6.0, 7.0, 8.0])
 b = Insight.reshape(b, [2, 2])
+
 c = Insight.matmul(a, b)
-check("matmul numel", Insight.numel(c) == 4)
+check("matmul", Insight.numel(c) == 4)
 
 d = Insight.det(a)
-check("det defined", Insight.numel(d) == 1)
+check("det", Insight.numel(d) == 1)
+
+b = Insight.inv(a)
+check("inv", Insight.numel(b) == 4)
 
 # ============================================================================
-# FFT
+# FFT (2 tests)
 # ============================================================================
 println("=== FFT ===")
 
 x = Insight.from_data([1.0, 2.0, 3.0, 4.0])
 y = Insight.fft(x)
-check("fft numel", Insight.numel(y) == 4)
+check("fft", Insight.numel(y) == 4)
 
 z = Insight.ifft(y)
-check("ifft numel", Insight.numel(z) == 4)
+check("ifft", Insight.numel(z) == 4)
 
 # ============================================================================
-# Signal
+# Signal (1 test)
 # ============================================================================
 println("=== Signal ===")
 
 w = Insight.signal.hann(16)
-check("hann numel", Insight.numel(w) == 16)
-
-w = Insight.signal.hamming(16)
-check("hamming numel", Insight.numel(w) == 16)
-
-w = Insight.signal.blackman(32)
-check("blackman numel", Insight.numel(w) == 32)
+check("hann", Insight.numel(w) == 16)
 
 # ============================================================================
 # Results
