@@ -224,6 +224,100 @@ LD_LIBRARY_PATH=build/backends/cpu \
     julia -e 'push!(LOAD_PATH, "bindings/julia"); using Insight; println(Insight.add(Insight.zeros([2,3]), Insight.zeros([2,3])))'
 ```
 
+## Wrapping Core Types (Array, DType, Place, Shape, Slice)
+
+In addition to function modules, core types need wrapper modules with docstrings.
+
+### Python: types.py
+
+Create `bindings/python/insight/types.py` to wrap DType, Place, Shape, Slice:
+
+```python
+"""Core types: DType, Place, Shape, Slice."""
+from ._insight import DType, Place, Shape, Slice, CPUPlace, GPUPlace
+
+DType.__doc__ = """Data type enum. Available: bool, uint8..uint64, float16, bfloat16, float32, float64, complex64, complex128."""
+Place.__doc__ = """Device placement descriptor. Use CPUPlace() or GPUPlace(id)."""
+CPUPlace.__doc__ = """CPU device placement."""
+GPUPlace.__doc__ = """GPU device placement. Args: device_id (int, default 0)."""
+Shape.__doc__ = """Array shape. Args: dims (list of int)."""
+Slice.__doc__ = """Slice descriptor. Args: start, stop, step."""
+__all__ = ["DType", "Place", "Shape", "Slice", "CPUPlace", "GPUPlace"]
+```
+
+### Python: array.py
+
+Create `bindings/python/insight/array.py` to wrap Array class methods:
+
+```python
+"""Array class wrapper with documented methods."""
+from ._insight import Array as _NativeArray
+
+# Monkey-patch docstrings onto native class methods
+_NativeArray.reshape.__doc__ = """Return a view with a new shape.\n\nArgs:\n    new_shape: Target shape.\nReturns:\n    Array: View with new shape (shares data)."""
+_NativeArray.transpose.__doc__ = """Return a view with axes transposed."""
+_NativeArray.to.__doc__ = """Transfer to device.\n\nArgs:\n    place: CPUPlace or GPUPlace.\nReturns:\n    Array on target device."""
+_NativeArray.numpy.__doc__ = """Convert to NumPy array (CPU only)."""
+# ... etc for squeeze, unsqueeze, contiguous, copy
+
+Array = _NativeArray
+__all__ = ["Array"]
+```
+
+### Python: __init__.py update for types
+
+Replace direct native imports with wrapper module imports:
+
+```python
+# BEFORE (direct from native):
+from ._insight import DType, Place, Shape, Slice, Array, CPUPlace, GPUPlace
+
+# AFTER (from wrapper modules):
+from .types import DType, Place, Shape, Slice, CPUPlace, GPUPlace
+from .array import Array
+```
+
+Keep `from ._insight import *` for backward compatibility (catches anything not yet wrapped).
+
+### Lua: Documentation tables
+
+Add to `insight/init.lua` after all function definitions:
+
+```lua
+--- Array type: properties (shape, dtype, place, numel, ndim), methods
+-- (contiguous, reshape, transpose, squeeze, to, copy, get, item),
+-- metamethods (+, -, *, /, ==, <).
+M._array_docs = "See Array usertype"
+
+--- Place types: CPUPlace(), GPUPlace(id).
+--- DType shortcuts: float32, float64, int32, ... , complex128.
+```
+
+### Julia: modules/types.jl
+
+Create `bindings/julia/modules/types.jl` with Julia docstrings for InsightArray, dtype constants, etc.
+
+## Cross-Language Test Alignment
+
+When creating aligned tests across Python/Lua/Julia, use this pattern:
+
+1. Define a shared test specification (35 test cases across 7 categories)
+2. Each language implements the EXACT same tests in the EXACT same order
+3. Use language-native assertion mechanisms:
+   - Python: `assert`, `pytest`
+   - Lua: busted `assert.are.equal`
+   - Julia: custom `check(name, cond)` function
+4. Verify counts match: `grep -c 'def test_' *.py`, `grep -c 'it(' *.lua`, `grep -c 'check(' *.jl`
+
+## Demo File Alignment
+
+When aligning demos across 4 languages:
+1. Move existing C++ demos to `demos/cpp/`
+2. Port to Python/Lua/Julia in `demos/{python,lua,julia}/`
+3. Verify file counts: `ls demos/{cpp,python,lua,julia}/ | wc -l` must be equal
+4. Each demo should produce similar output (print same values)
+5. GPU demos wrapped in try/catch for non-CUDA platforms
+
 ## Pre-commit
 
 All new `.py`, `.lua`, `.jl` files must pass pre-commit:

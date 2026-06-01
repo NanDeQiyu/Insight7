@@ -117,6 +117,42 @@ case INSIGHT_DTYPE_BF16: {
 }
 ```
 
+### Comparison kernels (equal, not_equal, greater, less, etc.)
+
+Output dtype is BOOL, not half. Convert inputs to float, compare, write bool:
+
+```cpp
+case INSIGHT_DTYPE_F16: {
+    const uint16_t* a_data = (const uint16_t*)a->data;
+    const uint16_t* b_data = (const uint16_t*)b->data;
+    bool* out_data = (bool*)out->data;
+    for (int64_t i = 0; i < out->numel; ++i) {
+        float va = insight::f16_to_f32(a_data[i]);
+        float vb = insight::f16_to_f32(b_data[i]);
+        out_data[i] = (va == vb);  // or !=, <, >, <=, >=
+    }
+    break;
+}
+```
+
+### Logical kernels (logical_and, logical_or, logical_xor)
+
+For logical ops, half inputs are truthy if nonzero. Use `is_zero_f16()` helper or convert to float:
+
+```cpp
+case INSIGHT_DTYPE_F16: {
+    const uint16_t* a_data = (const uint16_t*)a->data;
+    const uint16_t* b_data = (const uint16_t*)b->data;
+    bool* out_data = (bool*)out->data;
+    for (int64_t i = 0; i < out->numel; ++i) {
+        bool va = (a_data[i] != 0) && (a_data[i] != 0x8000);  // not +0 or -0
+        bool vb = (b_data[i] != 0) && (b_data[i] != 0x8000);
+        out_data[i] = va && vb;  // or ||, ^
+    }
+    break;
+}
+```
+
 **Files to modify** (elementwise): add.cpp, sub.cpp, mul.cpp, div.cpp, pow.cpp, mod.cpp, maximum.cpp, minimum.cpp, equal.cpp, not_equal.cpp, greater.cpp, less.cpp, greater_equal.cpp, less_equal.cpp, logical_and.cpp, logical_or.cpp, logical_xor.cpp, logical_not.cpp
 
 **Files to modify** (unary): abs.cpp, sqrt.cpp, exp.cpp, log.cpp, sin.cpp, cos.cpp, etc.
@@ -133,6 +169,48 @@ case INSIGHT_DTYPE_F16: {
     break;
 }
 ```
+
+## Step 3b: Reduction kernels (sum, mean, max, min, prod, etc.)
+
+Reduction kernels accumulate in float, then convert result back to half:
+
+```cpp
+case INSIGHT_DTYPE_F16: {
+    const uint16_t* in_data = (const uint16_t*)x->data;
+    float acc = (reduction == SUM) ? 0.0f : insight::f16_to_f32(in_data[0]);
+    for (int64_t i = (reduction == SUM ? 0 : 1); i < x->numel; ++i) {
+        float v = insight::f16_to_f32(in_data[i]);
+        switch (reduction) {
+            case SUM:  acc += v; break;
+            case PROD: acc *= v; break;
+            case MAX:  acc = std::max(acc, v); break;
+            case MIN:  acc = std::min(acc, v); break;
+        }
+    }
+    uint16_t* out_data = (uint16_t*)out->data;
+    out_data[0] = insight::f32_to_f16(acc);
+    break;
+}
+```
+
+For argmax/argmin, compare in float but return int64 index:
+
+```cpp
+case INSIGHT_DTYPE_F16: {
+    const uint16_t* in_data = (const uint16_t*)x->data;
+    float best = insight::f16_to_f32(in_data[0]);
+    int64_t best_idx = 0;
+    for (int64_t i = 1; i < x->numel; ++i) {
+        float v = insight::f16_to_f32(in_data[i]);
+        if (v > best) { best = v; best_idx = i; }  // or < for argmin
+    }
+    int64_t* out_data = (int64_t*)out->data;
+    out_data[0] = best_idx;
+    break;
+}
+```
+
+**Files to modify** (reduction): sum.cpp, mean.cpp, prod.cpp, max.cpp, min.cpp, argmax.cpp, argmin.cpp, var.cpp, std.cpp, cumsum.cpp, cumprod.cpp, cummax.cpp, cummin.cpp
 
 ## Step 4: Create cast kernels
 
