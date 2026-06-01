@@ -179,13 +179,13 @@ std::pair<Array, Array> ca_cfar(const Array &data,
   INS_CHECK(data.defined(), "ca_cfar: input is undefined");
 
   Place cpu = CPUPlace();
-  Array data_cpu =
-      (data.place().kind() == DeviceKind::CPU) ? data : data.to(cpu);
+  Array data_cpu = data.contiguous().to(cpu);
 
   int ndim = data.shape().ndim();
   INS_CHECK(ndim <= 2, "ca_cfar: supports 1D and 2D arrays only");
 
   DType work_dtype = (data.dtype() == DType::F32) ? DType::F32 : DType::F64;
+  data_cpu = data_cpu.to(work_dtype);
 
   double alpha = cfar_alpha(
       pfa, (int)reference_cells.size() > 0 ? (2 * reference_cells[0]) : 2);
@@ -196,143 +196,35 @@ std::pair<Array, Array> ca_cfar(const Array &data,
     alpha = cfar_alpha(pfa, N_row * N_col);
   }
 
-  if (ndim == 1) {
-    int64_t n = data.shape().dim(0);
-    int g = guard_cells.empty() ? 1 : guard_cells[0];
-    int r = reference_cells.empty() ? 1 : reference_cells[0];
+  // Wrap scalar parameters as 1-element arrays for kernel dispatch
+  Array alpha_arr =
+      to_array(std::vector<double>{alpha}, Shape({1}), DType::F64, cpu);
+  int g = guard_cells.empty() ? 1 : guard_cells[0];
+  int r = reference_cells.empty() ? 1 : reference_cells[0];
 
-    // Build cumsum using composite op: prepend 0, then cumsum
-    Array zero_elem = zeros({1}, work_dtype, cpu);
-    Array data_with_zero = concat({zero_elem, data_cpu}, 0);
-    Array cs_arr = cumsum(data_with_zero, 0);
+  // guard_cells and reference_cells as int arrays
+  // Kernel reads as int (not int64)
+  Array gc_arr = zeros({1}, DType::I32, cpu);
+  Array rc_arr = zeros({1}, DType::I32, cpu);
+  // Write scalar values via layout pointer
+  *(int *)gc_arr.layout_ptr()->data = g;
+  *(int *)rc_arr.layout_ptr()->data = r;
 
-    // Helper to read cumsum value
-    auto cs_val = [&](int64_t idx) -> double {
-      Array v = slice(cs_arr, 0, idx, idx + 1);
-      return (work_dtype == DType::F64) ? v.item<double>()
-                                        : static_cast<double>(v.item<float>());
-    };
+  // Pre-allocate outputs
+  Array threshold = zeros(data_cpu.shape(), work_dtype, cpu);
+  Array detections = zeros(data_cpu.shape(), DType::BOOL, cpu);
 
-    // Helper to read data value
-    auto data_val = [&](int64_t idx) -> double {
-      Array v = slice(data_cpu, 0, idx, idx + 1);
-      return (work_dtype == DType::F64) ? v.item<double>()
-                                        : static_cast<double>(v.item<float>());
-    };
+  // Dispatch to backend kernel
+  ops().launch("ca_cfar", cpu, work_dtype,
+               {(void *)data_cpu.layout_ptr(), (void *)alpha_arr.layout_ptr(),
+                (void *)gc_arr.layout_ptr(), (void *)rc_arr.layout_ptr()},
+               {threshold.layout_ptr(), detections.layout_ptr()});
 
-    std::vector<double> th_vec(n);
-    std::vector<bool> det_vec(n);
-
-    for (int64_t i = 0; i < n; ++i) {
-      int64_t left_start = std::max((int64_t)0, i - g - r);
-      int64_t left_end = std::max((int64_t)0, i - g);
-      int64_t right_start = std::min(n, i + g + 1);
-      int64_t right_end = std::min(n, i + g + r + 1);
-
-      int64_t count = (left_end - left_start) + (right_end - right_start);
-      if (count == 0) {
-        th_vec[i] = 0;
-        det_vec[i] = false;
-        continue;
-      }
-
-      double sum_lr = (cs_val(left_end) - cs_val(left_start)) +
-                      (cs_val(right_end) - cs_val(right_start));
-      double noise_level = sum_lr / count;
-      th_vec[i] = noise_level * alpha;
-      det_vec[i] = data_val(i) > th_vec[i];
-    }
-
-    Array threshold = to_array(th_vec, work_dtype, cpu);
-    std::vector<uint8_t> det_bytes(n);
-    for (int64_t i = 0; i < n; ++i)
-      det_bytes[i] = det_vec[i] ? 1 : 0;
-    Array detections = to_array(det_bytes, DType::U8, cpu);
-    detections = cast(detections, DType::BOOL);
-
-    if (data.place().kind() != DeviceKind::CPU) {
-      threshold = threshold.to(data.place());
-      detections = detections.to(data.place());
-    }
-    return {threshold, detections};
-
-  } else if (ndim == 2) {
-    int64_t rows = data.shape().dim(0);
-    int64_t cols = data.shape().dim(1);
-    int gr = guard_cells.empty() ? 1 : guard_cells[0];
-    int gc = guard_cells.size() > 1 ? guard_cells[1] : gr;
-    int rr = reference_cells.empty() ? 1 : reference_cells[0];
-    int rc = reference_cells.size() > 1 ? reference_cells[1] : rr;
-
-    // Build 2D cumsum using element-wise reads
-    std::vector<double> cs((rows + 1) * (cols + 1), 0.0);
-    for (int64_t r = 0; r < rows; ++r) {
-      for (int64_t c = 0; c < cols; ++c) {
-        Array di = slice(data_cpu, {Slice(r, r + 1), Slice(c, c + 1)});
-        double val = (work_dtype == DType::F64)
-                         ? di.item<double>()
-                         : static_cast<double>(di.item<float>());
-        cs[(r + 1) * (cols + 1) + (c + 1)] =
-            val + cs[r * (cols + 1) + (c + 1)] + cs[(r + 1) * (cols + 1) + c] -
-            cs[r * (cols + 1) + c];
-      }
-    }
-
-    std::vector<double> th_vec(rows * cols);
-    std::vector<bool> det_vec(rows * cols);
-
-    for (int64_t r = 0; r < rows; ++r) {
-      for (int64_t c = 0; c < cols; ++c) {
-        int64_t r0 = std::max((int64_t)0, r - gr - rr);
-        int64_t r1 = std::max((int64_t)0, r - gr);
-        int64_t r2 = std::min(rows, r + gr + 1);
-        int64_t r3 = std::min(rows, r + gr + rr + 1);
-        int64_t c0 = std::max((int64_t)0, c - gc - rc);
-        int64_t c1 = std::max((int64_t)0, c - gc);
-        int64_t c2 = std::min(cols, c + gc + 1);
-        int64_t c3 = std::min(cols, c + gc + rc + 1);
-
-        double outer = cs[r3 * (cols + 1) + c3] - cs[r0 * (cols + 1) + c3] -
-                       cs[r3 * (cols + 1) + c0] + cs[r0 * (cols + 1) + c0];
-        double inner = cs[r2 * (cols + 1) + c2] - cs[r1 * (cols + 1) + c2] -
-                       cs[r2 * (cols + 1) + c1] + cs[r1 * (cols + 1) + c1];
-        double ref_sum = outer - inner;
-
-        int64_t ref_count = ((r3 - r0) * (c3 - c0)) - ((r2 - r1) * (c2 - c1));
-        if (ref_count <= 0) {
-          th_vec[r * cols + c] = 0;
-          det_vec[r * cols + c] = false;
-          continue;
-        }
-
-        double noise_level = ref_sum / ref_count;
-        th_vec[r * cols + c] = noise_level * alpha;
-
-        Array di = slice(data_cpu, {Slice(r, r + 1), Slice(c, c + 1)});
-        double di_val = (work_dtype == DType::F64)
-                            ? di.item<double>()
-                            : static_cast<double>(di.item<float>());
-        det_vec[r * cols + c] = di_val > th_vec[r * cols + c];
-      }
-    }
-
-    Array threshold = to_array(th_vec, Shape({rows, cols}), work_dtype, cpu);
-    std::vector<uint8_t> det_bytes(rows * cols);
-    for (int64_t i = 0; i < rows * cols; ++i)
-      det_bytes[i] = det_vec[i] ? 1 : 0;
-    Array detections = to_array(det_bytes, Shape({rows, cols}), DType::U8, cpu);
-    detections = cast(detections, DType::BOOL);
-
-    if (data.place().kind() != DeviceKind::CPU) {
-      threshold = threshold.to(data.place());
-      detections = detections.to(data.place());
-    }
-    return {threshold, detections};
+  if (data.place().kind() != DeviceKind::CPU) {
+    threshold = threshold.to(data.place());
+    detections = detections.to(data.place());
   }
-
-  // Should not reach here
-  return {zeros(data.shape(), work_dtype, cpu),
-          zeros(data.shape(), DType::BOOL, cpu)};
+  return {threshold, detections};
 }
 
 // ============================================================================
@@ -393,96 +285,55 @@ Array mvdr(const Array &x, const Array &sv, bool calc_cov) {
 }
 
 // ============================================================================
-// ambgfun — Ambiguity Function (sequential, requires backend kernel)
+// ambgfun — Ambiguity Function (dispatches to backend kernel)
 // ============================================================================
 
 Array ambgfun(const Array &x, double fs, double prf, const Array &y,
               const std::string &cut, double cutValue) {
   INS_CHECK(x.defined(), "ambgfun: x is undefined");
+  INS_CHECK(cut == "2d", "ambgfun: only '2d' cut is currently supported");
 
   Place cpu = CPUPlace();
-  Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
-  Array y_cpu = y.defined()
-                    ? ((y.place().kind() == DeviceKind::CPU) ? y : y.to(cpu))
-                    : x_cpu;
+  Array x_cpu = x.contiguous().to(cpu);
+  Array y_cpu = y.defined() ? y.contiguous().to(cpu) : x_cpu;
 
   int64_t N = x_cpu.numel();
   int64_t M = y_cpu.numel();
 
-  INS_CHECK(cut == "2d", "ambgfun: only '2d' cut is currently supported");
-
-  // Convert to complex vectors
-  std::vector<std::complex<double>> x_data(N), y_data(M);
-  // Convert to complex using composite ops
+  // Convert to complex128
   Array x_cpx = x_cpu;
-  if (x_cpu.dtype() != DType::C64 && x_cpu.dtype() != DType::C32) {
+  if (x_cpu.dtype() != DType::C64)
     x_cpx = to_complex(x_cpu);
-  }
   Array y_cpx = y_cpu;
-  if (y_cpu.dtype() != DType::C64 && y_cpu.dtype() != DType::C32) {
+  if (y_cpu.dtype() != DType::C64)
     y_cpx = to_complex(y_cpu);
-  }
 
-  // Build complex vectors using element-wise reads
-  auto read_cpx = [](const Array &arr, std::vector<std::complex<double>> &out) {
-    int64_t n = arr.numel();
-    Array r = real(arr);
-    Array im = imag(arr);
-    for (int64_t i = 0; i < n; ++i) {
-      double rv = slice(r, 0, i, i + 1).item<double>();
-      double iv = slice(im, 0, i, i + 1).item<double>();
-      out[i] = {rv, iv};
-    }
-  };
-  read_cpx(x_cpx, x_data);
-  read_cpx(y_cpx, y_data);
+  // Normalize using composite ops: x /= sqrt(sum(|x|^2))
+  Array x_energy = sum(square(abs(x_cpx)));
+  x_cpx = div(x_cpx, sqrt(x_energy));
+  Array y_energy = sum(square(abs(y_cpx)));
+  y_cpx = div(y_cpx, sqrt(y_energy));
 
-  // Normalize
-  double x_norm = 0, y_norm = 0;
-  for (auto &v : x_data)
-    x_norm += std::norm(v);
-  for (auto &v : y_data)
-    y_norm += std::norm(v);
-  x_norm = std::sqrt(x_norm);
-  y_norm = std::sqrt(y_norm);
-  for (auto &v : x_data)
-    v /= x_norm;
-  for (auto &v : y_data)
-    v /= y_norm;
+  // Flatten to 1D
+  x_cpx = reshape(x_cpx, {N});
+  y_cpx = reshape(y_cpx, {M});
+
+  // Build params array: [fs, N, M]
+  Array params = to_array(std::vector<double>{fs, (double)N, (double)M},
+                          Shape({3}), DType::F64, cpu);
 
   int64_t delay_len = N + M - 1;
   int64_t doppler_len = N;
-  std::vector<double> ambg(delay_len * doppler_len, 0.0);
 
-  for (int64_t fd = 0; fd < doppler_len; ++fd) {
-    double freq = (fd - doppler_len / 2.0) * fs / doppler_len;
-    double omega = 2.0 * M_PI * freq / fs;
+  // Pre-allocate output
+  Array result({doppler_len, delay_len}, DType::F64, cpu);
 
-    for (int64_t tau = 0; tau < delay_len; ++tau) {
-      int64_t tau_shift = tau - (M - 1);
+  // Dispatch to backend kernel
+  ops().launch("ambgfun", cpu, DType::F64,
+               {(void *)x_cpx.layout_ptr(), (void *)y_cpx.layout_ptr(),
+                (void *)params.layout_ptr()},
+               {result.layout_ptr()});
 
-      std::complex<double> sum_val(0.0, 0.0);
-      for (int64_t n = 0; n < N; ++n) {
-        int64_t m = n - tau_shift;
-        if (m >= 0 && m < M) {
-          double phase = omega * n;
-          sum_val += x_data[n] * std::conj(y_data[m]) *
-                     std::exp(std::complex<double>(0.0, phase));
-        }
-      }
-      ambg[fd * delay_len + tau] = std::abs(sum_val);
-    }
-  }
-
-  // Normalize peak to 1
-  double peak = *std::max_element(ambg.begin(), ambg.end());
-  if (peak > 0) {
-    for (auto &v : ambg)
-      v /= peak;
-  }
-
-  Array result =
-      to_array(ambg, Shape({doppler_len, delay_len}), DType::F64, cpu);
   if (x.place().kind() != DeviceKind::CPU)
     result = result.to(x.place());
   return result;

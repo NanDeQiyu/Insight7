@@ -1,6 +1,7 @@
 // src/ops/signal/spectral_analysis.cpp
 #include "insight/ops/signal/spectral_analysis.h"
 #include "insight/core/exception.h"
+#include "insight/core/op_registry.h"
 #include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
@@ -125,8 +126,8 @@ SpectralResult csd(const Array &x, const Array &y, double fs,
 
   int64_t freq_len = onesided_fft_len(nfft, return_onesided);
 
-  // Accumulate cross-spectrum
-  std::vector<double> Pxx_accum(freq_len, 0.0);
+  // Accumulate cross-spectrum using Array composites
+  Array Pxx_sum = zeros({freq_len}, DType::F64, cpu);
 
   for (int64_t seg = 0; seg < n_segments; ++seg) {
     int64_t start = seg * step;
@@ -140,44 +141,31 @@ SpectralResult csd(const Array &x, const Array &y, double fs,
       win = win.to(x_seg.dtype());
     Array Pxy = process_segment(x_seg, y_seg, win, nfft, detrend);
 
-    // Accumulate real part
+    // Accumulate cross-spectrum using composite ops (no per-element extraction)
     Array Pxy_cpu = (Pxy.place().kind() == DeviceKind::CPU) ? Pxy : Pxy.to(cpu);
-
-    // Extract real part and accumulate using composite ops
-    Array Pxy_real = real(Pxy_cpu);
-    Array Pxy_real_slice =
-        slice(Pxy_real, {0}, {0}, {static_cast<int>(freq_len)});
-    for (int64_t i = 0; i < freq_len; ++i) {
-      double val;
-      if (Pxy_real_slice.dtype() == DType::F64) {
-        val = slice(Pxy_real_slice, {0}, {static_cast<int>(i)},
-                    {static_cast<int>(i + 1)})
-                  .item<double>();
-      } else {
-        val = static_cast<double>(slice(Pxy_real_slice, {0},
-                                        {static_cast<int>(i)},
-                                        {static_cast<int>(i + 1)})
-                                      .item<float>());
-      }
-      Pxx_accum[i] += val;
-    }
+    Array Pxy_real_full = real(Pxy_cpu);
+    Array Pxy_real = slice(Pxy_real_full, 0, 0, static_cast<int>(freq_len));
+    Pxx_sum = add(Pxx_sum, Pxy_real.to(Pxx_sum.dtype()));
   }
 
-  // Average and scale
+  // Average and scale using composite ops
   double scale = compute_psd_scale(nfft, fs, win, scaling, return_onesided);
-  for (int64_t i = 0; i < freq_len; ++i) {
-    Pxx_accum[i] = (Pxx_accum[i] / n_segments) * scale;
-  }
+  double avg_scale = scale / n_segments;
+  Array Pxx = mul(Pxx_sum, full({freq_len}, avg_scale, DType::F64, cpu));
 
   // For one-sided, double the non-DC and non-Nyquist components
   if (return_onesided && nfft > 1) {
-    for (int64_t i = 1; i < freq_len - 1; ++i) {
-      Pxx_accum[i] *= 2.0;
-    }
+    Array mask = ones({freq_len}, DType::F64, cpu);
+    // Set first and last to 1.0, middle to 2.0
+    // Use put: mask[1:-1] = 2.0
+    Array idx =
+        arange(1.0, static_cast<double>(freq_len - 1), 1.0, DType::I64, cpu);
+    Array twos = full({freq_len - 2}, 2.0, DType::F64, cpu);
+    mask = put(mask, idx, twos);
+    Pxx = mul(Pxx, mask);
   }
 
   Array f = fft_freqs(nfft, fs, return_onesided);
-  Array Pxx = to_array(Pxx_accum, DType::F64, cpu);
 
   return {f, Pxx};
 }
@@ -264,8 +252,8 @@ SpectrogramResult spectrogram(const Array &x, double fs,
     t_arr[i] = (i * step + nperseg / 2.0) / fs;
   }
 
-  // Compute spectrogram segment by segment
-  std::vector<double> Sxx(freq_len * n_segments);
+  // Compute spectrogram segment by segment, accumulate into 2D Array
+  Array Sxx_2d = zeros({freq_len, n_segments}, DType::F64, cpu);
 
   for (int64_t seg = 0; seg < n_segments; ++seg) {
     int64_t start = seg * step;
@@ -295,46 +283,41 @@ SpectrogramResult spectrogram(const Array &x, double fs,
       Xf_real = add(square(r), square(im));
     } else if (mode == "complex") {
       Xf_real = real(Xf_cpu);
-    } else if (mode == "magnitude") {
-      Xf_real = abs(Xf_cpu);
     } else {
-      // Default: magnitude
       Xf_real = abs(Xf_cpu);
     }
 
-    Array Xf_slice = slice(Xf_real, {0}, {0}, {static_cast<int>(freq_len)});
-    for (int64_t i = 0; i < freq_len; ++i) {
-      double val;
-      if (Xf_slice.dtype() == DType::F64) {
-        val = slice(Xf_slice, {0}, {static_cast<int>(i)},
-                    {static_cast<int>(i + 1)})
-                  .item<double>();
-      } else {
-        val = static_cast<double>(slice(Xf_slice, {0}, {static_cast<int>(i)},
-                                        {static_cast<int>(i + 1)})
-                                      .item<float>());
-      }
-      Sxx[seg * freq_len + i] = val;
-    }
+    // Store column using put or direct accumulation
+    Array col = slice(Xf_real, 0, 0, static_cast<int>(freq_len));
+    // Accumulate into Sxx_2d column by column
+    // Build index for this column's elements
+    Array row_idx =
+        arange(0.0, static_cast<double>(freq_len), 1.0, DType::I64, cpu);
+    Array col_idx =
+        full({freq_len}, static_cast<int64_t>(seg), DType::I64, cpu);
+    // Use scatter to write column
+    Sxx_2d = scatter(Sxx_2d, 1, col_idx, reshape(col, {freq_len, 1}));
   }
 
-  // Scale PSD
+  // Scale PSD using composite ops
   if (mode == "psd") {
     double scale = compute_psd_scale(nfft, fs, win, "density", return_onesided);
-    for (auto &v : Sxx)
-      v *= scale;
+    Sxx_2d = mul(Sxx_2d, full({1}, scale, DType::F64, cpu));
     if (return_onesided && nfft > 1) {
-      for (int64_t seg = 0; seg < n_segments; ++seg) {
-        for (int64_t i = 1; i < freq_len - 1; ++i) {
-          Sxx[seg * freq_len + i] *= 2.0;
-        }
-      }
+      Array mask = ones({freq_len}, DType::F64, cpu);
+      Array idx_mid = arange(1.0, static_cast<double>(freq_len - 1), 1.0, DType::I64, cpu);
+      Array twos = full({freq_len - 2}, 2.0, DType::F64, cpu);
+      mask = put(mask, idx_mid, twos);
+      // Broadcast mask across segments: mask is [freq_len], Sxx_2d is
+      // [freq_len, n_segments]
+      Sxx_2d = mul(Sxx_2d, unsqueeze(mask, 1));
     }
   }
 
   Array f = fft_freqs(nfft, fs, return_onesided);
   Array t = to_array(t_arr, DType::F64, cpu);
-  Array S = to_array(Sxx, Shape({n_segments, freq_len}), DType::F64, cpu);
+  // Transpose from [freq_len, n_segments] to [n_segments, freq_len] for output
+  Array S = transpose(Sxx_2d);
 
   return {f, t, S};
 }

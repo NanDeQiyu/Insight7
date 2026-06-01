@@ -1,6 +1,7 @@
 // src/ops/signal/filtering.cpp
 #include "insight/ops/signal/filtering.h"
 #include "insight/core/exception.h"
+#include "insight/core/op_registry.h"
 #include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
@@ -276,56 +277,30 @@ Array lfilter(const Array &b, const Array &a, const Array &x, int axis) {
     return firfilter(b, x, axis);
   }
 
-  // IIR case: direct-form II transpose
-  // This is inherently sequential — process on CPU
+  // IIR case: dispatch to backend kernel
   Place cpu = CPUPlace();
-  Array b_cpu = (b.place().kind() == DeviceKind::CPU) ? b : b.to(cpu);
-  Array a_cpu = (a.place().kind() == DeviceKind::CPU) ? a : a.to(cpu);
-  Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
+  Array b_cpu = b.contiguous().to(cpu).to(DType::F64);
+  Array a_cpu = a.contiguous().to(cpu).to(DType::F64);
+  Array x_cpu = x.contiguous().to(cpu);
 
-  DType work_dtype = (x.dtype() == DType::F32) ? DType::F32 : DType::F64;
-  if (b_cpu.dtype() != work_dtype)
-    b_cpu = b_cpu.to(work_dtype);
-  if (a_cpu.dtype() != work_dtype)
-    a_cpu = a_cpu.to(work_dtype);
-  if (x_cpu.dtype() != work_dtype)
-    x_cpu = x_cpu.to(work_dtype);
+  DType work_dtype = (x_cpu.dtype() == DType::F32) ? DType::F32 : DType::F64;
+  x_cpu = x_cpu.to(work_dtype);
 
-  int64_t nb = b_cpu.numel();
-  int64_t na = a_cpu.numel();
-
-  // Normalize coefficients by a[0] using composite ops
-  Array a0_arr = slice(a_cpu, {0}, {0}, {1});
-  INS_CHECK(std::abs((work_dtype == DType::F64) ? a0_arr.item<double>()
-                                                : a0_arr.item<float>()) > 1e-15,
+  // Normalize coefficients by a[0]
+  Array a0 = slice(a_cpu, 0, 0, 1);
+  INS_CHECK(std::abs(a0.item<double>()) > 1e-15,
             "lfilter: a[0] must not be zero");
-
-  Array b_norm_arr = div(b_cpu, a0_arr);
-  Array a_norm_arr = div(a_cpu, a0_arr);
-
-  // Extract normalized coefficients to vectors for sequential processing
-  std::vector<double> b_norm(nb), a_norm(na);
-  for (int64_t i = 0; i < nb; ++i) {
-    Array bi = slice(b_norm_arr, {0}, {static_cast<int>(i)},
-                     {static_cast<int>(i + 1)});
-    b_norm[i] = (work_dtype == DType::F64)
-                    ? bi.item<double>()
-                    : static_cast<double>(bi.item<float>());
-  }
-  for (int64_t i = 0; i < na; ++i) {
-    Array ai = slice(a_norm_arr, {0}, {static_cast<int>(i)},
-                     {static_cast<int>(i + 1)});
-    a_norm[i] = (work_dtype == DType::F64)
-                    ? ai.item<double>()
-                    : static_cast<double>(ai.item<float>());
-  }
+  b_cpu = div(b_cpu, a0);
+  a_cpu = div(a_cpu, a0);
+  // Ensure F64 for kernel
+  b_cpu = b_cpu.to(DType::F64);
+  a_cpu = a_cpu.to(DType::F64);
 
   int ndim = x_cpu.shape().ndim();
   int ax = (axis < 0) ? axis + ndim : axis;
   int64_t n = x_cpu.shape().dim(ax);
-  int64_t batch = x_cpu.numel() / n;
 
-  // Move axis to last
+  // Move signal axis to last
   Array x_moved = x_cpu;
   if (ax != ndim - 1) {
     std::vector<int> perm(ndim);
@@ -335,49 +310,26 @@ Array lfilter(const Array &b, const Array &a, const Array &x, int axis) {
     x_moved = permute(x_moved, perm);
   }
 
-  // Direct-form II transpose IIR filter using element-wise API
-  std::vector<double> out_data(batch * n);
-  int64_t nmax = std::max(nb, na);
+  // Flatten to 2D [batch, signal_len] for kernel
+  int64_t batch = x_moved.numel() / n;
+  Array x_flat = reshape(x_moved, {batch, n}).to(DType::F64);
 
-  // Flatten x_moved for element-wise access
-  Array x_flat = reshape(x_moved, {batch * n});
+  // Pre-allocate output
+  Array y_flat({batch, n}, DType::F64, cpu);
 
-  for (int64_t b_idx = 0; b_idx < batch; ++b_idx) {
-    std::vector<double> z(nmax - 1, 0.0);
+  // Dispatch to backend kernel: inputs=[b, a, x], outputs=[y]
+  ops().launch("lfilter", cpu, DType::F64,
+               {(void *)b_cpu.layout_ptr(), (void *)a_cpu.layout_ptr(),
+                (void *)x_flat.layout_ptr()},
+               {y_flat.layout_ptr()});
 
-    for (int64_t i = 0; i < n; ++i) {
-      int64_t idx = b_idx * n + i;
-      double xi_val;
-      {
-        Array xi_arr = slice(x_flat, {0}, {static_cast<int>(idx)},
-                             {static_cast<int>(idx + 1)});
-        xi_val = (work_dtype == DType::F64)
-                     ? xi_arr.item<double>()
-                     : static_cast<double>(xi_arr.item<float>());
-      }
-
-      double val = xi_val + z[0];
-      out_data[b_idx * n + i] = val;
-      for (int64_t j = 0; j < nmax - 2; ++j) {
-        double bj1 = (j + 1 < nb) ? b_norm[j + 1] : 0.0;
-        double aj1 = (j + 1 < na) ? a_norm[j + 1] : 0.0;
-        z[j] = z[j + 1] + bj1 * xi_val - aj1 * val;
-      }
-      if (nmax >= 2) {
-        double bn_coeff = (nmax - 1 < nb) ? b_norm[nmax - 1] : 0.0;
-        double an_coeff = (nmax - 1 < na) ? a_norm[nmax - 1] : 0.0;
-        z[nmax - 2] = bn_coeff * xi_val - an_coeff * val;
-      }
-    }
-  }
-
-  // Reshape back
+  // Reshape back to original shape
   std::vector<int64_t> out_shape;
-  for (int i = 0; i < ndim; ++i) {
+  for (int i = 0; i < ndim; ++i)
     out_shape.push_back((i == ax) ? n : x_cpu.shape().dim(i));
-  }
+  Array result = reshape(y_flat, Shape(out_shape));
 
-  Array result = to_array(out_data, Shape(out_shape), DType::F64, cpu);
+  // Permute signal axis back if needed
   if (ax != ndim - 1) {
     std::vector<int> inv_perm(ndim);
     std::vector<int> perm(ndim);
@@ -404,76 +356,30 @@ Array lfilter_zi(const Array &b, const Array &a) {
   INS_CHECK(b.defined() && a.defined(), "lfilter_zi: inputs are undefined");
 
   Place cpu = CPUPlace();
-  DType work_dtype = (b.dtype() == DType::F32) ? DType::F32 : DType::F64;
-  Array b_cpu = b.dtype() == work_dtype ? b : b.to(work_dtype);
-  Array a_cpu = a.dtype() == work_dtype ? a : a.to(work_dtype);
-  if (b_cpu.place().kind() != DeviceKind::CPU)
-    b_cpu = b_cpu.to(cpu);
-  if (a_cpu.place().kind() != DeviceKind::CPU)
-    a_cpu = a_cpu.to(cpu);
+  Array b_cpu = b.contiguous().to(cpu).to(DType::F64);
+  Array a_cpu = a.contiguous().to(cpu).to(DType::F64);
 
   int64_t nb = b_cpu.numel();
   int64_t na = a_cpu.numel();
   int64_t n = std::max(nb, na);
-
-  // Normalize by a[0] using composite ops
-  Array a0_arr = slice(a_cpu, {0}, {0}, {1});
-
-  Array b_norm_arr = div(b_cpu, a0_arr);
-  Array a_norm_arr = div(a_cpu, a0_arr);
-
-  // Extract normalized coefficients to vectors
-  std::vector<double> b_norm(nb), a_norm(na);
-  for (int64_t i = 0; i < nb; ++i) {
-    Array bi = slice(b_norm_arr, {0}, {static_cast<int>(i)},
-                     {static_cast<int>(i + 1)});
-    b_norm[i] = (work_dtype == DType::F64)
-                    ? bi.item<double>()
-                    : static_cast<double>(bi.item<float>());
-  }
-  for (int64_t i = 0; i < na; ++i) {
-    Array ai = slice(a_norm_arr, {0}, {static_cast<int>(i)},
-                     {static_cast<int>(i + 1)});
-    a_norm[i] = (work_dtype == DType::F64)
-                    ? ai.item<double>()
-                    : static_cast<double>(ai.item<float>());
-  }
-
   int64_t m = n - 1;
+
   if (m == 0) {
-    return to_array(std::vector<double>{}, work_dtype, cpu);
+    return zeros({0}, DType::F64, cpu);
   }
 
-  // Build companion matrix A (m x m)
-  std::vector<double> A_data(m * m, 0.0);
-  for (int64_t i = 0; i < m; ++i) {
-    double ai1 = (i + 1 < na) ? a_norm[i + 1] : 0.0;
-    A_data[i * m + 0] = -ai1;
-    if (i + 1 < m) {
-      A_data[i * m + (i + 1)] = 1.0;
-    }
-  }
+  // Normalize by a[0]
+  Array a0 = slice(a_cpu, 0, 0, 1);
+  b_cpu = div(b_cpu, a0);
+  a_cpu = div(a_cpu, a0);
 
-  // Build B vector: b[1:] - a[1:] * b[0]
-  std::vector<double> B_vec(m);
-  for (int64_t i = 0; i < m; ++i) {
-    double bi1 = (i + 1 < nb) ? b_norm[i + 1] : 0.0;
-    double ai1 = (i + 1 < na) ? a_norm[i + 1] : 0.0;
-    B_vec[i] = bi1 - ai1 * b_norm[0];
-  }
+  // Pre-allocate output
+  Array zi({m}, DType::F64, cpu);
 
-  // Solve (I - A) * zi = B
-  std::vector<double> IA_data(m * m);
-  for (int64_t i = 0; i < m; ++i) {
-    for (int64_t j = 0; j < m; ++j) {
-      IA_data[i * m + j] = (i == j ? 1.0 : 0.0) - A_data[i * m + j];
-    }
-  }
-
-  Array IA = to_array(IA_data, Shape({m, m}), work_dtype, cpu);
-  Array B_arr = to_array(B_vec, Shape({m, 1}), work_dtype, cpu);
-  Array zi = solve(IA, B_arr);
-  zi = reshape(zi, {m});
+  // Dispatch to backend kernel: inputs=[b_norm, a_norm], outputs=[zi]
+  ops().launch("lfilter_zi", cpu, DType::F64,
+               {(void *)b_cpu.layout_ptr(), (void *)a_cpu.layout_ptr()},
+               {zi.layout_ptr()});
 
   return zi;
 }
