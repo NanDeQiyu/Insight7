@@ -1,27 +1,20 @@
---- Insight7 — Lightweight scientific computing framework for Lua.
---
--- A NumPy-compatible tensor library with GPU acceleration support.
--- Uses Penlight for enhanced readability when available.
+--- Insight7 Lua bindings — Core module.
+-- Provides array creation, arithmetic, reduction, linear algebra,
+-- FFT, signal processing, and more.
 --
 -- @module insight
 -- @author PlumBlossomMaid
 -- @version 1.0.0
 -- @license MIT
 --
--- Quick Start:
---
---     local ins = require("insight")
---
---     -- Create arrays (Paddle-style API)
---     local a = ins.zeros({2, 3}, ins.float32)
---     local b = ins.ones({2, 3}, ins.float32)
---     local c = a + b
---
---     -- Reduction
---     local s = ins.sum(c)
---
---     -- Linear algebra
---     local m = ins.matmul(a, ins.transpose(b))
+-- @usage
+--   local ins = require("insight")
+--   ins.init({"cpu"})
+--   local a = ins.zeros({2, 3}, ins.float32)
+--   local b = ins.ones({2, 3}, ins.float32)
+--   local c = a + b
+--   local s = ins.sum(c)
+--   local m = ins.matmul(a, ins.transpose(b))
 --
 -- DType Shortcuts (Paddle-style):
 --
@@ -200,5 +193,72 @@ for _, mod_name in ipairs(submodules) do
     end
   end
 end
+
+-- ============================================================================
+-- Type documentation
+-- ============================================================================
+
+--- Array type documentation.
+-- Arrays are the core data container in Insight7.
+--
+-- **Properties:**
+--
+--     arr.shape         — Shape object (table of dimension sizes)
+--     arr.dtype         — DType enum value
+--     arr.place         — Place object (CPUPlace or GPUPlace)
+--     arr.numel         — Total number of elements
+--     arr.nbytes        — Total bytes of data
+--     arr.ndim          — Number of dimensions
+--     arr.is_contiguous — Whether data is contiguous in memory
+--     arr.defined       — Whether the array is valid
+--
+-- **Methods:**
+--
+--     arr:contiguous()      — Return contiguous copy if needed
+--     arr:reshape(shape)    — Return view with new shape
+--     arr:transpose()       — Return transposed view
+--     arr:squeeze(axis)     — Remove size-1 dimensions
+--     arr:unsqueeze(axis)   — Insert size-1 dimension
+--     arr:to(place)         — Transfer to device
+--     arr:copy()            — Deep copy
+--     arr:get(index)        — Get scalar value at index
+--     arr:item()            — Get scalar value (0-d array only)
+--
+-- **Indexing (1-based):**
+--
+--     arr["1:3, :"]         — String-based slicing
+--     arr[1]                — Integer indexing
+--
+-- **Metamethods:**
+--
+--     arr + arr, arr - arr, arr * arr, arr / arr
+--     -arr (negation), ~arr (bitwise NOT)
+--     arr == arr, arr < arr, arr <= arr
+-- @see Array
+M._array_docs = "See Array usertype documentation above"
+
+--- Place types for device placement.
+-- @see CPUPlace
+-- @see GPUPlace
+-- @usage
+--   local cpu = ins.CPUPlace()
+--   local gpu = ins.GPUPlace(0)
+--   local arr_gpu = arr:to(gpu)
+--   local arr_cpu = arr_gpu:to(cpu)
+M._place_docs = "CPUPlace() for CPU, GPUPlace(id) for GPU"
+
+--- DType shortcuts for array creation and casting.
+-- Available types:
+--
+--     ins.float32, ins.float64, ins.float16, ins.bfloat16,
+--     ins.int8, ins.int16, ins.int32, ins.int64,
+--     ins.uint8, ins.uint16, ins.uint32, ins.uint64,
+--     ins.bool, ins.complex64, ins.complex128
+--
+-- @see DType
+-- @usage
+--   local a = ins.zeros({2, 3}, ins.float64)
+--   local b = ins.cast(a, ins.int32)
+M._dtype_docs = "See DType documentation above"
 
 return M
