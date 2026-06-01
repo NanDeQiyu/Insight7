@@ -644,6 +644,19 @@ function sum(x::InsightArray; axis::Union{Int,Nothing}=nothing,
     return arr
 end
 
+"""
+    mean(x::InsightArray; axis::Union{Int,Nothing}=nothing, keepdims::Bool=false) -> InsightArray
+
+Mean of array elements over a given axis.
+
+# Arguments
+- `x`: Input array.
+- `axis`: Axis along which to compute mean (default: all elements).
+- `keepdims`: If `true`, retains reduced axes with size 1.
+
+# Returns
+- `InsightArray`: Mean result.
+"""
 function mean(x::InsightArray; axis::Union{Int,Nothing}=nothing,
               keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
@@ -660,6 +673,18 @@ end
 # Linear Algebra
 # ============================================================================
 
+"""
+    matmul(a::InsightArray, b::InsightArray) -> InsightArray
+
+Matrix multiplication of two 2-D arrays.
+
+# Arguments
+- `a`: Left matrix (M x K).
+- `b`: Right matrix (K x N).
+
+# Returns
+- `InsightArray`: Result matrix (M x N).
+"""
 function matmul(a::InsightArray, b::InsightArray)::InsightArray
     ptr = ccall((:insight_jl_matmul, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Ptr{Cvoid}), a, b)
