@@ -40,6 +40,9 @@ Group errors across jobs. Common patterns in Insight7:
 | `No rule to make target '_deps/vorbis-build/lib/libY.a'` + build succeeds locally | `_resolve_dep` macro save/restore bug OR need ALIAS targets for codec deps | fix-ci-precommit |
 | Lua GPU tests crash / abort in CI | `load_backend("cuda")` throws + GPU tests not guarded by `cuda_available` check | fix-ci-precommit |
 | Different IO tests fail each CI run | Per-test SetUp/TearDown directory create/remove race; use suite-level fixture | fix-ci-precommit |
+| `TearDownTestSuite: filesystem error: cannot remove: Directory not empty` | `std::filesystem::remove_all` throws when dir already removed by parallel run | fix-ci-precommit |
+| `broadcast_to: cannot broadcast shape [N, 1] to [N]` in spectrogram/stft | `scatter` source must be 1D; `reshape(col, {freq_len, 1})` causes 2D→1D broadcast fail | debug-ci-failures |
+| Julia: `No such file or directory: build/bindings/julia/modules/signal/windows.jl` | CMakeLists.txt only copies Insight.jl, not modules/ subdirectory | debug-ci-failures |
 
 ## Step 3: Fix in dependency order
 

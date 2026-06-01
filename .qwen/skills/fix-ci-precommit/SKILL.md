@@ -243,6 +243,7 @@ TEST_F(Suite, TestName) {
 **Root causes**:
 1. Per-test `SetUp`/`TearDown` creates/removes `/tmp/insight_io_test` — CI filesystem delay causes race
 2. `write_bin` ofstream not explicitly closed — CI filesystem may not flush on destructor
+3. `std::filesystem::remove_all` throws when directory already removed by parallel test run
 
 **Fix**:
 ```cpp
@@ -254,7 +255,9 @@ protected:
     std::filesystem::create_directories("/tmp/insight_io_test");
   }
   static void TearDownTestSuite() {
-    std::filesystem::remove_all("/tmp/insight_io_test");
+    // Use error_code overload — CI may have already removed the directory
+    std::error_code ec;
+    std::filesystem::remove_all("/tmp/insight_io_test", ec);
   }
   void SetUp() override { tmp_dir = "/tmp/insight_io_test"; }
 };
@@ -263,6 +266,8 @@ protected:
 ofs.write(...);
 ofs.close();  // ← don't rely on destructor
 ```
+
+**Key**: Always use `std::error_code` overload for `remove_all` in TearDownTestSuite — CI runners may have already cleaned up the directory from a parallel run, and the throwing overload causes test FAILURE even though the test itself passed.
 
 ## 14. Lua binding `--target` must include backend
 
@@ -273,6 +278,39 @@ ofs.close();  // ← don't rely on destructor
 **Fix**: Build both targets:
 ```yaml
 run: cd build && cmake --build . -j$(nproc) --target insight_lua --target insight_cpu_backend
+```
+
+## 15. Julia modules/ not copied to build directory
+
+**Symptom (Julia CI)**: `SystemError: opening file ".../build/bindings/julia/modules/signal/windows.jl": No such file or directory`
+
+**Root cause**: `bindings/julia/CMakeLists.txt` only uses `configure_file` to copy `Insight.jl` but doesn't copy the `modules/` subdirectory. CI tests load from `build/bindings/julia/` which is missing all submodule files.
+
+**Fix** — add to `bindings/julia/CMakeLists.txt`:
+```cmake
+# Copy Julia module files (modules/ directory) to build directory
+file(GLOB_RECURSE _julia_modules "${CMAKE_CURRENT_SOURCE_DIR}/modules/*.jl")
+foreach(_jl ${_julia_modules})
+    file(RELATIVE_PATH _rel ${CMAKE_CURRENT_SOURCE_DIR} ${_jl})
+    configure_file(${_jl} ${CMAKE_BINARY_DIR}/bindings/julia/${_rel} COPYONLY)
+endforeach()
+```
+
+**Verify**: After cmake, check `build/bindings/julia/modules/signal/windows.jl` exists.
+
+## 16. Ruff E712: comparison to True/False
+
+**Symptom**: `E712 Avoid equality comparisons to True; use if result.numpy().item(): for truth checks`
+
+**Fix**:
+```python
+# Wrong:
+assert result.numpy().item() == True
+assert result.numpy().item() == False
+
+# Correct:
+assert result.numpy().item()
+assert not result.numpy().item()
 ```
 
 ## Verification

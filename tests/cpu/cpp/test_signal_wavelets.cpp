@@ -146,6 +146,8 @@ TEST_F(SignalWaveletsTestCPU, Morlet2Energy) {
 
 // ========== cwt ==========
 
+#ifdef INSIGHT_USE_FFTW3
+
 TEST_F(SignalWaveletsTestCPU, CwtBasic) {
   // Simple signal
   int64_t N = 256;
@@ -176,3 +178,5 @@ TEST_F(SignalWaveletsTestCPU, CwtRickerPeak) {
   EXPECT_EQ(result.shape().dim(0), 1);
   EXPECT_EQ(result.shape().dim(1), N);
 }
+
+#endif // INSIGHT_USE_FFTW3

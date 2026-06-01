@@ -21,7 +21,10 @@ protected:
     std::error_code ec;
     std::filesystem::remove_all("/tmp/insight_io_test", ec);
   }
-  void SetUp() override { tmp_dir = "/tmp/insight_io_test"; }
+  void SetUp() override {
+    tmp_dir = "/tmp/insight_io_test";
+    std::filesystem::create_directories(tmp_dir);
+  }
 
   std::string tmp_dir;
 };
