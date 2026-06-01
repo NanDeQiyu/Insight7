@@ -23,6 +23,7 @@ except ImportError:
 # Creation (7 tests)
 # ============================================================================
 
+
 class TestCreation:
     """Array creation — tests 1-7."""
 
@@ -67,6 +68,7 @@ class TestCreation:
 # Arithmetic (5 tests)
 # ============================================================================
 
+
 class TestArithmetic:
     """Elementwise arithmetic — tests 8-12."""
 
@@ -104,6 +106,7 @@ class TestArithmetic:
 # Unary (5 tests)
 # ============================================================================
 
+
 class TestUnary:
     """Unary math — tests 13-17."""
 
@@ -136,6 +139,7 @@ class TestUnary:
 # ============================================================================
 # Reduction (5 tests)
 # ============================================================================
+
 
 class TestReduction:
     """Reduction ops — tests 18-22."""
@@ -170,6 +174,7 @@ class TestReduction:
 # Comparison (4 tests)
 # ============================================================================
 
+
 class TestComparison:
     """Comparison ops — tests 23-26."""
 
@@ -202,6 +207,7 @@ class TestComparison:
 # Manipulation (3 tests)
 # ============================================================================
 
+
 class TestManipulation:
     """Manipulation ops — tests 27-29."""
 
@@ -224,6 +230,7 @@ class TestManipulation:
 # ============================================================================
 # Linalg (3 tests)
 # ============================================================================
+
 
 class TestLinalg:
     """Linear algebra — tests 30-32."""
@@ -249,6 +256,7 @@ class TestLinalg:
 # FFT (2 tests)
 # ============================================================================
 
+
 class TestFFT:
     """FFT — tests 33-34."""
 
@@ -269,6 +277,7 @@ class TestFFT:
 # ============================================================================
 # Signal (1 test)
 # ============================================================================
+
 
 class TestSignal:
     """Signal — test 35."""

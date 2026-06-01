@@ -75,8 +75,7 @@ C_Status logical_not_kernel_cpu(void **inputs, void **outputs) {
       strides[i] = x->strides[i];
     }
     int64_t n = x->numel;
-    _Pragma("omp parallel for") for (int64_t linear = 0; linear < n;
-                                     ++linear) {
+    _Pragma("omp parallel for") for (int64_t linear = 0; linear < n; ++linear) {
       int64_t off =
           x->offset + cpu_offset_from_linear(linear, ndim, dims, strides);
       out_data[linear] = (insight::f16_to_f32(in_data[off]) == 0.0f);
@@ -94,8 +93,7 @@ C_Status logical_not_kernel_cpu(void **inputs, void **outputs) {
       strides[i] = x->strides[i];
     }
     int64_t n = x->numel;
-    _Pragma("omp parallel for") for (int64_t linear = 0; linear < n;
-                                     ++linear) {
+    _Pragma("omp parallel for") for (int64_t linear = 0; linear < n; ++linear) {
       int64_t off =
           x->offset + cpu_offset_from_linear(linear, ndim, dims, strides);
       out_data[linear] = (insight::bf16_to_f32(in_data[off]) == 0.0f);

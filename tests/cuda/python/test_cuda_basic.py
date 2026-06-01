@@ -32,6 +32,7 @@ CPU = ins.CPUPlace()
 # Creation
 # ============================================================================
 
+
 class TestCreationGPU:
     """Array creation on GPU — aligned with test_creation.cpp (CUDA)."""
 
@@ -60,6 +61,7 @@ class TestCreationGPU:
 # ============================================================================
 # Elementwise
 # ============================================================================
+
 
 class TestElementwiseGPU:
     """Elementwise ops on GPU — aligned with test_elementwise.cpp (CUDA)."""
@@ -101,6 +103,7 @@ class TestElementwiseGPU:
 # Unary
 # ============================================================================
 
+
 class TestUnaryGPU:
     """Unary ops on GPU — aligned with test_unary.cpp (CUDA)."""
 
@@ -133,6 +136,7 @@ class TestUnaryGPU:
 # Reduction
 # ============================================================================
 
+
 class TestReductionGPU:
     """Reduction on GPU — aligned with test_reduction.cpp (CUDA)."""
 
@@ -159,6 +163,7 @@ class TestReductionGPU:
 # Linalg
 # ============================================================================
 
+
 class TestLinalgGPU:
     """Linalg on GPU — aligned with test_linalg.cpp (CUDA)."""
 
@@ -181,6 +186,7 @@ class TestLinalgGPU:
 # ============================================================================
 # Signal
 # ============================================================================
+
 
 class TestSignalGPU:
     """Signal processing on GPU — aligned with test_signal_*.cpp (CUDA)."""

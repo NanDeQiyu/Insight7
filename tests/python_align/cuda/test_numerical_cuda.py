@@ -38,6 +38,7 @@ CPU = ins.CPUPlace()
 # Helpers
 # ============================================================================
 
+
 def to_gpu(np_arr):
     return ins.from_numpy(np_arr).to(GPU)
 
@@ -49,6 +50,7 @@ def to_numpy(gpu_arr):
 # ============================================================================
 # Creation alignment (GPU)
 # ============================================================================
+
 
 class TestCreationAlignmentGPU:
     """Insight creation on GPU vs NumPy."""
@@ -81,6 +83,7 @@ class TestCreationAlignmentGPU:
 # ============================================================================
 # Elementwise alignment (GPU)
 # ============================================================================
+
 
 class TestElementwiseAlignmentGPU:
     """Insight elementwise ops on GPU vs NumPy."""
@@ -143,6 +146,7 @@ class TestElementwiseAlignmentGPU:
 # ============================================================================
 # Unary alignment (GPU)
 # ============================================================================
+
 
 class TestUnaryAlignmentGPU:
     """Insight unary ops on GPU vs NumPy."""
@@ -227,6 +231,7 @@ class TestUnaryAlignmentGPU:
 # Reduction alignment (GPU)
 # ============================================================================
 
+
 class TestReductionAlignmentGPU:
     """Insight reduction on GPU vs NumPy."""
 
@@ -282,6 +287,7 @@ class TestReductionAlignmentGPU:
 # Linalg alignment (GPU)
 # ============================================================================
 
+
 class TestLinalgAlignmentGPU:
     """Insight linalg on GPU vs NumPy."""
 
@@ -328,6 +334,7 @@ class TestLinalgAlignmentGPU:
 # FFT alignment (GPU)
 # ============================================================================
 
+
 class TestFFTAlignmentGPU:
     """Insight FFT on GPU vs NumPy FFT."""
 
@@ -367,6 +374,7 @@ class TestFFTAlignmentGPU:
 # ============================================================================
 # Manipulation alignment (GPU)
 # ============================================================================
+
 
 class TestManipulationAlignmentGPU:
     """Insight manipulation on GPU vs NumPy."""
@@ -413,6 +421,7 @@ class TestManipulationAlignmentGPU:
 # Signal alignment (GPU)
 # ============================================================================
 
+
 class TestSignalAlignmentGPU:
     """Insight signal ops on GPU vs SciPy."""
 
@@ -450,6 +459,7 @@ class TestSignalAlignmentGPU:
         result = ins.signal.fftconvolve(a, b)
         try:
             from scipy.signal import fftconvolve as scipy_fftconvolve
+
             expected = scipy_fftconvolve(a_np, b_np)
             assert_allclose(to_numpy(result), expected, atol=1e-8)
         except ImportError:

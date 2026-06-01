@@ -161,6 +161,40 @@ C_Status cumprod_kernel_cpu(void **inputs, void **outputs) {
     cumprod_int64((const int64_t *)x->data, (int64_t *)out->data, n, axis_size,
                   outer_stride, inner_stride);
     break;
+  case INSIGHT_DTYPE_F16: {
+    const uint16_t *src = (const uint16_t *)x->data;
+    uint16_t *dst = (uint16_t *)out->data;
+    _Pragma("omp parallel for") for (int64_t outer = 0; outer < outer_stride;
+                                     ++outer) {
+      for (int64_t inner = 0; inner < inner_stride; ++inner) {
+        float acc = 1.0f;
+        for (int64_t k = 0; k < axis_size; ++k) {
+          int64_t idx =
+              outer * axis_size * inner_stride + k * inner_stride + inner;
+          acc *= insight::f16_to_f32(src[idx]);
+          dst[idx] = insight::f32_to_f16(acc);
+        }
+      }
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    const uint16_t *src = (const uint16_t *)x->data;
+    uint16_t *dst = (uint16_t *)out->data;
+    _Pragma("omp parallel for") for (int64_t outer = 0; outer < outer_stride;
+                                     ++outer) {
+      for (int64_t inner = 0; inner < inner_stride; ++inner) {
+        float acc = 1.0f;
+        for (int64_t k = 0; k < axis_size; ++k) {
+          int64_t idx =
+              outer * axis_size * inner_stride + k * inner_stride + inner;
+          acc *= insight::bf16_to_f32(src[idx]);
+          dst[idx] = insight::f32_to_bf16(acc);
+        }
+      }
+    }
+    break;
+  }
   default:
     cpu_set_last_error("cumprod: unsupported dtype");
     return C_FAILED;
@@ -177,3 +211,5 @@ REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_F32, cumprod_kernel_cpu);
 REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_F64, cumprod_kernel_cpu);
 REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_I32, cumprod_kernel_cpu);
 REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_I64, cumprod_kernel_cpu);
+REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_F16, cumprod_kernel_cpu);
+REGISTER_CPU_KERNEL(cumprod, INSIGHT_DTYPE_BF16, cumprod_kernel_cpu);

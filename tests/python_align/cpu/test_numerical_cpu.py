@@ -27,6 +27,7 @@ except ImportError:
 # Creation alignment
 # ============================================================================
 
+
 class TestCreationAlignment:
     """Insight creation functions vs NumPy equivalents."""
 
@@ -63,6 +64,7 @@ class TestCreationAlignment:
 # Elementwise alignment
 # ============================================================================
 
+
 class TestElementwiseAlignment:
     """Insight elementwise ops vs NumPy."""
 
@@ -97,7 +99,7 @@ class TestElementwiseAlignment:
         a_np, b_np = random_arrays
         a_np = np.abs(a_np) + 0.1  # avoid negative base
         a, b = ins.from_numpy(a_np), ins.from_numpy(b_np)
-        assert_allclose(ins.pow(a, b).numpy(), a_np ** b_np, rtol=1e-4)
+        assert_allclose(ins.pow(a, b).numpy(), a_np**b_np, rtol=1e-4)
 
     def test_maximum(self, random_arrays):
         a_np, b_np = random_arrays
@@ -110,8 +112,8 @@ class TestElementwiseAlignment:
         assert_allclose(ins.minimum(a, b).numpy(), np.minimum(a_np, b_np))
 
     def test_equal(self, random_arrays):
-        a_np, b_np = random_arrays
-        a, b = ins.from_numpy(a_np), ins.from_numpy(b_np)
+        a_np, _b_np = random_arrays
+        a = ins.from_numpy(a_np)
         assert_allclose(ins.equal(a, a).numpy(), np.ones_like(a_np, dtype=bool))
 
     def test_logical_and(self):
@@ -130,6 +132,7 @@ class TestElementwiseAlignment:
 # ============================================================================
 # Unary alignment
 # ============================================================================
+
 
 class TestUnaryAlignment:
     """Insight unary ops vs NumPy."""
@@ -214,7 +217,7 @@ class TestUnaryAlignment:
         assert_allclose(ins.deg2rad(x).numpy(), np.deg2rad(x_np), rtol=1e-10)
 
     def test_rad2deg(self):
-        x_np = np.array([0, np.pi/4, np.pi/2, np.pi], dtype=np.float64)
+        x_np = np.array([0, np.pi / 4, np.pi / 2, np.pi], dtype=np.float64)
         x = ins.from_numpy(x_np)
         assert_allclose(ins.rad2deg(x).numpy(), np.rad2deg(x_np), rtol=1e-10)
 
@@ -231,6 +234,7 @@ class TestUnaryAlignment:
 # ============================================================================
 # Reduction alignment
 # ============================================================================
+
 
 class TestReductionAlignment:
     """Insight reduction ops vs NumPy."""
@@ -297,6 +301,7 @@ class TestReductionAlignment:
 # Linalg alignment
 # ============================================================================
 
+
 class TestLinalgAlignment:
     """Insight linalg ops vs NumPy."""
 
@@ -351,6 +356,7 @@ class TestLinalgAlignment:
 # FFT alignment
 # ============================================================================
 
+
 class TestFFTAlignment:
     """Insight FFT vs NumPy FFT."""
 
@@ -390,6 +396,7 @@ class TestFFTAlignment:
 # ============================================================================
 # Manipulation alignment
 # ============================================================================
+
 
 class TestManipulationAlignment:
     """Insight manipulation ops vs NumPy."""
