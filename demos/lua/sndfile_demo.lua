@@ -12,12 +12,12 @@ local sqrt = math.sqrt
 local fmt = string.format
 
 local function separator(title)
-    print(string.rep("=", 60))
-    print("  " .. title)
-    print(string.rep("=", 60))
+  print(string.rep("=", 60))
+  print("  " .. title)
+  print(string.rep("=", 60))
 end
 
-ins.init({"cpu"})
+ins.init({ "cpu" })
 
 -- Parameters
 local sample_rate = 44100
@@ -35,10 +35,8 @@ print("    Components: 440Hz (0.5), 880Hz (0.3), 3141Hz (0.1)")
 
 local signal_data = {}
 for i = 0, frames - 1 do
-    local t = i / sample_rate
-    signal_data[i + 1] = 0.5 * sin(2 * pi * 440 * t)
-                        + 0.3 * sin(2 * pi * 880 * t)
-                        + 0.1 * sin(2 * pi * 3141 * t)
+  local t = i / sample_rate
+  signal_data[i + 1] = 0.5 * sin(2 * pi * 440 * t) + 0.3 * sin(2 * pi * 880 * t) + 0.1 * sin(2 * pi * 3141 * t)
 end
 
 local signal = ins.from_table(signal_data)
@@ -82,14 +80,14 @@ local spec_imag = ins.imag(spectrum)
 -- Build a real-valued mask [0, 1] for each frequency bin
 local mask_data = {}
 for i = 0, freq_bins - 1 do
-    if i < cutoff_bin - math.floor(taper_width / 2) then
-        mask_data[i + 1] = 1.0
-    elseif i < cutoff_bin + math.floor(taper_width / 2) then
-        local t_val = 1.0 - (i - cutoff_bin + taper_width / 2.0) / taper_width
-        mask_data[i + 1] = math.max(0.0, math.min(1.0, t_val))
-    else
-        mask_data[i + 1] = 0.0
-    end
+  if i < cutoff_bin - math.floor(taper_width / 2) then
+    mask_data[i + 1] = 1.0
+  elseif i < cutoff_bin + math.floor(taper_width / 2) then
+    local t_val = 1.0 - (i - cutoff_bin + taper_width / 2.0) / taper_width
+    mask_data[i + 1] = math.max(0.0, math.min(1.0, t_val))
+  else
+    mask_data[i + 1] = 0.0
+  end
 end
 
 local mask = ins.from_table(mask_data)
@@ -119,7 +117,7 @@ local ef = energy_filt:item()
 print(fmt("    Energy (original): %.4f", eo))
 print(fmt("    Energy (filtered): %.4f", ef))
 if eo > 0 then
-    print(fmt("    Retained: %.1f%%", (ef / eo) * 100))
+  print(fmt("    Retained: %.1f%%", (ef / eo) * 100))
 end
 
 -- Write filtered signal
