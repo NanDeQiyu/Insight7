@@ -265,6 +265,118 @@ Then use those values in C++ `EXPECT_NEAR` assertions.
 12. **Julia `_dtype_code` helper**: For Julia bindings that need dtype codes, check if the helper exists in Insight.jl before creating new ones.
 13. **Python `firwin` cutoff must be Sequence**: The Python binding for `firwin` expects `cutoff` as a `Sequence`, not a scalar float. Pass `[0.3]` not `0.3`.
 
+## Refactoring Raw Pointers to Composite Ops (2026-05-31)
+
+When rewriting signal functions that use `data<T>()` raw pointer access in the frontend:
+
+### Strategy: Replace with framework composite operations
+
+| Raw pointer pattern | Composite replacement |
+|---------------------|----------------------|
+| Manual matmul triple loop | `matmul(a, b)` |
+| Manual transpose double loop | `permute(x, {0, 2, 1})` or `transpose(x)` |
+| Gauss-Jordan inverse (30+ lines) | `inv(m)` or `simple_inv(m)` (see below) |
+| Manual element-wise add/sub | `add(a, b)`, `sub(a, b)` |
+| Manual diff along axis | `diff(x, 1, axis)` |
+| Manual phase extraction `std::arg(z)` | `atan(im/re)` with quadrant correction via `where()` |
+| Manual convolution loop | `convolve(x, h, "same")` or `fft`→`mul`→`ifft` |
+| Manual FFT multiply-accumulate | `rfft`→`mul`→`irfft` |
+| Manual cumsum-based windowing | `cumsum` + `slice` |
+| Manual neighbor comparison | `take(flat, gather_indices)` for neighbor lookup |
+| Scalar read `data<double>()[0]` | `slice(arr, {0}, {0}, {1}).item<double>()` |
+| Complex sort by magnitude | `real()`, `imag()`, `square()`, `argsort()` on mag_sq |
+| Setting single element | `put(arr, idx_arr, val_arr)` — returns NEW array |
+
+### Critical API pitfalls
+
+1. **`slice()` takes `Array&` not `const Array&`**: Must use mutable local variable:
+   ```cpp
+   Array data_mutable = data;  // Required for slice()
+   Array center = slice(data_mutable, {axis}, {start}, {end});
+   ```
+
+2. **`put()` returns new array, doesn't modify in-place**:
+   ```cpp
+   result = put(result, idx_arr, val_arr);  // Must capture return value
+   ```
+
+3. **`item()` only works on scalar arrays** (numel == 1):
+   ```cpp
+   // WRONG: a.item<double>() if a has multiple elements
+   // RIGHT:
+   Array a0 = slice(a, {0}, {0}, {1});  // Extract first element
+   double val = a0.item<double>();
+   ```
+
+4. **`argsort` doesn't support complex dtype**: Use magnitude-squared approach:
+   ```cpp
+   Array re = real(p), im = imag(p);
+   Array mag_sq = add(square(re), square(im));
+   Array idx = argsort(mag_sq, 0, false);
+   Array sorted = take(p, idx);
+   ```
+
+5. **`inv()`/`solve()` need OpenBLAS**: Use `simple_inv()` fallback for small matrices:
+   ```cpp
+   // Gauss-Jordan inverse — no LAPACK dependency
+   Array simple_inv(const Array &mat) {
+     int n = mat.shape().dim(0);
+     // Copy to vector, Gauss-Jordan elimination, return result
+   }
+   ```
+
+6. **FFT in loops — avoid temporary array issues**: Use `to_array()` for fresh arrays:
+   ```cpp
+   // WRONG: slice() → reshape() → rfft() (view may be invalidated)
+   // RIGHT: extract to vector, create fresh array
+   std::vector<double> pulse_vec(samples);
+   // ... fill pulse_vec ...
+   Array pulse = to_array(pulse_vec, dtype, cpu);
+   Array fft_pulse = fft::rfft(pulse, nfft);
+   ```
+
+7. **`nonzero()` returns `Array` (flat indices), not `vector<Array>`**: Convert flat to multi-dim:
+   ```cpp
+   Array flat_idx = nonzero(mask);
+   Array axis_idx = mod(div(flat_idx, stride_arr), dim_arr);
+   ```
+
+### Python binding multi-file structure
+
+When splitting signal bindings into multi-file submodule:
+```
+bindings/python/insight/signal/
+├── __init__.py        # Re-exports all sub-modules
+├── windows.py         # Wrapper functions with docstrings
+├── waveforms.py
+├── bsplines.py
+├── filter_design.py
+├── convolution.py
+├── filtering.py
+├── spectral.py
+├── wavelets.py
+├── acoustics.py
+├── demod.py
+├── peak_finding.py
+├── radar.py
+├── estimation.py
+└── io.py
+```
+
+Each file pattern:
+```python
+"""Module docstring."""
+from insight._insight import signal as _signal
+__all__ = ["func1", "func2"]
+
+def func1(args):
+    """Google-style docstring."""
+    return _signal.func1(args)
+```
+
+Note: `square` → `square_wf` in native binding (avoids conflict with unary `square`).
+Main `__init__.py` imports from `.signal` submodule, result types from `._insight.signal`.
+
 ## Phase 2+3 Module Patterns
 
 ### Estimation (KalmanFilter class)

@@ -238,8 +238,7 @@ Array chirp(const Array &t, double f0, double t1, double f1, ChirpMethod method,
 
 Array unit_impulse(const Shape &shape, int64_t idx, DType dtype,
                    const Place &place) {
-  // Always create on CPU first (need direct pointer access to set the impulse)
-  Array result = zeros(shape, dtype, CPUPlace());
+  INS_CHECK(shape.numel() >= 1, "unit_impulse: shape must be non-empty");
 
   if (idx < 0) {
     idx = shape.numel() / 2;
@@ -248,28 +247,43 @@ Array unit_impulse(const Shape &shape, int64_t idx, DType dtype,
   INS_CHECK(idx >= 0 && idx < shape.numel(),
             "unit_impulse: idx out of range [0, ", shape.numel(), ")");
 
+  Array result = zeros(shape, dtype, place);
+
+  // Build index vector for the impulse position
+  // Convert flat index to multi-dimensional indices
+  std::vector<int64_t> indices(shape.ndim());
+  int64_t rem = idx;
+  for (int d = shape.ndim() - 1; d >= 0; --d) {
+    indices[d] = rem % shape.dim(d);
+    rem /= shape.dim(d);
+  }
+
+  // Set the single impulse element using at()
+  // Create a scalar one array on the same place
+  Array one_scalar;
   switch (dtype) {
   case DType::F32:
-    result.data<float>()[idx] = 1.0f;
+    one_scalar = Array(1.0f);
     break;
   case DType::F64:
-    result.data<double>()[idx] = 1.0;
+    one_scalar = Array(1.0);
     break;
   case DType::I32:
-    result.data<int32_t>()[idx] = 1;
+    one_scalar = Array(static_cast<int32_t>(1));
     break;
   case DType::I64:
-    result.data<int64_t>()[idx] = 1;
+    one_scalar = Array(static_cast<int64_t>(1));
     break;
   default:
-    result.data<double>()[idx] = 1.0;
+    one_scalar = Array(1.0);
     break;
   }
 
-  // Transfer to target device if needed
-  if (place.kind() != DeviceKind::CPU) {
-    result = result.to(place);
-  }
+  // Use put() to set the element at the flat index
+  Array idx_arr = to_array(std::vector<int64_t>{idx}, DType::I64, place);
+  Array val_arr = to_array(std::vector<double>{1.0}, dtype, place);
+  result = put(result, idx_arr, val_arr);
+
   return result;
 }
 

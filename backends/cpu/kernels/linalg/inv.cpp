@@ -6,7 +6,10 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
+#include "../common/half_utils.h"
 #include "common.h"
+
+#include <vector>
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,6 +82,26 @@ C_Status inv_kernel_cpu(void **inputs, void **outputs) {
 
   if (x->dtype == INSIGHT_DTYPE_F32) {
     inv_f32((float *)x->data, (float *)out->data, n);
+  } else if (x->dtype == INSIGHT_DTYPE_F16 || x->dtype == INSIGHT_DTYPE_BF16) {
+    const uint16_t *src = (const uint16_t *)x->data;
+    uint16_t *dst = (uint16_t *)out->data;
+    int64_t total = (int64_t)n * n;
+    std::vector<float> src_f32(total), dst_f32(total);
+    if (x->dtype == INSIGHT_DTYPE_F16) {
+      for (int64_t i = 0; i < total; ++i)
+        src_f32[i] = insight::f16_to_f32(src[i]);
+    } else {
+      for (int64_t i = 0; i < total; ++i)
+        src_f32[i] = insight::bf16_to_f32(src[i]);
+    }
+    inv_f32(src_f32.data(), dst_f32.data(), n);
+    if (x->dtype == INSIGHT_DTYPE_F16) {
+      for (int64_t i = 0; i < total; ++i)
+        dst[i] = insight::f32_to_f16(dst_f32[i]);
+    } else {
+      for (int64_t i = 0; i < total; ++i)
+        dst[i] = insight::f32_to_bf16(dst_f32[i]);
+    }
   } else {
     inv_f64((double *)x->data, (double *)out->data, n);
   }
@@ -91,5 +114,7 @@ C_Status inv_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(inv, INSIGHT_DTYPE_F32, inv_kernel_cpu);
 REGISTER_CPU_KERNEL(inv, INSIGHT_DTYPE_F64, inv_kernel_cpu);
+REGISTER_CPU_KERNEL(inv, INSIGHT_DTYPE_F16, inv_kernel_cpu);
+REGISTER_CPU_KERNEL(inv, INSIGHT_DTYPE_BF16, inv_kernel_cpu);
 
 #endif

@@ -7,9 +7,11 @@
  * a hand-optimized implementation.
  */
 
+#include "../common/half_utils.h"
 #include "common.h"
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 // ============================================================================
 // Fallback implementation (used when OpenBLAS is not available)
@@ -229,15 +231,45 @@ C_Status lu_kernel_cpu(void **inputs, void **outputs) {
 
   int *ipiv = (int *)pivots_arr->data;
 
+  if (x->dtype == INSIGHT_DTYPE_F16 || x->dtype == INSIGHT_DTYPE_BF16) {
+    const uint16_t *x_src = (const uint16_t *)x->data;
+    uint16_t *lu_dst = (uint16_t *)LU_arr->data;
+    bool is_f16 = (x->dtype == INSIGHT_DTYPE_F16);
+    int64_t total = (int64_t)n * n;
+    std::vector<float> x_f32(total), lu_f32(total);
+    if (is_f16) {
+      for (int64_t i = 0; i < total; ++i)
+        x_f32[i] = insight::f16_to_f32(x_src[i]);
+    } else {
+      for (int64_t i = 0; i < total; ++i)
+        x_f32[i] = insight::bf16_to_f32(x_src[i]);
+    }
 #ifdef INSIGHT_USE_OPENBLAS
-  if (x->dtype == INSIGHT_DTYPE_F32) {
+    lu_f32_lapack(x_f32.data(), lu_f32.data(), ipiv, n);
+#else
+    memcpy(lu_f32.data(), x_f32.data(), total * sizeof(float));
+    lu_f32_fallback(lu_f32.data(), ipiv, n);
+    for (int i = 0; i < n; ++i)
+      ipiv[i] += 1;
+#endif
+    if (is_f16) {
+      for (int64_t i = 0; i < total; ++i)
+        lu_dst[i] = insight::f32_to_f16(lu_f32[i]);
+    } else {
+      for (int64_t i = 0; i < total; ++i)
+        lu_dst[i] = insight::f32_to_bf16(lu_f32[i]);
+    }
+  } else
+
+#ifdef INSIGHT_USE_OPENBLAS
+      if (x->dtype == INSIGHT_DTYPE_F32) {
     lu_f32_lapack((const float *)x->data, (float *)LU_arr->data, ipiv, n);
   } else {
     lu_f64_lapack((const double *)x->data, (double *)LU_arr->data, ipiv, n);
   }
 #else
-  // Fallback: copy input to output first, then perform in-place decomposition
-  memcpy(LU_arr->data, x->data, n * n * insight_dtype_size(x->dtype));
+    // Fallback: copy input to output first, then perform in-place decomposition
+    memcpy(LU_arr->data, x->data, n * n * insight_dtype_size(x->dtype));
   if (x->dtype == INSIGHT_DTYPE_F32) {
     lu_f32_fallback((float *)LU_arr->data, ipiv, n);
   } else {
@@ -265,3 +297,5 @@ C_Status lu_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(lu, INSIGHT_DTYPE_F32, lu_kernel_cpu);
 REGISTER_CPU_KERNEL(lu, INSIGHT_DTYPE_F64, lu_kernel_cpu);
+REGISTER_CPU_KERNEL(lu, INSIGHT_DTYPE_F16, lu_kernel_cpu);
+REGISTER_CPU_KERNEL(lu, INSIGHT_DTYPE_BF16, lu_kernel_cpu);

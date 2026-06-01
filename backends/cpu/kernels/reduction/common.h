@@ -12,6 +12,7 @@
 #define CPU_REDUCTION_COMMON_H
 
 #include "../../registry/cpu_registry.h"
+#include "../common/half_utils.h"
 #include "insight/c_api/array.h"
 #include <algorithm>
 #include <float.h>
@@ -376,6 +377,87 @@ static inline bool cpu_is_nan_other(const void *x) {
       if (divisor <= 0)                                                        \
         divisor = 1;                                                           \
       dst[i] = sq_sum / divisor;                                               \
+    }                                                                          \
+  } while (0)
+
+// ============================================================================
+// Half-precision reduction macros
+// ============================================================================
+
+/**
+ * @brief Macro for sum reduction on half-precision types.
+ * Accumulates in float32, converts back to storage type.
+ */
+#define REDUCE_HALF_SUM_LOOP(CTYPE, to_f32, from_f32)                          \
+  do {                                                                         \
+    CTYPE *dst = (CTYPE *)out->data;                                           \
+    const CTYPE *src = (const CTYPE *)prepared->data;                          \
+    int64_t batch_size = *(int64_t *)inputs[2];                                \
+    int64_t reduce_size = *(int64_t *)inputs[3];                               \
+    _Pragma("omp parallel for") for (int64_t i = 0; i < batch_size; ++i) {     \
+      float sum = 0.0f;                                                        \
+      for (int64_t j = 0; j < reduce_size; ++j) {                              \
+        sum += to_f32(src[i * reduce_size + j]);                               \
+      }                                                                        \
+      dst[i] = from_f32(sum);                                                  \
+    }                                                                          \
+  } while (0)
+
+/**
+ * @brief Macro for max reduction on half-precision types.
+ */
+#define REDUCE_HALF_MAX_LOOP(CTYPE, to_f32, from_f32)                          \
+  do {                                                                         \
+    CTYPE *dst = (CTYPE *)out->data;                                           \
+    const CTYPE *src = (const CTYPE *)prepared->data;                          \
+    int64_t batch_size = *(int64_t *)inputs[2];                                \
+    int64_t reduce_size = *(int64_t *)inputs[3];                               \
+    _Pragma("omp parallel for") for (int64_t i = 0; i < batch_size; ++i) {     \
+      float max_val = to_f32(src[i * reduce_size]);                            \
+      for (int64_t j = 1; j < reduce_size; ++j) {                              \
+        float val = to_f32(src[i * reduce_size + j]);                          \
+        if (val > max_val)                                                     \
+          max_val = val;                                                       \
+      }                                                                        \
+      dst[i] = from_f32(max_val);                                              \
+    }                                                                          \
+  } while (0)
+
+/**
+ * @brief Macro for min reduction on half-precision types.
+ */
+#define REDUCE_HALF_MIN_LOOP(CTYPE, to_f32, from_f32)                          \
+  do {                                                                         \
+    CTYPE *dst = (CTYPE *)out->data;                                           \
+    const CTYPE *src = (const CTYPE *)prepared->data;                          \
+    int64_t batch_size = *(int64_t *)inputs[2];                                \
+    int64_t reduce_size = *(int64_t *)inputs[3];                               \
+    _Pragma("omp parallel for") for (int64_t i = 0; i < batch_size; ++i) {     \
+      float min_val = to_f32(src[i * reduce_size]);                            \
+      for (int64_t j = 1; j < reduce_size; ++j) {                              \
+        float val = to_f32(src[i * reduce_size + j]);                          \
+        if (val < min_val)                                                     \
+          min_val = val;                                                       \
+      }                                                                        \
+      dst[i] = from_f32(min_val);                                              \
+    }                                                                          \
+  } while (0)
+
+/**
+ * @brief Macro for prod reduction on half-precision types.
+ */
+#define REDUCE_HALF_PROD_LOOP(CTYPE, to_f32, from_f32)                         \
+  do {                                                                         \
+    CTYPE *dst = (CTYPE *)out->data;                                           \
+    const CTYPE *src = (const CTYPE *)prepared->data;                          \
+    int64_t batch_size = *(int64_t *)inputs[2];                                \
+    int64_t reduce_size = *(int64_t *)inputs[3];                               \
+    _Pragma("omp parallel for") for (int64_t i = 0; i < batch_size; ++i) {     \
+      float prod = 1.0f;                                                       \
+      for (int64_t j = 0; j < reduce_size; ++j) {                              \
+        prod *= to_f32(src[i * reduce_size + j]);                              \
+      }                                                                        \
+      dst[i] = from_f32(prod);                                                 \
     }                                                                          \
   } while (0)
 

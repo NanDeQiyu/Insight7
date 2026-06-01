@@ -6,9 +6,11 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
+#include "../common/half_utils.h"
 #include "common.h"
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 static void svd_f32(const float *src, float *u, float *s, float *vt, int m,
                     int n, int full) {
@@ -122,6 +124,43 @@ C_Status svd_kernel_cpu(void **inputs, void **outputs) {
   if (x->dtype == INSIGHT_DTYPE_F32) {
     svd_f32((float *)x->data, (float *)U->data, (float *)S->data,
             (float *)VT->data, m, n, full);
+  } else if (x->dtype == INSIGHT_DTYPE_F16 || x->dtype == INSIGHT_DTYPE_BF16) {
+    const uint16_t *x_src = (const uint16_t *)x->data;
+    uint16_t *u_dst = (uint16_t *)U->data;
+    uint16_t *s_dst = (uint16_t *)S->data;
+    uint16_t *vt_dst = (uint16_t *)VT->data;
+    bool is_f16 = (x->dtype == INSIGHT_DTYPE_F16);
+    int min_mn = m < n ? m : n;
+    int u_cols = full ? n : min_mn;
+    int vt_rows = full ? n : min_mn;
+    std::vector<float> x_f32((int64_t)m * n);
+    std::vector<float> u_f32((int64_t)m * u_cols);
+    std::vector<float> s_f32(min_mn);
+    std::vector<float> vt_f32((int64_t)vt_rows * n);
+    if (is_f16) {
+      for (int64_t i = 0; i < (int64_t)m * n; ++i)
+        x_f32[i] = insight::f16_to_f32(x_src[i]);
+    } else {
+      for (int64_t i = 0; i < (int64_t)m * n; ++i)
+        x_f32[i] = insight::bf16_to_f32(x_src[i]);
+    }
+    svd_f32(x_f32.data(), u_f32.data(), s_f32.data(), vt_f32.data(), m, n,
+            full);
+    if (is_f16) {
+      for (int64_t i = 0; i < (int64_t)m * u_cols; ++i)
+        u_dst[i] = insight::f32_to_f16(u_f32[i]);
+      for (int i = 0; i < min_mn; ++i)
+        s_dst[i] = insight::f32_to_f16(s_f32[i]);
+      for (int64_t i = 0; i < (int64_t)vt_rows * n; ++i)
+        vt_dst[i] = insight::f32_to_f16(vt_f32[i]);
+    } else {
+      for (int64_t i = 0; i < (int64_t)m * u_cols; ++i)
+        u_dst[i] = insight::f32_to_bf16(u_f32[i]);
+      for (int i = 0; i < min_mn; ++i)
+        s_dst[i] = insight::f32_to_bf16(s_f32[i]);
+      for (int64_t i = 0; i < (int64_t)vt_rows * n; ++i)
+        vt_dst[i] = insight::f32_to_bf16(vt_f32[i]);
+    }
   } else {
     svd_f64((double *)x->data, (double *)U->data, (double *)S->data,
             (double *)VT->data, m, n, full);
@@ -137,6 +176,8 @@ C_Status svd_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(svd, INSIGHT_DTYPE_F32, svd_kernel_cpu);
 REGISTER_CPU_KERNEL(svd, INSIGHT_DTYPE_F64, svd_kernel_cpu);
+REGISTER_CPU_KERNEL(svd, INSIGHT_DTYPE_F16, svd_kernel_cpu);
+REGISTER_CPU_KERNEL(svd, INSIGHT_DTYPE_BF16, svd_kernel_cpu);
 
 #else // !INSIGHT_USE_OPENBLAS
 

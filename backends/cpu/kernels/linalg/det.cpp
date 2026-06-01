@@ -6,7 +6,10 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
+#include "../common/half_utils.h"
 #include "common.h"
+
+#include <vector>
 
 #ifdef __cplusplus
 extern "C" {
@@ -80,6 +83,22 @@ C_Status det_kernel_cpu(void **inputs, void **outputs) {
   if (x->dtype == INSIGHT_DTYPE_F32) {
     float *dst = (float *)out->data;
     *dst = det_f32((float *)x->data, n);
+  } else if (x->dtype == INSIGHT_DTYPE_F16 || x->dtype == INSIGHT_DTYPE_BF16) {
+    const uint16_t *src = (const uint16_t *)x->data;
+    uint16_t *dst = (uint16_t *)out->data;
+    int64_t total = (int64_t)n * n;
+    std::vector<float> tmp(total);
+    if (x->dtype == INSIGHT_DTYPE_F16) {
+      for (int64_t i = 0; i < total; ++i)
+        tmp[i] = insight::f16_to_f32(src[i]);
+      float result = det_f32(tmp.data(), n);
+      *dst = insight::f32_to_f16(result);
+    } else {
+      for (int64_t i = 0; i < total; ++i)
+        tmp[i] = insight::bf16_to_f32(src[i]);
+      float result = det_f32(tmp.data(), n);
+      *dst = insight::f32_to_bf16(result);
+    }
   } else {
     double *dst = (double *)out->data;
     *dst = det_f64((double *)x->data, n);
@@ -93,5 +112,7 @@ C_Status det_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(det, INSIGHT_DTYPE_F32, det_kernel_cpu);
 REGISTER_CPU_KERNEL(det, INSIGHT_DTYPE_F64, det_kernel_cpu);
+REGISTER_CPU_KERNEL(det, INSIGHT_DTYPE_F16, det_kernel_cpu);
+REGISTER_CPU_KERNEL(det, INSIGHT_DTYPE_BF16, det_kernel_cpu);
 
 #endif

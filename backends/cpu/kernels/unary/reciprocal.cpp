@@ -35,6 +35,15 @@ C_Status reciprocal_kernel_cpu(void **inputs, void **outputs) {
     UNARY_KERNEL_LOOP(std::complex<double>,
                       [](std::complex<double> v) { return 1.0 / v; });
     break;
+  case INSIGHT_DTYPE_F16:
+    UNARY_HALF_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16,
+                    [](float v) { return (1.0f / v); });
+    break;
+  case INSIGHT_DTYPE_BF16:
+    UNARY_HALF_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16,
+                    [](float v) { return (1.0f / v); });
+    break;
+
   default:
     cpu_set_last_error("reciprocal: only float and complex types supported");
     return C_FAILED;
@@ -51,3 +60,5 @@ REGISTER_CPU_KERNEL(reciprocal, INSIGHT_DTYPE_F32, reciprocal_kernel_cpu);
 REGISTER_CPU_KERNEL(reciprocal, INSIGHT_DTYPE_F64, reciprocal_kernel_cpu);
 REGISTER_CPU_KERNEL(reciprocal, INSIGHT_DTYPE_C32, reciprocal_kernel_cpu);
 REGISTER_CPU_KERNEL(reciprocal, INSIGHT_DTYPE_C64, reciprocal_kernel_cpu);
+REGISTER_CPU_KERNEL(reciprocal, INSIGHT_DTYPE_F16, reciprocal_kernel_cpu);
+REGISTER_CPU_KERNEL(reciprocal, INSIGHT_DTYPE_BF16, reciprocal_kernel_cpu);

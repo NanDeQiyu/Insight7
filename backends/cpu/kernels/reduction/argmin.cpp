@@ -65,6 +65,44 @@ C_Status argmin_kernel_cpu(void **inputs, void **outputs) {
   case INSIGHT_DTYPE_F64:
     REDUCE_ARGMIN_LOOP(double);
     break;
+  case INSIGHT_DTYPE_F16: {
+    int64_t *dst = (int64_t *)out->data;
+    const uint16_t *src = (const uint16_t *)prepared->data;
+    int64_t batch_size = *(int64_t *)inputs[2];
+    int64_t reduce_size = *(int64_t *)inputs[3];
+    _Pragma("omp parallel for") for (int64_t i = 0; i < batch_size; ++i) {
+      int64_t min_idx = 0;
+      float min_val = insight::f16_to_f32(src[i * reduce_size]);
+      for (int64_t j = 1; j < reduce_size; ++j) {
+        float val = insight::f16_to_f32(src[i * reduce_size + j]);
+        if (val < min_val) {
+          min_val = val;
+          min_idx = j;
+        }
+      }
+      dst[i] = min_idx;
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    int64_t *dst = (int64_t *)out->data;
+    const uint16_t *src = (const uint16_t *)prepared->data;
+    int64_t batch_size = *(int64_t *)inputs[2];
+    int64_t reduce_size = *(int64_t *)inputs[3];
+    _Pragma("omp parallel for") for (int64_t i = 0; i < batch_size; ++i) {
+      int64_t min_idx = 0;
+      float min_val = insight::bf16_to_f32(src[i * reduce_size]);
+      for (int64_t j = 1; j < reduce_size; ++j) {
+        float val = insight::bf16_to_f32(src[i * reduce_size + j]);
+        if (val < min_val) {
+          min_val = val;
+          min_idx = j;
+        }
+      }
+      dst[i] = min_idx;
+    }
+    break;
+  }
   default:
     cpu_set_last_error("argmin: unsupported dtype");
     return C_FAILED;
@@ -87,3 +125,5 @@ REGISTER_CPU_KERNEL(argmin, INSIGHT_DTYPE_U32, argmin_kernel_cpu);
 REGISTER_CPU_KERNEL(argmin, INSIGHT_DTYPE_U64, argmin_kernel_cpu);
 REGISTER_CPU_KERNEL(argmin, INSIGHT_DTYPE_F32, argmin_kernel_cpu);
 REGISTER_CPU_KERNEL(argmin, INSIGHT_DTYPE_F64, argmin_kernel_cpu);
+REGISTER_CPU_KERNEL(argmin, INSIGHT_DTYPE_F16, argmin_kernel_cpu);
+REGISTER_CPU_KERNEL(argmin, INSIGHT_DTYPE_BF16, argmin_kernel_cpu);

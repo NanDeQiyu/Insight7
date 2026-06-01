@@ -29,6 +29,15 @@ C_Status rad2deg_kernel_cpu(void **inputs, void **outputs) {
     UNARY_KERNEL_LOOP(double,
                       [](double v) { return v * 180.0 / 3.141592653589793; });
     break;
+  case INSIGHT_DTYPE_F16:
+    UNARY_HALF_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16,
+                    [](float v) { return (v * 57.29577951308232f); });
+    break;
+  case INSIGHT_DTYPE_BF16:
+    UNARY_HALF_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16,
+                    [](float v) { return (v * 57.29577951308232f); });
+    break;
+
   default:
     cpu_set_last_error("rad2deg: only float32 and float64 supported");
     return C_FAILED;

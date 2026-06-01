@@ -29,6 +29,15 @@ C_Status deg2rad_kernel_cpu(void **inputs, void **outputs) {
     UNARY_KERNEL_LOOP(double,
                       [](double v) { return v * 3.141592653589793 / 180.0; });
     break;
+  case INSIGHT_DTYPE_F16:
+    UNARY_HALF_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16,
+                    [](float v) { return (v * 0.017453292519943295f); });
+    break;
+  case INSIGHT_DTYPE_BF16:
+    UNARY_HALF_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16,
+                    [](float v) { return (v * 0.017453292519943295f); });
+    break;
+
   default:
     cpu_set_last_error("deg2rad: only float32 and float64 supported");
     return C_FAILED;

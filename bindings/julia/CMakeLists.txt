@@ -24,4 +24,11 @@ configure_file(
     COPYONLY
 )
 
+# Copy Julia module files (modules/ directory) to build directory
+file(GLOB_RECURSE _julia_modules "${CMAKE_CURRENT_SOURCE_DIR}/modules/*.jl")
+foreach(_jl ${_julia_modules})
+    file(RELATIVE_PATH _rel ${CMAKE_CURRENT_SOURCE_DIR} ${_jl})
+    configure_file(${_jl} ${CMAKE_BINARY_DIR}/bindings/julia/${_rel} COPYONLY)
+endforeach()
+
 message(STATUS "Julia bindings enabled (C ABI wrapper + Insight.jl)")

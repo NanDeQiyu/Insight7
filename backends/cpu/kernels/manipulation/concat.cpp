@@ -186,6 +186,14 @@ C_Status concat_kernel_cpu(void **inputs, void **outputs) {
                                       (std::complex<double> *)out->data, ndim,
                                       out_dims, out_strides, axis);
     break;
+  case INSIGHT_DTYPE_F16:
+    concat_impl<uint16_t>(in_arrays, (uint16_t *)out->data, ndim, out_dims,
+                          out_strides, axis);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    concat_impl<uint16_t>(in_arrays, (uint16_t *)out->data, ndim, out_dims,
+                          out_strides, axis);
+    break;
   default:
     cpu_set_last_error("concat: unsupported dtype");
     return C_FAILED;
@@ -211,3 +219,5 @@ REGISTER_CPU_KERNEL(concat, INSIGHT_DTYPE_F32, concat_kernel_cpu);
 REGISTER_CPU_KERNEL(concat, INSIGHT_DTYPE_F64, concat_kernel_cpu);
 REGISTER_CPU_KERNEL(concat, INSIGHT_DTYPE_C32, concat_kernel_cpu);
 REGISTER_CPU_KERNEL(concat, INSIGHT_DTYPE_C64, concat_kernel_cpu);
+REGISTER_CPU_KERNEL(concat, INSIGHT_DTYPE_F16, concat_kernel_cpu);
+REGISTER_CPU_KERNEL(concat, INSIGHT_DTYPE_BF16, concat_kernel_cpu);

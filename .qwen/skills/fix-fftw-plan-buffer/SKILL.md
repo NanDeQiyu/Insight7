@@ -46,11 +46,42 @@ fftw_destroy_plan(plan);
 - Enables correct complex fftconvolve via FFT path (no more O(n*m) workaround)
 - Fixes radar Doppler processing (128-point FFT)
 
-## Performance Note
+## Caching Strategy
 
-Creating and destroying plans per-call is slower than caching. For hot paths, consider:
-1. Plan caching keyed by (fft_len, batch_size, buffer_alignment)
-2. Or using `FFTW_WISDOM_ONLY` with pre-loaded wisdom
+The final solution uses a **split caching strategy**:
+
+- **C2C transforms**: Plan created with actual buffer each time (correct but slow). Cache by buffer address — if same buffer is reused, return cached plan.
+- **R2C/C2R transforms**: Plan created with dummy buffers and cached by (n, batch, direction, kind). `fftw_execute_dft_r2c/c2r` works correctly with different buffers.
+
+```cpp
+// In common_impl.cpp:
+if (kind == FFT_KIND_C2C) {
+    // Always create with actual buffer
+    c->plan_f64 = fftw_plan_many_dft(1, &n_int, batch,
+        (fftw_complex*)buf, NULL, 1, n_int,
+        (fftw_complex*)buf, NULL, 1, n_int,
+        direction, FFTW_ESTIMATE);
+} else {
+    // R2C/C2R: dummy buffers work fine
+    fftw_complex *di = fftw_malloc(n * sizeof(fftw_complex));
+    fftw_complex *dout = fftw_malloc(n * sizeof(fftw_complex));
+    // ... create plan with di/dout ...
+    fftw_free(di); fftw_free(dout);
+}
+```
+
+## What DOESN'T Work
+
+1. **FFTW_ESTIMATE + dummy buffers + fftw_execute_dft**: Wrong for n>=64
+2. **FFTW_PATIENT + dummy buffers + fftw_execute_dft**: Correct but causes heap corruption (malloc_consolidate error)
+3. **FFTW_MEASURE + dummy buffers**: Same heap corruption issue
+
+## Performance Impact
+
+- C2C FFT: ~1.4s per call (plan recreation each time)
+- R2C/C2R FFT: ~0.04s per call (cached plan)
+- fftconvolve with complex inputs: slow due to multiple C2C FFT calls
+- For hot paths, consider pre-allocated FFT buffers to enable plan reuse
 
 ## Verification
 

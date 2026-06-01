@@ -6,9 +6,11 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
+#include "../common/half_utils.h"
 #include "common.h"
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 static void cholesky_f64(const double *src, double *dst, int n, int lower) {
   double *a = (double *)malloc(n * n * sizeof(double));
@@ -108,6 +110,27 @@ C_Status cholesky_kernel_cpu(void **inputs, void **outputs) {
 
   if (x->dtype == INSIGHT_DTYPE_F32) {
     cholesky_f32((float *)x->data, (float *)out->data, n, lower);
+  } else if (x->dtype == INSIGHT_DTYPE_F16 || x->dtype == INSIGHT_DTYPE_BF16) {
+    const uint16_t *x_src = (const uint16_t *)x->data;
+    uint16_t *dst = (uint16_t *)out->data;
+    bool is_f16 = (x->dtype == INSIGHT_DTYPE_F16);
+    int64_t total = (int64_t)n * n;
+    std::vector<float> x_f32(total), dst_f32(total);
+    if (is_f16) {
+      for (int64_t i = 0; i < total; ++i)
+        x_f32[i] = insight::f16_to_f32(x_src[i]);
+    } else {
+      for (int64_t i = 0; i < total; ++i)
+        x_f32[i] = insight::bf16_to_f32(x_src[i]);
+    }
+    cholesky_f32(x_f32.data(), dst_f32.data(), n, lower);
+    if (is_f16) {
+      for (int64_t i = 0; i < total; ++i)
+        dst[i] = insight::f32_to_f16(dst_f32[i]);
+    } else {
+      for (int64_t i = 0; i < total; ++i)
+        dst[i] = insight::f32_to_bf16(dst_f32[i]);
+    }
   } else {
     cholesky_f64((double *)x->data, (double *)out->data, n, lower);
   }
@@ -124,6 +147,8 @@ C_Status cholesky_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(cholesky, INSIGHT_DTYPE_F32, cholesky_kernel_cpu);
 REGISTER_CPU_KERNEL(cholesky, INSIGHT_DTYPE_F64, cholesky_kernel_cpu);
+REGISTER_CPU_KERNEL(cholesky, INSIGHT_DTYPE_F16, cholesky_kernel_cpu);
+REGISTER_CPU_KERNEL(cholesky, INSIGHT_DTYPE_BF16, cholesky_kernel_cpu);
 
 #else // !INSIGHT_USE_OPENBLAS
 

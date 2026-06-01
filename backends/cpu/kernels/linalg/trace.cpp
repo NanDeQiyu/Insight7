@@ -4,6 +4,7 @@
  * @brief CPU kernel for trace of a square matrix.
  */
 
+#include "../common/half_utils.h"
 #include "common.h"
 
 #ifdef __cplusplus
@@ -46,6 +47,19 @@ C_Status trace_kernel_cpu(void **inputs, void **outputs) {
   if (x->dtype == INSIGHT_DTYPE_F32) {
     float *dst = (float *)out->data;
     *dst = trace_f32((float *)x->data, n);
+  } else if (x->dtype == INSIGHT_DTYPE_F16 || x->dtype == INSIGHT_DTYPE_BF16) {
+    const uint16_t *src = (const uint16_t *)x->data;
+    uint16_t *dst = (uint16_t *)out->data;
+    float sum = 0.0f;
+    if (x->dtype == INSIGHT_DTYPE_F16) {
+      for (int i = 0; i < n; ++i)
+        sum += insight::f16_to_f32(src[i * n + i]);
+      *dst = insight::f32_to_f16(sum);
+    } else {
+      for (int i = 0; i < n; ++i)
+        sum += insight::bf16_to_f32(src[i * n + i]);
+      *dst = insight::f32_to_bf16(sum);
+    }
   } else {
     double *dst = (double *)out->data;
     *dst = trace_f64((double *)x->data, n);
@@ -59,3 +73,5 @@ C_Status trace_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(trace, INSIGHT_DTYPE_F32, trace_kernel_cpu);
 REGISTER_CPU_KERNEL(trace, INSIGHT_DTYPE_F64, trace_kernel_cpu);
+REGISTER_CPU_KERNEL(trace, INSIGHT_DTYPE_F16, trace_kernel_cpu);
+REGISTER_CPU_KERNEL(trace, INSIGHT_DTYPE_BF16, trace_kernel_cpu);

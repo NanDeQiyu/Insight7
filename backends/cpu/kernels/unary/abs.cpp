@@ -60,6 +60,15 @@ C_Status abs_kernel_cpu(void **inputs, void **outputs) {
     UNARY_KERNEL_LOOP(std::complex<double>,
                       [](std::complex<double> v) { return std::abs(v); });
     break;
+  case INSIGHT_DTYPE_F16:
+    UNARY_HALF_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16,
+                    [](float v) { return std::fabs(v); });
+    break;
+  case INSIGHT_DTYPE_BF16:
+    UNARY_HALF_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16,
+                    [](float v) { return std::fabs(v); });
+    break;
+
   default:
     cpu_set_last_error("abs: unsupported dtype");
     return C_FAILED;
@@ -84,3 +93,5 @@ REGISTER_CPU_KERNEL(abs, INSIGHT_DTYPE_F32, abs_kernel_cpu);
 REGISTER_CPU_KERNEL(abs, INSIGHT_DTYPE_F64, abs_kernel_cpu);
 REGISTER_CPU_KERNEL(abs, INSIGHT_DTYPE_C32, abs_kernel_cpu);
 REGISTER_CPU_KERNEL(abs, INSIGHT_DTYPE_C64, abs_kernel_cpu);
+REGISTER_CPU_KERNEL(abs, INSIGHT_DTYPE_F16, abs_kernel_cpu);
+REGISTER_CPU_KERNEL(abs, INSIGHT_DTYPE_BF16, abs_kernel_cpu);

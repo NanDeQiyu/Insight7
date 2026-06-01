@@ -11,6 +11,7 @@
  * @return C_SUCCESS on success, C_FAILED on error
  */
 
+#include "../common/half_utils.h"
 #include "common.h"
 
 #ifdef __cplusplus
@@ -84,6 +85,16 @@ C_Status cast_f64_kernel_cpu(void **inputs, void **outputs) {
   case INSIGHT_DTYPE_F32: {
     float *d = static_cast<float *>(dst->data);
     CAST_LOOP(n, d[i] = static_cast<float>(s[i]););
+    break;
+  }
+  case INSIGHT_DTYPE_F16: {
+    uint16_t *d = static_cast<uint16_t *>(dst->data);
+    CAST_LOOP(n, d[i] = insight::f32_to_f16(static_cast<float>(s[i])););
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    uint16_t *d = static_cast<uint16_t *>(dst->data);
+    CAST_LOOP(n, d[i] = insight::f32_to_bf16(static_cast<float>(s[i])););
     break;
   }
   case INSIGHT_DTYPE_C32: {

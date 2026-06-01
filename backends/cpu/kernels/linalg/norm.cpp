@@ -6,10 +6,12 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
+#include "../common/half_utils.h"
 #include "common.h"
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 static float norm_vec_f32(const float *data, int n, double ord) {
   if (ord == 2.0) {
@@ -140,6 +142,21 @@ C_Status norm_kernel_cpu(void **inputs, void **outputs) {
     if (x->dtype == INSIGHT_DTYPE_F32) {
       float *dst = (float *)out->data;
       *dst = norm_vec_f32((float *)x->data, n, ord);
+    } else if (x->dtype == INSIGHT_DTYPE_F16 ||
+               x->dtype == INSIGHT_DTYPE_BF16) {
+      const uint16_t *src = (const uint16_t *)x->data;
+      uint16_t *dst = (uint16_t *)out->data;
+      std::vector<float> tmp(n);
+      if (x->dtype == INSIGHT_DTYPE_F16) {
+        for (int i = 0; i < n; ++i)
+          tmp[i] = insight::f16_to_f32(src[i]);
+      } else {
+        for (int i = 0; i < n; ++i)
+          tmp[i] = insight::bf16_to_f32(src[i]);
+      }
+      float result = norm_vec_f32(tmp.data(), n, ord);
+      *dst = (x->dtype == INSIGHT_DTYPE_F16) ? insight::f32_to_f16(result)
+                                             : insight::f32_to_bf16(result);
     } else {
       double *dst = (double *)out->data;
       *dst = norm_vec_f64((double *)x->data, n, ord);
@@ -150,6 +167,22 @@ C_Status norm_kernel_cpu(void **inputs, void **outputs) {
     if (x->dtype == INSIGHT_DTYPE_F32) {
       float *dst = (float *)out->data;
       *dst = norm_mat_f32((float *)x->data, m, n, ord);
+    } else if (x->dtype == INSIGHT_DTYPE_F16 ||
+               x->dtype == INSIGHT_DTYPE_BF16) {
+      const uint16_t *src = (const uint16_t *)x->data;
+      uint16_t *dst = (uint16_t *)out->data;
+      int64_t total = (int64_t)m * n;
+      std::vector<float> tmp(total);
+      if (x->dtype == INSIGHT_DTYPE_F16) {
+        for (int64_t i = 0; i < total; ++i)
+          tmp[i] = insight::f16_to_f32(src[i]);
+      } else {
+        for (int64_t i = 0; i < total; ++i)
+          tmp[i] = insight::bf16_to_f32(src[i]);
+      }
+      float result = norm_mat_f32(tmp.data(), m, n, ord);
+      *dst = (x->dtype == INSIGHT_DTYPE_F16) ? insight::f32_to_f16(result)
+                                             : insight::f32_to_bf16(result);
     } else {
       double *dst = (double *)out->data;
       *dst = norm_mat_f64((double *)x->data, m, n, ord);
@@ -169,6 +202,8 @@ C_Status norm_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(norm, INSIGHT_DTYPE_F32, norm_kernel_cpu);
 REGISTER_CPU_KERNEL(norm, INSIGHT_DTYPE_F64, norm_kernel_cpu);
+REGISTER_CPU_KERNEL(norm, INSIGHT_DTYPE_F16, norm_kernel_cpu);
+REGISTER_CPU_KERNEL(norm, INSIGHT_DTYPE_BF16, norm_kernel_cpu);
 
 #else // !INSIGHT_USE_OPENBLAS
 

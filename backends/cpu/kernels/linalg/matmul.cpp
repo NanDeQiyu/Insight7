@@ -7,7 +7,11 @@
  * Uses OpenBLAS if available, otherwise falls back to simple loops.
  */
 
+#include "../common/half_utils.h"
 #include "common.h"
+
+#include <cstring>
+#include <vector>
 
 #ifdef __cplusplus
 extern "C" {
@@ -190,6 +194,101 @@ static void matmul_f64_batched(const double *a, const double *b, double *c,
 }
 
 // -----------------------------------------------------------------------------
+// half-precision helper: convert -> f32 compute -> convert back
+// -----------------------------------------------------------------------------
+static C_Status matmul_half_kernel(InsightArray *a, InsightArray *b,
+                                   InsightArray *out, bool is_f16) {
+  auto to_f32_vec = [&](const uint16_t *src, int64_t n) {
+    std::vector<float> dst(n);
+    if (is_f16) {
+      for (int64_t i = 0; i < n; ++i)
+        dst[i] = insight::f16_to_f32(src[i]);
+    } else {
+      for (int64_t i = 0; i < n; ++i)
+        dst[i] = insight::bf16_to_f32(src[i]);
+    }
+    return dst;
+  };
+
+  auto from_f32 = [&](float val) -> uint16_t {
+    return is_f16 ? insight::f32_to_f16(val) : insight::f32_to_bf16(val);
+  };
+
+  int ndim_a = a->ndim;
+  int ndim_b = b->ndim;
+
+  // vector * vector -> scalar
+  if (ndim_a == 1 && ndim_b == 1) {
+    int n = (int)a->numel;
+    auto af = to_f32_vec((const uint16_t *)a->data, n);
+    auto bf = to_f32_vec((const uint16_t *)b->data, n);
+    float c = matmul_f32_vector_vector(af.data(), bf.data(), n);
+    *(uint16_t *)out->data = from_f32(c);
+    return C_SUCCESS;
+  }
+
+  // matrix * vector
+  if (ndim_a == 2 && ndim_b == 1) {
+    int m = (int)a->dims[0], n = (int)a->dims[1];
+    auto af = to_f32_vec((const uint16_t *)a->data, (int64_t)m * n);
+    auto bf = to_f32_vec((const uint16_t *)b->data, n);
+    std::vector<float> cf(m);
+    matmul_f32_matrix_vector(af.data(), bf.data(), cf.data(), m, n, 0);
+    uint16_t *dst = (uint16_t *)out->data;
+    for (int i = 0; i < m; ++i)
+      dst[i] = from_f32(cf[i]);
+    return C_SUCCESS;
+  }
+
+  // vector * matrix
+  if (ndim_a == 1 && ndim_b == 2) {
+    int m = (int)b->dims[0], n = (int)b->dims[1];
+    auto af = to_f32_vec((const uint16_t *)a->data, m);
+    auto bf = to_f32_vec((const uint16_t *)b->data, (int64_t)m * n);
+    std::vector<float> cf(n);
+    matmul_f32_matrix_vector(bf.data(), af.data(), cf.data(), m, n, 1);
+    uint16_t *dst = (uint16_t *)out->data;
+    for (int i = 0; i < n; ++i)
+      dst[i] = from_f32(cf[i]);
+    return C_SUCCESS;
+  }
+
+  // matrix * matrix
+  if (ndim_a == 2 && ndim_b == 2) {
+    int m = (int)a->dims[0], k = (int)a->dims[1], n = (int)b->dims[1];
+    auto af = to_f32_vec((const uint16_t *)a->data, (int64_t)m * k);
+    auto bf = to_f32_vec((const uint16_t *)b->data, (int64_t)k * n);
+    std::vector<float> cf((int64_t)m * n);
+    matmul_f32_matrix_matrix(af.data(), bf.data(), cf.data(), m, k, n);
+    uint16_t *dst = (uint16_t *)out->data;
+    for (int64_t i = 0; i < (int64_t)m * n; ++i)
+      dst[i] = from_f32(cf[i]);
+    return C_SUCCESS;
+  }
+
+  // batched
+  int64_t batch = 1;
+  int batch_dims = out->ndim - 2;
+  for (int i = 0; i < batch_dims; ++i)
+    batch *= out->dims[i];
+  int m = (int)out->dims[batch_dims];
+  int n = (int)out->dims[batch_dims + 1];
+  int k = (ndim_a == 1) ? 1 : (int)a->dims[ndim_a - 1];
+
+  int64_t a_total = batch * m * k;
+  int64_t b_total = batch * k * n;
+  int64_t c_total = batch * m * n;
+  auto af = to_f32_vec((const uint16_t *)a->data, a_total);
+  auto bf = to_f32_vec((const uint16_t *)b->data, b_total);
+  std::vector<float> cf(c_total);
+  matmul_f32_batched(af.data(), bf.data(), cf.data(), batch, m, k, n);
+  uint16_t *dst = (uint16_t *)out->data;
+  for (int64_t i = 0; i < c_total; ++i)
+    dst[i] = from_f32(cf[i]);
+  return C_SUCCESS;
+}
+
+// -----------------------------------------------------------------------------
 // kernel entry point
 // -----------------------------------------------------------------------------
 C_Status matmul_kernel_cpu(void **inputs, void **outputs) {
@@ -206,6 +305,11 @@ C_Status matmul_kernel_cpu(void **inputs, void **outputs) {
   if (!cpu_ensure_contiguous(a) || !cpu_ensure_contiguous(b) ||
       !cpu_ensure_contiguous(out))
     return C_FAILED;
+
+  // Handle half-precision via convert->f32->convert-back
+  if (out->dtype == INSIGHT_DTYPE_F16 || out->dtype == INSIGHT_DTYPE_BF16) {
+    return matmul_half_kernel(a, b, out, out->dtype == INSIGHT_DTYPE_F16);
+  }
 
   int ndim_a = a->ndim;
   int ndim_b = b->ndim;
@@ -312,3 +416,5 @@ C_Status matmul_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(matmul, INSIGHT_DTYPE_F32, matmul_kernel_cpu);
 REGISTER_CPU_KERNEL(matmul, INSIGHT_DTYPE_F64, matmul_kernel_cpu);
+REGISTER_CPU_KERNEL(matmul, INSIGHT_DTYPE_F16, matmul_kernel_cpu);
+REGISTER_CPU_KERNEL(matmul, INSIGHT_DTYPE_BF16, matmul_kernel_cpu);

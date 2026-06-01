@@ -64,6 +64,42 @@ C_Status logical_not_kernel_cpu(void **inputs, void **outputs) {
       return v == std::complex<double>(0, 0);
     });
     break;
+  case INSIGHT_DTYPE_F16: {
+    const uint16_t *in_data = (const uint16_t *)x->data;
+    bool *out_data = (bool *)out->data;
+    int64_t ndim = x->ndim;
+    int64_t dims[INSIGHT_MAX_NDIM];
+    int64_t strides[INSIGHT_MAX_NDIM];
+    for (int i = 0; i < ndim; ++i) {
+      dims[i] = x->dims[i];
+      strides[i] = x->strides[i];
+    }
+    int64_t n = x->numel;
+    _Pragma("omp parallel for") for (int64_t linear = 0; linear < n; ++linear) {
+      int64_t off =
+          x->offset + cpu_offset_from_linear(linear, ndim, dims, strides);
+      out_data[linear] = (insight::f16_to_f32(in_data[off]) == 0.0f);
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    const uint16_t *in_data = (const uint16_t *)x->data;
+    bool *out_data = (bool *)out->data;
+    int64_t ndim = x->ndim;
+    int64_t dims[INSIGHT_MAX_NDIM];
+    int64_t strides[INSIGHT_MAX_NDIM];
+    for (int i = 0; i < ndim; ++i) {
+      dims[i] = x->dims[i];
+      strides[i] = x->strides[i];
+    }
+    int64_t n = x->numel;
+    _Pragma("omp parallel for") for (int64_t linear = 0; linear < n; ++linear) {
+      int64_t off =
+          x->offset + cpu_offset_from_linear(linear, ndim, dims, strides);
+      out_data[linear] = (insight::bf16_to_f32(in_data[off]) == 0.0f);
+    }
+    break;
+  }
   default:
     cpu_set_last_error("logical_not: unsupported dtype");
     return C_FAILED;
@@ -89,3 +125,5 @@ REGISTER_CPU_KERNEL(logical_not, INSIGHT_DTYPE_F32, logical_not_kernel_cpu);
 REGISTER_CPU_KERNEL(logical_not, INSIGHT_DTYPE_F64, logical_not_kernel_cpu);
 REGISTER_CPU_KERNEL(logical_not, INSIGHT_DTYPE_C32, logical_not_kernel_cpu);
 REGISTER_CPU_KERNEL(logical_not, INSIGHT_DTYPE_C64, logical_not_kernel_cpu);
+REGISTER_CPU_KERNEL(logical_not, INSIGHT_DTYPE_F16, logical_not_kernel_cpu);
+REGISTER_CPU_KERNEL(logical_not, INSIGHT_DTYPE_BF16, logical_not_kernel_cpu);
