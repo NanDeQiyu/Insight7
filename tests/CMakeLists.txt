@@ -1,8 +1,8 @@
 # tests/CMakeLists.txt
 
 # ========== 收集测试源文件 ==========
-file(GLOB CPU_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cpu/*.cpp")
-file(GLOB CUDA_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cuda/*.cpp")
+file(GLOB CPU_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cpu/cpp/*.cpp")
+file(GLOB CUDA_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cuda/cpp/*.cpp")
 
 add_executable(insight_tests_cpu ${CPU_TEST_SOURCES})
 if(INSIGHT_WITH_CUDA)

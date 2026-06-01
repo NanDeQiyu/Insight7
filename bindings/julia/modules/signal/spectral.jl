@@ -2,69 +2,143 @@
 # Spectral analysis functions.
 
 """
-    welch_jl(x::InsightArray; fs::Float64=1.0, nperseg::Int=256,
-             noverlap::Int=0, nfft::Int=-1) -> (frequencies, power)
+    welch_jl(x::InsightArray; ...) -> (f, Pxx)
 
 Estimate power spectral density using Welch's method.
 """
-function welch_jl end
+function welch_jl(x::InsightArray; fs::Float64=1.0, window::String="hann",
+                  nperseg::Int=256, noverlap::Int=0, nfft::Int=0,
+                  detrend::String="constant", return_onesided::Bool=true,
+                  scaling::String="density")
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    p_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_welch, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Float64, Cstring, Int64, Int64, Int64, Cstring, Int32,
+           Cstring, Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, fs, window, Int64(nperseg), Int64(noverlap), Int64(nfft),
+          detrend, return_onesided ? Int32(1) : Int32(0), scaling,
+          f_ref, p_ref)
+    f = InsightArray(f_ref[]); finalizer(_free, f)
+    pxx = InsightArray(p_ref[]); finalizer(_free, pxx)
+    return (f, pxx)
+end
 
 """
-    periodogram_jl(x::InsightArray; fs::Float64=1.0, nfft::Int=-1) -> (frequencies, power)
+    periodogram_jl(x::InsightArray; ...) -> (f, Pxx)
 
-Compute the power spectral density using a periodogram.
+Estimate power spectral density using a periodogram.
 """
-function periodogram_jl end
-
-"""
-    csd(x::InsightArray, y::InsightArray; fs::Float64=1.0, nperseg::Int=256,
-        noverlap::Int=0) -> (frequencies, power)
-
-Compute the cross-spectral density using Welch's method.
-"""
-function csd end
-
-"""
-    coherence(x::InsightArray, y::InsightArray; fs::Float64=1.0, nperseg::Int=256,
-              noverlap::Int=0) -> (frequencies, coherence)
-
-Compute the magnitude-squared coherence estimate.
-"""
-function coherence end
-
-"""
-    spectrogram(x::InsightArray; fs::Float64=1.0, nperseg::Int=256,
-                noverlap::Int=0, nfft::Int=-1) -> (frequencies, times, Sxx)
-
-Compute a spectrogram using short-time FFT.
-"""
-function spectrogram end
+function periodogram_jl(x::InsightArray; fs::Float64=1.0,
+                        window::String="boxcar", nfft::Int=0,
+                        detrend::String="constant",
+                        return_onesided::Bool=true,
+                        scaling::String="density")
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    p_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_periodogram, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Float64, Cstring, Int64, Cstring, Int32, Cstring,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, fs, window, Int64(nfft), detrend,
+          return_onesided ? Int32(1) : Int32(0), scaling, f_ref, p_ref)
+    f = InsightArray(f_ref[]); finalizer(_free, f)
+    pxx = InsightArray(p_ref[]); finalizer(_free, pxx)
+    return (f, pxx)
+end
 
 """
-    stft(x::InsightArray; fs::Float64=1.0, nperseg::Int=256,
-         noverlap::Int=0, nfft::Int=-1) -> (frequencies, times, Zxx)
+    csd(x::InsightArray, y::InsightArray; ...) -> (f, Pxx)
+
+Estimate cross-spectral density.
+"""
+function csd(x::InsightArray, y::InsightArray; fs::Float64=1.0,
+             window::String="hann", nperseg::Int=256,
+             noverlap::Int=0, nfft::Int=0)
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    Pxx_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_csd, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Cvoid}, Float64, Cstring, Int64, Int64, Int64,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, y, fs, window, Int64(nperseg), Int64(noverlap), Int64(nfft),
+          f_ref, Pxx_ref)
+    f_arr = InsightArray(f_ref[]); finalizer(_free, f_arr)
+    Pxx_arr = InsightArray(Pxx_ref[]); finalizer(_free, Pxx_arr)
+    return (f=f_arr, Pxx=Pxx_arr)
+end
+
+"""
+    coherence(x::InsightArray, y::InsightArray; ...) -> (f, Pxx)
+
+Estimate magnitude-squared coherence.
+"""
+function coherence(x::InsightArray, y::InsightArray; fs::Float64=1.0,
+                   window::String="hann", nperseg::Int=256,
+                   noverlap::Int=0, nfft::Int=0)
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    Pxx_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_coherence, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Cvoid}, Float64, Cstring, Int64, Int64, Int64,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, y, fs, window, Int64(nperseg), Int64(noverlap), Int64(nfft),
+          f_ref, Pxx_ref)
+    f_arr = InsightArray(f_ref[]); finalizer(_free, f_arr)
+    Pxx_arr = InsightArray(Pxx_ref[]); finalizer(_free, Pxx_arr)
+    return (f=f_arr, Pxx=Pxx_arr)
+end
+
+"""
+    spectrogram(x::InsightArray; ...) -> (f, t, Sxx)
+
+Compute a spectrogram using STFT.
+"""
+function spectrogram(x::InsightArray; fs::Float64=1.0,
+                     window::String="hann", nperseg::Int=256,
+                     noverlap::Int=0, nfft::Int=0)
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    t_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    Sxx_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_spectrogram, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Float64, Cstring, Int64, Int64, Int64,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, fs, window, Int64(nperseg), Int64(noverlap), Int64(nfft),
+          f_ref, t_ref, Sxx_ref)
+    f_arr = InsightArray(f_ref[]); finalizer(_free, f_arr)
+    t_arr = InsightArray(t_ref[]); finalizer(_free, t_arr)
+    Sxx_arr = InsightArray(Sxx_ref[]); finalizer(_free, Sxx_arr)
+    return (f=f_arr, t=t_arr, Sxx=Sxx_arr)
+end
+
+"""
+    stft(x::InsightArray; ...) -> (f, t, Sxx)
 
 Compute the Short-Time Fourier Transform.
 """
-function stft end
+function stft(x::InsightArray; fs::Float64=1.0,
+              window::String="hann", nperseg::Int=256,
+              noverlap::Int=0, nfft::Int=0)
+    f_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    t_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    Sxx_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_stft, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Float64, Cstring, Int64, Int64, Int64,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, fs, window, Int64(nperseg), Int64(noverlap), Int64(nfft),
+          f_ref, t_ref, Sxx_ref)
+    f_arr = InsightArray(f_ref[]); finalizer(_free, f_arr)
+    t_arr = InsightArray(t_ref[]); finalizer(_free, t_arr)
+    Sxx_arr = InsightArray(Sxx_ref[]); finalizer(_free, Sxx_arr)
+    return (f=f_arr, t=t_arr, Sxx=Sxx_arr)
+end
 
 """
     vectorstrength(events::InsightArray, period::Float64) -> (strength, phase)
 
 Compute the vector strength of events relative to a period.
 """
-function vectorstrength end
-
-"""
-    choose_conv_method(in1::InsightArray, in2::InsightArray; mode::String="full") -> String
-
-Choose the faster convolution method (direct or FFT) for the given inputs.
-"""
-function choose_conv_method end
-
-"""
-    firfilter_zi_state(b::InsightArray, x::InsightArray, zi::InsightArray; axis::Int=-1) -> (y, zf)
-
-Apply an FIR filter with initial/return final state.
-"""
-function firfilter_zi_state end
+function vectorstrength(events::InsightArray, period::Float64)
+    strength_ref = Ref{Float64}(0.0)
+    phase_ref = Ref{Float64}(0.0)
+    ccall((:insight_jl_vectorstrength, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Float64, Ptr{Float64}, Ptr{Float64}),
+          events, period, strength_ref, phase_ref)
+    return (strength=strength_ref[], phase=phase_ref[])
+end

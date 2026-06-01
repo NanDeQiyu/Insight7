@@ -30,8 +30,7 @@ def pulse_compression(x, template_tx, normalize=False, window="", nfft=0):
     Returns:
         Pulse-compressed output array.
     """
-    return _signal.pulse_compression(x, template_tx, normalize=normalize,
-                                     window=window, nfft=nfft)
+    return _signal.pulse_compression(x, template_tx, normalize=normalize, window=window, nfft=nfft)
 
 
 def pulse_doppler(x, window="", nfft=0):
@@ -76,8 +75,7 @@ def ca_cfar(data, guard_cells, reference_cells, pfa=1e-3):
     Returns:
         Boolean mask array of detected targets (same shape as *data*).
     """
-    return _signal.ca_cfar(data, list(guard_cells), list(reference_cells),
-                           pfa=pfa)
+    return _signal.ca_cfar(data, list(guard_cells), list(reference_cells), pfa=pfa)
 
 
 def mvdr(x, sv, calc_cov=True):

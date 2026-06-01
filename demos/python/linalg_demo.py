@@ -3,11 +3,14 @@
 Demonstrates: matrix multiplication, determinant, inverse, SVD,
 and linear system solving on CPU (and GPU if available).
 """
+
 import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bindings", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "build", "bindings", "python"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "..", "build", "bindings", "python")
+)
 
 import insight as ins
 import numpy as np
@@ -48,8 +51,8 @@ def run_cpu_linalg():
     # Inverse
     A_inv = ins.inv(A)
     print(f"inv([[1,2],[3,4]]):\n{A_inv.numpy()}")
-    I = ins.matmul(A, A_inv)
-    print(f"A * A_inv (should be identity):\n{I.numpy()}")
+    identity_check = ins.matmul(A, A_inv)
+    print(f"A * A_inv (should be identity):\n{identity_check.numpy()}")
 
     # SVD
     D = ins.from_array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]])
@@ -85,7 +88,11 @@ def run_gpu_linalg():
     print(f"GPU inv:\n{A_inv.numpy()}")
 
     # GPU SVD (F32)
-    D = ins.from_array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]]).to(ins.float32).to(ins.GPUPlace(0))
+    D = (
+        ins.from_array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]])
+        .to(ins.float32)
+        .to(ins.GPUPlace(0))
+    )
     U, S, VT = ins.svd(D, full_matrices=False)
     print(f"GPU SVD singular values (F32): {S.to(ins.CPUPlace()).numpy()}")
 

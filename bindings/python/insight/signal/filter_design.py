@@ -57,12 +57,10 @@ def firwin(numtaps, cutoff, window="hamming", pass_zero="lowpass", scale=True):
     Returns:
         FIR filter coefficients as a 1-D array.
     """
-    return _signal.firwin(numtaps, cutoff, window=window, pass_zero=pass_zero,
-                          scale=scale)
+    return _signal.firwin(numtaps, cutoff, window=window, pass_zero=pass_zero, scale=scale)
 
 
-def firwin2(numtaps, freq, gain, nfreqs=None, window="hamming",
-            antisymmetric=False):
+def firwin2(numtaps, freq, gain, nfreqs=None, window="hamming", antisymmetric=False):
     """Design a FIR filter with arbitrary frequency response.
 
     Args:

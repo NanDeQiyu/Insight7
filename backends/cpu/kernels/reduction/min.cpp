@@ -65,6 +65,13 @@ C_Status min_kernel_cpu(void **inputs, void **outputs) {
   case INSIGHT_DTYPE_F64:
     REDUCE_MIN_LOOP(double);
     break;
+  case INSIGHT_DTYPE_F16:
+    REDUCE_HALF_MIN_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    REDUCE_HALF_MIN_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16);
+    break;
+
   default:
     cpu_set_last_error("min: unsupported dtype");
     return C_FAILED;
@@ -88,3 +95,5 @@ REGISTER_CPU_KERNEL(min, INSIGHT_DTYPE_U32, min_kernel_cpu);
 REGISTER_CPU_KERNEL(min, INSIGHT_DTYPE_U64, min_kernel_cpu);
 REGISTER_CPU_KERNEL(min, INSIGHT_DTYPE_F32, min_kernel_cpu);
 REGISTER_CPU_KERNEL(min, INSIGHT_DTYPE_F64, min_kernel_cpu);
+REGISTER_CPU_KERNEL(min, INSIGHT_DTYPE_F16, min_kernel_cpu);
+REGISTER_CPU_KERNEL(min, INSIGHT_DTYPE_BF16, min_kernel_cpu);

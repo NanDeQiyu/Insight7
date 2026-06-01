@@ -3,12 +3,15 @@
 Demonstrates: FFT signal processing (RFFT/IRFFT roundtrip) on CPU
 and GPU (if available), with F32 and F64 precision.
 """
+
 import sys
 import os
 import math
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bindings", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "build", "bindings", "python"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "..", "build", "bindings", "python")
+)
 
 import insight as ins
 import numpy as np

@@ -27,6 +27,15 @@ C_Status expm1_kernel_cpu(void **inputs, void **outputs) {
   case INSIGHT_DTYPE_F64:
     UNARY_KERNEL_LOOP(double, [](double v) { return std::expm1(v); });
     break;
+  case INSIGHT_DTYPE_F16:
+    UNARY_HALF_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16,
+                    [](float v) { return std::expm1(v); });
+    break;
+  case INSIGHT_DTYPE_BF16:
+    UNARY_HALF_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16,
+                    [](float v) { return std::expm1(v); });
+    break;
+
   default:
     cpu_set_last_error("expm1: only float32 and float64 supported");
     return C_FAILED;
@@ -41,3 +50,5 @@ C_Status expm1_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(expm1, INSIGHT_DTYPE_F32, expm1_kernel_cpu);
 REGISTER_CPU_KERNEL(expm1, INSIGHT_DTYPE_F64, expm1_kernel_cpu);
+REGISTER_CPU_KERNEL(expm1, INSIGHT_DTYPE_F16, expm1_kernel_cpu);
+REGISTER_CPU_KERNEL(expm1, INSIGHT_DTYPE_BF16, expm1_kernel_cpu);

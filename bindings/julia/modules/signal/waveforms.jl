@@ -1,51 +1,49 @@
 # modules/signal/waveforms.jl
-# Waveform generation functions.
+# Waveform generators.
 
 """
-    sawtooth(t::InsightArray, width::Float64=1.0) -> InsightArray
+    sawtooth(t::InsightArray; width::Float64=1.0) -> InsightArray
 
-Return a periodic sawtooth waveform.
-
-# Arguments
-- `t::InsightArray`: Time array.
-- `width::Float64`: Width of the rising ramp (0 to 1). Default 1.0.
+Return a periodic sawtooth or triangle waveform.
 """
-function sawtooth end
-
-"""
-    square_wf(t::InsightArray, duty::Float64=0.5) -> InsightArray
-
-Return a periodic square-wave waveform.
-
-# Arguments
-- `t::InsightArray`: Time array.
-- `duty::Float64`: Duty cycle (0 to 1). Default 0.5.
-"""
-function square_wf end
+function sawtooth(t::InsightArray; width::Float64=1.0)::InsightArray
+    ptr = ccall((:insight_jl_sawtooth, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Float64), t, width)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
 
 """
-    chirp(t::InsightArray, f0::Float64, t1::Float64, f1::Float64;
-          method::String="linear", phi::Float64=0.0) -> InsightArray
+    square_wf(t::InsightArray; duty::Float64=0.5) -> InsightArray
 
-Return a swept-frequency cosine (chirp) signal.
-
-# Arguments
-- `t::InsightArray`: Time array.
-- `f0::Float64`: Frequency at time 0.
-- `t1::Float64`: Time at which `f1` is specified.
-- `f1::Float64`: Frequency at time `t1`.
-- `method::String`: Chirp method (`"linear"`, `"quadratic"`, `"logarithmic"`, `"hyperbolic"`).
-- `phi::Float64`: Phase offset in degrees.
+Return a periodic square-wave signal.
 """
-function chirp end
+function square_wf(t::InsightArray; duty::Float64=0.5)::InsightArray
+    ptr = ccall((:insight_jl_square_wf, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Float64), t, duty)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
 
 """
-    unit_impulse(shape::Vector{Int64}; idx::String="mid") -> InsightArray
+    chirp(t::InsightArray, f0::Float64, t1::Float64, f1::Float64; ...) -> InsightArray
 
-Return an impulse (delta) function.
-
-# Arguments
-- `shape::Vector{Int64}`: Shape of the output array.
-- `idx::String`: Position of the impulse (`"mid"`, `"begin"`, `"end"`).
+Return a frequency-swept cosine signal (chirp).
 """
-function unit_impulse end
+function chirp(t::InsightArray, f0::Float64, t1::Float64, f1::Float64;
+               method::Int32=Int32(0), phi::Float64=0.0,
+               vertex_zero::Bool=true)::InsightArray
+    ptr = ccall((:insight_jl_chirp, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Float64, Float64, Float64, Int32, Float64, Int32),
+                t, f0, t1, f1, method, phi, vertex_zero ? Int32(1) : Int32(0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+"""
+    unit_impulse(dims::Vector{Int64}; idx::Int64=-1) -> InsightArray
+
+Return a unit impulse (Dirac delta) signal.
+"""
+function unit_impulse(dims::Vector{Int64}; idx::Int64=Int64(-1))::InsightArray
+    ptr = ccall((:insight_jl_unit_impulse, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Int64}, Int32, Int64), dims, Int32(length(dims)), idx)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end

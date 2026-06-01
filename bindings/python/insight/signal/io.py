@@ -101,8 +101,7 @@ def unpack_bin(filename, count):
     Returns:
         Array of unpacked samples.
     """
-    raw = _signal.read_bin(filename, dtype=_DType.uint8,
-                           num_samples=count if count > 0 else 0)
+    raw = _signal.read_bin(filename, dtype=_DType.uint8, num_samples=count if count > 0 else 0)
     return _signal.unpack_bin(raw, _DType.float64)
 
 

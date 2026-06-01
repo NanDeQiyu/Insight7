@@ -178,8 +178,16 @@ end
 
 -- Non-signal sub-modules (organized by C++ source structure)
 local submodules = {
-  "elementwise", "unary", "reduction", "manipulation",
-  "linalg", "fft", "complex", "random", "cast", "indexing",
+  "elementwise",
+  "unary",
+  "reduction",
+  "manipulation",
+  "linalg",
+  "fft",
+  "complex",
+  "random",
+  "cast",
+  "indexing",
 }
 
 for _, mod_name in ipairs(submodules) do

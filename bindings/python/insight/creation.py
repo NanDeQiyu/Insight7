@@ -127,8 +127,7 @@ def arange(*args, dtype=_I64, place=None):
     if place is not None:
         if len(args) == 1:
             return _arange(args[0], dtype, place)
-        return _arange(args[0], args[1], args[2] if len(args) > 2 else 1.0,
-                       dtype, place)
+        return _arange(args[0], args[1], args[2] if len(args) > 2 else 1.0, dtype, place)
     if len(args) == 1:
         return _arange(args[0], dtype)
     return _arange(args[0], args[1], args[2] if len(args) > 2 else 1.0, dtype)

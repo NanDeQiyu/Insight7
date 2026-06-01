@@ -1,45 +1,60 @@
 # modules/signal/filter_design.jl
-# FIR filter design functions.
+# Filter design functions.
 
 """
     kaiser_beta(a::Float64) -> Float64
 
-Return the Kaiser window `beta` parameter for the given stopband attenuation `a` (in dB).
+Compute the Kaiser beta parameter for a given stopband attenuation.
 """
-function kaiser_beta end
+function kaiser_beta(a::Float64)::Float64
+    ccall((:insight_jl_kaiser_beta, LIB_INSIGHT), Float64, (Float64,), a)
+end
 
 """
     kaiser_atten(numtaps::Int, width::Float64) -> Float64
 
-Return the Kaiser window attenuation given the number of taps and transition width.
+Compute the Kaiser window attenuation for given taps and transition width.
 """
-function kaiser_atten end
+function kaiser_atten(numtaps::Int, width::Float64)::Float64
+    ccall((:insight_jl_kaiser_atten, LIB_INSIGHT), Float64,
+          (Int64, Float64), Int64(numtaps), width)
+end
 
 """
-    firwin(numtaps::Int, cutoff::Union{Float64,Vector{Float64}};
-           window::String="hamming", pass_zero::Bool=true) -> InsightArray
+    firwin(numtaps::Int, cutoff::Vector{Float64}; ...) -> InsightArray
 
 Design a FIR filter using the window method.
-
-# Arguments
-- `numtaps::Int`: Number of filter taps.
-- `cutoff`: Cutoff frequency (normalized, 0 to 1).
-- `window::String`: Window type. Default `"hamming"`.
-- `pass_zero::Bool`: If `true`, the filter passes DC. Default `true`.
 """
-function firwin end
+function firwin(numtaps::Int, cutoff::Vector{Float64};
+                window::String="hamming", pass_zero::String="lowpass",
+                scale::Bool=true)::InsightArray
+    ptr = ccall((:insight_jl_firwin, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Ptr{Float64}, Int32, Cstring, Cstring, Int32),
+                Int64(numtaps), cutoff, Int32(length(cutoff)),
+                window, pass_zero, scale ? Int32(1) : Int32(0))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
 
 """
-    firwin2(numtaps::Int, freq::Vector{Float64}, gain::Vector{Float64};
-            window::String="hamming") -> InsightArray
+    firwin2(numtaps::Int, freq, gain; window="hamming") -> InsightArray
 
 Design a FIR filter with arbitrary frequency response.
 """
-function firwin2 end
+function firwin2(numtaps::Int, freq::Vector{Float64}, gain::Vector{Float64};
+                 window::String="hamming")::InsightArray
+    ptr = ccall((:insight_jl_firwin2, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Ptr{Float64}, Int32, Ptr{Float64}, Int32, Cstring),
+                Int64(numtaps), freq, Int32(length(freq)), gain, Int32(length(gain)), window)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
 
 """
-    cmplx_sort(p::InsightArray) -> (sorted, indx)
+    cmplx_sort(p::InsightArray) -> InsightArray
 
-Sort roots by ascending magnitude and return sorted roots and indices.
+Sort complex roots by magnitude and conjugate pairs.
 """
-function cmplx_sort end
+function cmplx_sort(p::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_cmplx_sort, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid},), p)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end

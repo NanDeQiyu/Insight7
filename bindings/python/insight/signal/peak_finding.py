@@ -30,8 +30,7 @@ def argrelextrema(data, comparator="greater", axis=0, order=1, mode="clip"):
         Tuple of index arrays, one per dimension, indicating the positions
         of the relative extrema.
     """
-    return _signal.argrelextrema(data, comparator=comparator, axis=axis,
-                                 order=order, mode=mode)
+    return _signal.argrelextrema(data, comparator=comparator, axis=axis, order=order, mode=mode)
 
 
 def argrelmax(data, axis=0, order=1, mode="clip"):

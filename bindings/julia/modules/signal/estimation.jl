@@ -1,4 +1,4 @@
 # modules/signal/estimation.jl
-# State estimation functions.
-# Note: KalmanFilter is not exposed as a Julia type in the current binding.
-# Signal estimation functions can be composed from linear algebra primitives.
+# Estimation functions (Kalman filter).
+# Note: KalmanFilter is defined in the C++ binding but the Julia ccall
+# wrapper is not yet available. This file is a placeholder.

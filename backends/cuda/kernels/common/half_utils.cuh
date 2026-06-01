@@ -9,8 +9,8 @@
 
 #pragma once
 
-#include <cuda_fp16.h>
 #include <cuda_bf16.h>
+#include <cuda_fp16.h>
 
 // CUDA natively supports __half and __nv_bfloat16 via hardware instructions.
 // No software emulation needed — the GPU has dedicated tensor core support

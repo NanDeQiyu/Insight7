@@ -65,6 +65,13 @@ C_Status max_kernel_cpu(void **inputs, void **outputs) {
   case INSIGHT_DTYPE_F64:
     REDUCE_MAX_LOOP(double);
     break;
+  case INSIGHT_DTYPE_F16:
+    REDUCE_HALF_MAX_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    REDUCE_HALF_MAX_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16);
+    break;
+
   default:
     cpu_set_last_error("max: unsupported dtype");
     return C_FAILED;
@@ -88,3 +95,5 @@ REGISTER_CPU_KERNEL(max, INSIGHT_DTYPE_U32, max_kernel_cpu);
 REGISTER_CPU_KERNEL(max, INSIGHT_DTYPE_U64, max_kernel_cpu);
 REGISTER_CPU_KERNEL(max, INSIGHT_DTYPE_F32, max_kernel_cpu);
 REGISTER_CPU_KERNEL(max, INSIGHT_DTYPE_F64, max_kernel_cpu);
+REGISTER_CPU_KERNEL(max, INSIGHT_DTYPE_F16, max_kernel_cpu);
+REGISTER_CPU_KERNEL(max, INSIGHT_DTYPE_BF16, max_kernel_cpu);

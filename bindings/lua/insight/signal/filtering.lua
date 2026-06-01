@@ -40,8 +40,12 @@ end
 -- @treturn Array Wiener-filtered array.
 function M.wiener(im, mysize, noise)
   local kwargs = {}
-  if mysize then kwargs.mysize = mysize end
-  if noise and noise ~= -1 then kwargs.noise = noise end
+  if mysize then
+    kwargs.mysize = mysize
+  end
+  if noise and noise ~= -1 then
+    kwargs.noise = noise
+  end
   return sig.wiener(im, kwargs)
 end
 

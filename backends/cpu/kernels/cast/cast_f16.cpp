@@ -6,8 +6,8 @@
  * Converts float16 (stored as uint16_t) to target dtype via f32 intermediate.
  */
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -92,15 +92,13 @@ C_Status cast_f16_kernel_cpu(void **inputs, void **outputs) {
   }
   case INSIGHT_DTYPE_C32: {
     std::complex<float> *d = static_cast<std::complex<float> *>(dst->data);
-    CAST_LOOP(n,
-              d[i] = std::complex<float>(insight::f16_to_f32(s[i]), 0.0f););
+    CAST_LOOP(n, d[i] = std::complex<float>(insight::f16_to_f32(s[i]), 0.0f););
     break;
   }
   case INSIGHT_DTYPE_C64: {
     std::complex<double> *d = static_cast<std::complex<double> *>(dst->data);
-    CAST_LOOP(n,
-              d[i] = std::complex<double>(
-                  static_cast<double>(insight::f16_to_f32(s[i])), 0.0););
+    CAST_LOOP(n, d[i] = std::complex<double>(
+                     static_cast<double>(insight::f16_to_f32(s[i])), 0.0););
     break;
   }
   default:

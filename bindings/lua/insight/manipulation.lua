@@ -46,8 +46,8 @@ end
 -- @int repeats Number of repetitions.
 -- @int[opt] axis Axis along which to repeat. If nil, array is flattened first.
 -- @treturn Array Repeated array.
-function M.repeat(x, repeats, axis)
-  return native.repeat(x, repeats, axis)
+function M.repeat_elements(x, repeats, axis)
+  return native["repeat"](x, repeats, axis)
 end
 
 --- Reverse array along given axis.

@@ -59,6 +59,15 @@ C_Status square_kernel_cpu(void **inputs, void **outputs) {
     UNARY_KERNEL_LOOP(std::complex<double>,
                       [](std::complex<double> v) { return v * v; });
     break;
+  case INSIGHT_DTYPE_F16:
+    UNARY_HALF_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16,
+                    [](float v) { return (v * v); });
+    break;
+  case INSIGHT_DTYPE_BF16:
+    UNARY_HALF_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16,
+                    [](float v) { return (v * v); });
+    break;
+
   default:
     cpu_set_last_error("square: unsupported dtype");
     return C_FAILED;
@@ -83,3 +92,5 @@ REGISTER_CPU_KERNEL(square, INSIGHT_DTYPE_F32, square_kernel_cpu);
 REGISTER_CPU_KERNEL(square, INSIGHT_DTYPE_F64, square_kernel_cpu);
 REGISTER_CPU_KERNEL(square, INSIGHT_DTYPE_C32, square_kernel_cpu);
 REGISTER_CPU_KERNEL(square, INSIGHT_DTYPE_C64, square_kernel_cpu);
+REGISTER_CPU_KERNEL(square, INSIGHT_DTYPE_F16, square_kernel_cpu);
+REGISTER_CPU_KERNEL(square, INSIGHT_DTYPE_BF16, square_kernel_cpu);

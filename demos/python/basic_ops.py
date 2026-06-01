@@ -3,13 +3,16 @@
 Demonstrates: array creation, arithmetic, multi-dtype, broadcasting,
 unary operations, and reductions.
 """
+
 import sys
 import os
 import math
 
 # Add bindings to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bindings", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "build", "bindings", "python"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "..", "build", "bindings", "python")
+)
 
 import insight as ins
 import numpy as np

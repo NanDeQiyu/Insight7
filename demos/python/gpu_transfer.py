@@ -3,11 +3,14 @@
 Demonstrates: GPU device management, CPU-GPU data transfer,
 GPU arithmetic, reductions, and zero-copy views.
 """
+
 import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bindings", "python"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "build", "bindings", "python"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "..", "build", "bindings", "python")
+)
 
 import insight as ins
 
@@ -42,7 +45,9 @@ def main():
     print(f"CPU array:\n{cpu_arr.numpy()}")
 
     gpu_arr = cpu_arr.to(ins.GPUPlace(0))
-    print(f"GPU array shape=({gpu_arr.shape[0]},{gpu_arr.shape[1]}) place={'gpu' if gpu_arr.place.is_gpu() else 'cpu'}")
+    print(
+        f"GPU array shape=({gpu_arr.shape[0]},{gpu_arr.shape[1]}) place={'gpu' if gpu_arr.place.is_gpu() else 'cpu'}"
+    )
 
     # --- GPU to CPU transfer ---
     separator("GPU -> CPU Transfer")

@@ -142,8 +142,7 @@ def searchsorted(sorted_arr, values, side="left"):
     return _searchsorted(sorted_arr, values, side=side)
 
 
-def unique(x, return_indices=False, return_inverse=False,
-           return_counts=False):
+def unique(x, return_indices=False, return_inverse=False, return_counts=False):
     """Return the unique elements of an array.
 
     Args:
@@ -160,9 +159,9 @@ def unique(x, return_indices=False, return_inverse=False,
         unique values).  If any optional flags are True, the result also
         contains ``indices``, ``inverse``, and/or ``counts``.
     """
-    return _unique(x, return_indices=return_indices,
-                   return_inverse=return_inverse,
-                   return_counts=return_counts)
+    return _unique(
+        x, return_indices=return_indices, return_inverse=return_inverse, return_counts=return_counts
+    )
 
 
 def topk(x, k, axis=-1, largest=True, sorted=True):

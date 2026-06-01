@@ -1,0 +1,123 @@
+-- CUDA basic operations tests — aligned with C++ test suite
+-- Run with:
+--   LUA_PATH="bindings/lua/?/init.lua;;" LUA_CPATH="build/bindings/lua/?.so;;" \
+--   LD_LIBRARY_PATH=build/backends/cpu:build/backends/cuda ~/.luarocks/bin/busted tests/cuda/lua/test_cuda_basic.lua
+
+local ins = require("_insight")
+
+-- Try to load CUDA backend
+local ok_cuda = pcall(function() ins.load_backend("cuda") end)
+if not ok_cuda then
+    print("CUDA backend not available, skipping GPU tests")
+    os.exit(0)
+end
+
+local GPU = ins.GPUPlace(0)
+local CPU = ins.CPUPlace()
+
+describe("CreationTestGPU", function()
+    it("zeros on GPU", function()
+        local a = ins.zeros({2, 3}, ins.float32, GPU)
+        assert.is_not_nil(a)
+        assert.are.equal(6, a.numel)
+    end)
+
+    it("ones on GPU", function()
+        local a = ins.ones({2, 3}, ins.float32, GPU)
+        assert.is_not_nil(a)
+        assert.are.equal(6, a.numel)
+    end)
+
+    it("eye on GPU", function()
+        local a = ins.eye(3, GPU)
+        assert.is_not_nil(a)
+        assert.are.equal(9, a.numel)
+    end)
+end)
+
+describe("ElementwiseTestGPU", function()
+    it("add on GPU", function()
+        local a = ins.from_table({1, 2, 3}):to(GPU)
+        local b = ins.from_table({4, 5, 6}):to(GPU)
+        local c = ins.add(a, b):to(CPU)
+        assert.is_not_nil(c)
+        assert.are.equal(3, c.numel)
+    end)
+
+    it("sub on GPU", function()
+        local a = ins.from_table({10, 20, 30}):to(GPU)
+        local b = ins.from_table({1, 2, 3}):to(GPU)
+        local c = ins.sub(a, b):to(CPU)
+        assert.is_not_nil(c)
+        assert.are.equal(3, c.numel)
+    end)
+
+    it("mul on GPU", function()
+        local a = ins.from_table({2, 3, 4}):to(GPU)
+        local b = ins.from_table({5, 6, 7}):to(GPU)
+        local c = ins.mul(a, b):to(CPU)
+        assert.is_not_nil(c)
+        assert.are.equal(3, c.numel)
+    end)
+end)
+
+describe("UnaryTestGPU", function()
+    it("abs on GPU", function()
+        local a = ins.from_table({-3, -1, 0, 2, 4}):to(GPU)
+        local b = ins.abs(a):to(CPU)
+        assert.is_not_nil(b)
+        assert.are.equal(5, b.numel)
+    end)
+
+    it("sqrt on GPU", function()
+        local a = ins.from_table({1, 4, 9, 16}):to(GPU)
+        local b = ins.sqrt(a):to(CPU)
+        assert.is_not_nil(b)
+        assert.are.equal(4, b.numel)
+    end)
+end)
+
+describe("ReductionTestGPU", function()
+    it("sum on GPU", function()
+        local a = ins.from_table({1, 2, 3, 4}):to(GPU)
+        local s = ins.sum(a):to(CPU)
+        assert.is_not_nil(s)
+    end)
+
+    it("mean on GPU", function()
+        local a = ins.from_table({1, 2, 3, 4}):to(GPU)
+        local m = ins.mean(a):to(CPU)
+        assert.is_not_nil(m)
+    end)
+end)
+
+describe("LinalgTestGPU", function()
+    it("matmul on GPU", function()
+        local a = ins.from_table({{1, 2}, {3, 4}}):to(GPU)
+        local b = ins.from_table({{5, 6}, {7, 8}}):to(GPU)
+        local c = ins.matmul(a, b):to(CPU)
+        assert.is_not_nil(c)
+        assert.are.equal(4, c.numel)
+    end)
+
+    it("det on GPU", function()
+        local a = ins.from_table({{1, 2}, {3, 4}}):to(GPU)
+        local d = ins.det(a):to(CPU)
+        assert.is_not_nil(d)
+    end)
+end)
+
+describe("SignalTestGPU", function()
+    it("hann window", function()
+        local w = ins.signal.hann(16)
+        assert.is_not_nil(w)
+        assert.are.equal(16, w.numel)
+    end)
+
+    it("fftconvolve on GPU", function()
+        local a = ins.from_table({1, 2, 3}):to(GPU)
+        local b = ins.from_table({1, 1}):to(GPU)
+        local c = ins.signal.fftconvolve(a, b):to(CPU)
+        assert.is_not_nil(c)
+    end)
+end)

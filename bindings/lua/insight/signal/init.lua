@@ -27,20 +27,48 @@ local estimation = require("insight.signal.estimation")
 local io_mod = require("insight.signal.io")
 
 -- Merge all sub-modules
-for k, v in pairs(windows) do M[k] = v end
-for k, v in pairs(waveforms) do M[k] = v end
-for k, v in pairs(bsplines) do M[k] = v end
-for k, v in pairs(filter_design) do M[k] = v end
-for k, v in pairs(convolution) do M[k] = v end
-for k, v in pairs(filtering) do M[k] = v end
-for k, v in pairs(spectral) do M[k] = v end
-for k, v in pairs(wavelets) do M[k] = v end
-for k, v in pairs(acoustics) do M[k] = v end
-for k, v in pairs(demod) do M[k] = v end
-for k, v in pairs(peak_finding) do M[k] = v end
-for k, v in pairs(radar) do M[k] = v end
-for k, v in pairs(estimation) do M[k] = v end
-for k, v in pairs(io_mod) do M[k] = v end
+for k, v in pairs(windows) do
+  M[k] = v
+end
+for k, v in pairs(waveforms) do
+  M[k] = v
+end
+for k, v in pairs(bsplines) do
+  M[k] = v
+end
+for k, v in pairs(filter_design) do
+  M[k] = v
+end
+for k, v in pairs(convolution) do
+  M[k] = v
+end
+for k, v in pairs(filtering) do
+  M[k] = v
+end
+for k, v in pairs(spectral) do
+  M[k] = v
+end
+for k, v in pairs(wavelets) do
+  M[k] = v
+end
+for k, v in pairs(acoustics) do
+  M[k] = v
+end
+for k, v in pairs(demod) do
+  M[k] = v
+end
+for k, v in pairs(peak_finding) do
+  M[k] = v
+end
+for k, v in pairs(radar) do
+  M[k] = v
+end
+for k, v in pairs(estimation) do
+  M[k] = v
+end
+for k, v in pairs(io_mod) do
+  M[k] = v
+end
 
 -- Re-export types from native signal submodule
 M.ChirpMethod = sig.ChirpMethod

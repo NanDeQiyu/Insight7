@@ -114,8 +114,7 @@ def chirp(t, f0, t1, f1, method="linear", phi=0, vertex_zero=True):
         Chirp signal evaluated at each element of *t*.
     """
     enum_method = _CHIRP_METHOD_MAP.get(method, _signal.ChirpMethod.linear)
-    return _signal.chirp(t, f0, t1, f1, method=enum_method, phi=phi,
-                         vertex_zero=vertex_zero)
+    return _signal.chirp(t, f0, t1, f1, method=enum_method, phi=phi, vertex_zero=vertex_zero)
 
 
 def unit_impulse(shape, idx=None, dtype=None, place=None):

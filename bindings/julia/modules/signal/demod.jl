@@ -1,16 +1,13 @@
 # modules/signal/demod.jl
-# Demodulation functions.
+# FM demodulation.
 
 """
-    fm_demod(x::InsightArray; fs::Float64=1.0) -> InsightArray
+    fm_demod(x::InsightArray; axis=-1) -> InsightArray
 
-Demodulate an FM signal by computing the instantaneous frequency.
-
-# Arguments
-- `x::InsightArray`: Input FM signal.
-- `fs::Float64`: Sampling frequency. Default 1.0.
-
-# Returns
-- `InsightArray`: Demodulated signal.
+Demodulate an FM signal.
 """
-function fm_demod end
+function fm_demod(x::InsightArray; axis::Int=-1)::InsightArray
+    ptr = ccall((:insight_jl_fm_demod, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(axis))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end

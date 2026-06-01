@@ -17,8 +17,18 @@ __all__ = [
 ]
 
 
-def csd(x, y, fs=1.0, window="hann", nperseg=256, noverlap=None, nfft=None,
-        detrend="constant", return_onesided=True, scaling="density"):
+def csd(
+    x,
+    y,
+    fs=1.0,
+    window="hann",
+    nperseg=256,
+    noverlap=None,
+    nfft=None,
+    detrend="constant",
+    return_onesided=True,
+    scaling="density",
+):
     """Estimate the cross spectral density using Welch's method.
 
     Args:
@@ -45,13 +55,30 @@ def csd(x, y, fs=1.0, window="hann", nperseg=256, noverlap=None, nfft=None,
         kwargs["noverlap"] = noverlap
     if nfft is not None:
         kwargs["nfft"] = nfft
-    return _signal.csd(x, y, fs=fs, window=window, nperseg=nperseg,
-                       detrend=detrend, return_onesided=return_onesided,
-                       scaling=scaling, **kwargs)
+    return _signal.csd(
+        x,
+        y,
+        fs=fs,
+        window=window,
+        nperseg=nperseg,
+        detrend=detrend,
+        return_onesided=return_onesided,
+        scaling=scaling,
+        **kwargs,
+    )
 
 
-def welch(x, fs=1.0, window="hann", nperseg=256, noverlap=None, nfft=None,
-          detrend="constant", return_onesided=True, scaling="density"):
+def welch(
+    x,
+    fs=1.0,
+    window="hann",
+    nperseg=256,
+    noverlap=None,
+    nfft=None,
+    detrend="constant",
+    return_onesided=True,
+    scaling="density",
+):
     """Estimate the power spectral density using Welch's method.
 
     Args:
@@ -77,13 +104,21 @@ def welch(x, fs=1.0, window="hann", nperseg=256, noverlap=None, nfft=None,
         kwargs["noverlap"] = noverlap
     if nfft is not None:
         kwargs["nfft"] = nfft
-    return _signal.welch(x, fs=fs, window=window, nperseg=nperseg,
-                         detrend=detrend, return_onesided=return_onesided,
-                         scaling=scaling, **kwargs)
+    return _signal.welch(
+        x,
+        fs=fs,
+        window=window,
+        nperseg=nperseg,
+        detrend=detrend,
+        return_onesided=return_onesided,
+        scaling=scaling,
+        **kwargs,
+    )
 
 
-def periodogram(x, fs=1.0, window="hann", nfft=None, detrend="constant",
-                return_onesided=True, scaling="density"):
+def periodogram(
+    x, fs=1.0, window="hann", nfft=None, detrend="constant", return_onesided=True, scaling="density"
+):
     """Estimate the power spectral density using a periodogram.
 
     Args:
@@ -104,13 +139,20 @@ def periodogram(x, fs=1.0, window="hann", nfft=None, detrend="constant",
     kwargs = {}
     if nfft is not None:
         kwargs["nfft"] = nfft
-    return _signal.periodogram(x, fs=fs, window=window, detrend=detrend,
-                               return_onesided=return_onesided,
-                               scaling=scaling, **kwargs)
+    return _signal.periodogram(
+        x,
+        fs=fs,
+        window=window,
+        detrend=detrend,
+        return_onesided=return_onesided,
+        scaling=scaling,
+        **kwargs,
+    )
 
 
-def coherence(x, y, fs=1.0, window="hann", nperseg=256, noverlap=None,
-              nfft=None, detrend="constant"):
+def coherence(
+    x, y, fs=1.0, window="hann", nperseg=256, noverlap=None, nfft=None, detrend="constant"
+):
     """Estimate the magnitude-squared coherence between two signals.
 
     Args:
@@ -133,13 +175,20 @@ def coherence(x, y, fs=1.0, window="hann", nperseg=256, noverlap=None,
         kwargs["noverlap"] = noverlap
     if nfft is not None:
         kwargs["nfft"] = nfft
-    return _signal.coherence(x, y, fs=fs, window=window, nperseg=nperseg,
-                             detrend=detrend, **kwargs)
+    return _signal.coherence(x, y, fs=fs, window=window, nperseg=nperseg, detrend=detrend, **kwargs)
 
 
-def spectrogram(x, fs=1.0, window="hann", nperseg=256, noverlap=None,
-                nfft=None, detrend="constant", return_onesided=True,
-                mode="psd"):
+def spectrogram(
+    x,
+    fs=1.0,
+    window="hann",
+    nperseg=256,
+    noverlap=None,
+    nfft=None,
+    detrend="constant",
+    return_onesided=True,
+    mode="psd",
+):
     """Compute a spectrogram using Welch's method.
 
     Args:
@@ -165,10 +214,16 @@ def spectrogram(x, fs=1.0, window="hann", nperseg=256, noverlap=None,
         kwargs["noverlap"] = noverlap
     if nfft is not None:
         kwargs["nfft"] = nfft
-    return _signal.spectrogram(x, fs=fs, window=window, nperseg=nperseg,
-                               detrend=detrend,
-                               return_onesided=return_onesided, mode=mode,
-                               **kwargs)
+    return _signal.spectrogram(
+        x,
+        fs=fs,
+        window=window,
+        nperseg=nperseg,
+        detrend=detrend,
+        return_onesided=return_onesided,
+        mode=mode,
+        **kwargs,
+    )
 
 
 def stft(x, fs=1.0, window="hann", nperseg=256, noverlap=None, nfft=None):

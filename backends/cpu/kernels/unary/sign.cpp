@@ -73,6 +73,19 @@ C_Status sign_kernel_cpu(void **inputs, void **outputs) {
       return v / norm;
     });
     break;
+  case INSIGHT_DTYPE_F16:
+    UNARY_HALF_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16,
+                    [](float v) {
+                      return ((v > 0.0f) ? 1.0f : (v < 0.0f) ? -1.0f : 0.0f);
+                    });
+    break;
+  case INSIGHT_DTYPE_BF16:
+    UNARY_HALF_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16,
+                    [](float v) {
+                      return ((v > 0.0f) ? 1.0f : (v < 0.0f) ? -1.0f : 0.0f);
+                    });
+    break;
+
   default:
     cpu_set_last_error("sign: unsupported dtype");
     return C_FAILED;
@@ -97,3 +110,5 @@ REGISTER_CPU_KERNEL(sign, INSIGHT_DTYPE_F32, sign_kernel_cpu);
 REGISTER_CPU_KERNEL(sign, INSIGHT_DTYPE_F64, sign_kernel_cpu);
 REGISTER_CPU_KERNEL(sign, INSIGHT_DTYPE_C32, sign_kernel_cpu);
 REGISTER_CPU_KERNEL(sign, INSIGHT_DTYPE_C64, sign_kernel_cpu);
+REGISTER_CPU_KERNEL(sign, INSIGHT_DTYPE_F16, sign_kernel_cpu);
+REGISTER_CPU_KERNEL(sign, INSIGHT_DTYPE_BF16, sign_kernel_cpu);

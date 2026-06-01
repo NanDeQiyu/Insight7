@@ -136,6 +136,15 @@ C_Status sub_kernel_gpu(void **inputs, void **outputs) {
                                         (cuDoubleComplex *)b->data,
                                         (cuDoubleComplex *)out->data, meta);
     break;
+  case INSIGHT_DTYPE_F16:
+    sub_kernel<__half><<<blocks, threads>>>(
+        (__half *)a->data, (__half *)b->data, (__half *)out->data, meta);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    sub_kernel<__nv_bfloat16><<<blocks, threads>>>(
+        (__nv_bfloat16 *)a->data, (__nv_bfloat16 *)b->data,
+        (__nv_bfloat16 *)out->data, meta);
+    break;
   default:
     free_elementwise_metadata(meta);
     gpu_set_last_error("sub: unsupported dtype");
@@ -170,3 +179,5 @@ REGISTER_GPU_KERNEL(sub, INSIGHT_DTYPE_U64, sub_kernel_gpu);
 REGISTER_GPU_KERNEL(sub, INSIGHT_DTYPE_BOOL, sub_kernel_gpu);
 REGISTER_GPU_KERNEL(sub, INSIGHT_DTYPE_C32, sub_kernel_gpu);
 REGISTER_GPU_KERNEL(sub, INSIGHT_DTYPE_C64, sub_kernel_gpu);
+REGISTER_GPU_KERNEL(sub, INSIGHT_DTYPE_F16, sub_kernel_gpu);
+REGISTER_GPU_KERNEL(sub, INSIGHT_DTYPE_BF16, sub_kernel_gpu);
