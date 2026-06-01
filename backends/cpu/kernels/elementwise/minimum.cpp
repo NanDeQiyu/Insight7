@@ -12,6 +12,7 @@
  * @return C_SUCCESS on success, C_FAILED on error
  */
 
+#include "../common/half_utils.h"
 #include "common.h"
 
 template <typename T>
@@ -80,6 +81,66 @@ C_Status minimum_kernel_cpu(void **inputs, void **outputs) {
   case INSIGHT_DTYPE_C64:
     ELEMENTWISE_KERNEL_LOOP_Func(std::complex<double>, min_complex);
     break;
+  case INSIGHT_DTYPE_F16: {
+    const uint16_t *a_data = (const uint16_t *)a->data;
+    const uint16_t *b_data = (const uint16_t *)b->data;
+    uint16_t *out_data = (uint16_t *)out->data;
+    int64_t ndim = out->ndim;
+    int64_t dims[INSIGHT_MAX_NDIM];
+    int64_t a_strides[INSIGHT_MAX_NDIM];
+    int64_t b_strides[INSIGHT_MAX_NDIM];
+    int64_t out_strides[INSIGHT_MAX_NDIM];
+    for (int i = 0; i < ndim; ++i) {
+      dims[i] = out->dims[i];
+      a_strides[i] = a->strides[i];
+      b_strides[i] = b->strides[i];
+      out_strides[i] = out->strides[i];
+    }
+    int64_t n = out->numel;
+#pragma omp parallel for
+    for (int64_t linear = 0; linear < n; ++linear) {
+      int64_t off_a =
+          a->offset + cpu_offset_from_linear(linear, ndim, dims, a_strides);
+      int64_t off_b =
+          b->offset + cpu_offset_from_linear(linear, ndim, dims, b_strides);
+      int64_t off_out =
+          out->offset + cpu_offset_from_linear(linear, ndim, dims, out_strides);
+      float va = insight::f16_to_f32(a_data[off_a]);
+      float vb = insight::f16_to_f32(b_data[off_b]);
+      out_data[off_out] = insight::f32_to_f16(std::min(va, vb));
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    const uint16_t *a_data = (const uint16_t *)a->data;
+    const uint16_t *b_data = (const uint16_t *)b->data;
+    uint16_t *out_data = (uint16_t *)out->data;
+    int64_t ndim = out->ndim;
+    int64_t dims[INSIGHT_MAX_NDIM];
+    int64_t a_strides[INSIGHT_MAX_NDIM];
+    int64_t b_strides[INSIGHT_MAX_NDIM];
+    int64_t out_strides[INSIGHT_MAX_NDIM];
+    for (int i = 0; i < ndim; ++i) {
+      dims[i] = out->dims[i];
+      a_strides[i] = a->strides[i];
+      b_strides[i] = b->strides[i];
+      out_strides[i] = out->strides[i];
+    }
+    int64_t n = out->numel;
+#pragma omp parallel for
+    for (int64_t linear = 0; linear < n; ++linear) {
+      int64_t off_a =
+          a->offset + cpu_offset_from_linear(linear, ndim, dims, a_strides);
+      int64_t off_b =
+          b->offset + cpu_offset_from_linear(linear, ndim, dims, b_strides);
+      int64_t off_out =
+          out->offset + cpu_offset_from_linear(linear, ndim, dims, out_strides);
+      float va = insight::bf16_to_f32(a_data[off_a]);
+      float vb = insight::bf16_to_f32(b_data[off_b]);
+      out_data[off_out] = insight::f32_to_bf16(std::min(va, vb));
+    }
+    break;
+  }
   default:
     cpu_set_last_error("minimum: unsupported dtype");
     return C_FAILED;
