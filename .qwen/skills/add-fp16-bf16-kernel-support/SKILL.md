@@ -280,17 +280,75 @@ For older GPUs, NVIDIA drivers provide software emulation automatically.
    but have no switch case. Always check the switch block, not just the
    REGISTER line.
 
-2. **cummin/cummax use uint16_t comparison**: Bit-pattern comparison is wrong
+2. **Switch-case brace mismatch (MOST COMMON BUG)**: When adding F16/BF16
+   cases to an existing `switch(out->dtype)` block, verify the switch closing
+   brace `}` is AFTER your new cases, not before. The typical mistake:
+
+   ```cpp
+   // BEFORE (original code):
+   case INSIGHT_DTYPE_I64:
+       // ... code ...
+       break;
+   }                    // ← switch closing brace
+   default:             // ← default is INSIDE switch
+       return C_FAILED;
+   }
+
+   // WRONG (agent adds F16 after switch closing brace):
+   case INSIGHT_DTYPE_I64:
+       break;
+   }                    // ← switch closes here
+   case INSIGHT_DTYPE_F16: {   // ← ERROR: "not within a switch statement"
+       // ...
+   }
+   default:
+       return C_FAILED;
+   }
+
+   // CORRECT:
+   case INSIGHT_DTYPE_I64:
+       break;
+   case INSIGHT_DTYPE_F16: {
+       // ... use local variables inside braces ...
+       break;
+   }
+   default:
+       return C_FAILED;
+   }                    // ← switch closes AFTER all cases
+   ```
+
+   **Symptoms**: `error: case label 'INSIGHT_DTYPE_F16' not within a switch
+   statement` or `error: jump to case label crosses initialization`.
+
+   **Fix**: Remove the premature `}` after the last original case, add F16/BF16
+   cases, then close the switch after `default:`.
+
+3. **Variable scope in case blocks**: F16/BF16 cases must use `{ }` braces
+   around variable declarations. Without them, `default:` jumps over
+   initializations → `error: jump to case label crosses initialization of
+   'int64_t total'`. Use unique variable names (e.g., `total_f16`) or put
+   declarations inside the `{ }` block.
+
+4. **Include path**: From `backends/cpu/kernels/<module>/`, the include is
+   `#include "../common/half_utils.h"` (one level up). NOT
+   `#include "common/half_utils.h"`.
+
+5. **cummin/cummax use uint16_t comparison**: Bit-pattern comparison is wrong
    for negative numbers, denormals, NaN. Must convert to float for comparison.
 
-3. **isnan/isinf/isfinite return trivial results**: Currently return false/true
+6. **isnan/isinf/isfinite return trivial results**: Currently return false/true
    directly for half types. Should check actual bit patterns (exp=0x1F).
 
-4. **Type promotion**: F16+BF16 promotes to BF16 (higher enum value), which
+7. **Type promotion**: F16+BF16 promotes to BF16 (higher enum value), which
    is arguably wrong — should promote to F32.
 
-5. **No cast to/from half**: Without cast kernels, you can't get half-precision
+8. **No cast to/from half**: Without cast kernels, you can't get half-precision
    data in or out. Cast kernels are prerequisite for any real usage.
+
+9. **Agent conflicts**: When dispatching multiple agents to modify kernel files
+   in the same directory, they may fight over the same file (one writes, another
+   reverts). Either assign each agent to a unique set of files, or stop agents
+   before making manual fixes.
 
 ## Verification
 
