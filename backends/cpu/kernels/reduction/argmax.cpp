@@ -65,6 +65,44 @@ C_Status argmax_kernel_cpu(void **inputs, void **outputs) {
   case INSIGHT_DTYPE_F64:
     REDUCE_ARGMAX_LOOP(double);
     break;
+  case INSIGHT_DTYPE_F16: {
+    int64_t *dst = (int64_t *)out->data;
+    const uint16_t *src = (const uint16_t *)prepared->data;
+    int64_t batch_size = *(int64_t *)inputs[2];
+    int64_t reduce_size = *(int64_t *)inputs[3];
+    _Pragma("omp parallel for") for (int64_t i = 0; i < batch_size; ++i) {
+      int64_t max_idx = 0;
+      float max_val = insight::f16_to_f32(src[i * reduce_size]);
+      for (int64_t j = 1; j < reduce_size; ++j) {
+        float val = insight::f16_to_f32(src[i * reduce_size + j]);
+        if (val > max_val) {
+          max_val = val;
+          max_idx = j;
+        }
+      }
+      dst[i] = max_idx;
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    int64_t *dst = (int64_t *)out->data;
+    const uint16_t *src = (const uint16_t *)prepared->data;
+    int64_t batch_size = *(int64_t *)inputs[2];
+    int64_t reduce_size = *(int64_t *)inputs[3];
+    _Pragma("omp parallel for") for (int64_t i = 0; i < batch_size; ++i) {
+      int64_t max_idx = 0;
+      float max_val = insight::bf16_to_f32(src[i * reduce_size]);
+      for (int64_t j = 1; j < reduce_size; ++j) {
+        float val = insight::bf16_to_f32(src[i * reduce_size + j]);
+        if (val > max_val) {
+          max_val = val;
+          max_idx = j;
+        }
+      }
+      dst[i] = max_idx;
+    }
+    break;
+  }
   default:
     cpu_set_last_error("argmax: unsupported dtype");
     return C_FAILED;
@@ -87,3 +125,5 @@ REGISTER_CPU_KERNEL(argmax, INSIGHT_DTYPE_U32, argmax_kernel_cpu);
 REGISTER_CPU_KERNEL(argmax, INSIGHT_DTYPE_U64, argmax_kernel_cpu);
 REGISTER_CPU_KERNEL(argmax, INSIGHT_DTYPE_F32, argmax_kernel_cpu);
 REGISTER_CPU_KERNEL(argmax, INSIGHT_DTYPE_F64, argmax_kernel_cpu);
+REGISTER_CPU_KERNEL(argmax, INSIGHT_DTYPE_F16, argmax_kernel_cpu);
+REGISTER_CPU_KERNEL(argmax, INSIGHT_DTYPE_BF16, argmax_kernel_cpu);
