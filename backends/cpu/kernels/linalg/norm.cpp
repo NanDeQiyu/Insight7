@@ -6,8 +6,8 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -156,7 +156,7 @@ C_Status norm_kernel_cpu(void **inputs, void **outputs) {
       }
       float result = norm_vec_f32(tmp.data(), n, ord);
       *dst = (x->dtype == INSIGHT_DTYPE_F16) ? insight::f32_to_f16(result)
-                                              : insight::f32_to_bf16(result);
+                                             : insight::f32_to_bf16(result);
     } else {
       double *dst = (double *)out->data;
       *dst = norm_vec_f64((double *)x->data, n, ord);
@@ -182,7 +182,7 @@ C_Status norm_kernel_cpu(void **inputs, void **outputs) {
       }
       float result = norm_mat_f32(tmp.data(), m, n, ord);
       *dst = (x->dtype == INSIGHT_DTYPE_F16) ? insight::f32_to_f16(result)
-                                              : insight::f32_to_bf16(result);
+                                             : insight::f32_to_bf16(result);
     } else {
       double *dst = (double *)out->data;
       *dst = norm_mat_f64((double *)x->data, m, n, ord);

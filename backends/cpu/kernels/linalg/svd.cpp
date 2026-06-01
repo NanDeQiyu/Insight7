@@ -6,8 +6,8 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -124,8 +124,7 @@ C_Status svd_kernel_cpu(void **inputs, void **outputs) {
   if (x->dtype == INSIGHT_DTYPE_F32) {
     svd_f32((float *)x->data, (float *)U->data, (float *)S->data,
             (float *)VT->data, m, n, full);
-  } else if (x->dtype == INSIGHT_DTYPE_F16 ||
-             x->dtype == INSIGHT_DTYPE_BF16) {
+  } else if (x->dtype == INSIGHT_DTYPE_F16 || x->dtype == INSIGHT_DTYPE_BF16) {
     const uint16_t *x_src = (const uint16_t *)x->data;
     uint16_t *u_dst = (uint16_t *)U->data;
     uint16_t *s_dst = (uint16_t *)S->data;

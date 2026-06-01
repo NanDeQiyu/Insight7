@@ -131,7 +131,9 @@ local function run_fft_gpu()
 end
 
 local ok = pcall(ins.init, { "cpu", "cuda" })
-if not ok then ins.init({ "cpu" }) end
+if not ok then
+  ins.init({ "cpu" })
+end
 
 print("Insight7 FFT Demo (Lua)")
 

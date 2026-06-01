@@ -6,8 +6,8 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 
 #include <vector>
 

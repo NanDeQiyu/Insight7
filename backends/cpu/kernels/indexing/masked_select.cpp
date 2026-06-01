@@ -135,7 +135,6 @@ REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_I64, masked_select_kernel_cpu);
 REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_U8, masked_select_kernel_cpu);
 REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_BOOL,
                     masked_select_kernel_cpu);
-REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_F16,
-                    masked_select_kernel_cpu);
+REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_F16, masked_select_kernel_cpu);
 REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_BF16,
                     masked_select_kernel_cpu);

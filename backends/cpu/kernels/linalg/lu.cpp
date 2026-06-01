@@ -7,8 +7,8 @@
  * a hand-optimized implementation.
  */
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -262,14 +262,14 @@ C_Status lu_kernel_cpu(void **inputs, void **outputs) {
   } else
 
 #ifdef INSIGHT_USE_OPENBLAS
-  if (x->dtype == INSIGHT_DTYPE_F32) {
+      if (x->dtype == INSIGHT_DTYPE_F32) {
     lu_f32_lapack((const float *)x->data, (float *)LU_arr->data, ipiv, n);
   } else {
     lu_f64_lapack((const double *)x->data, (double *)LU_arr->data, ipiv, n);
   }
 #else
-  // Fallback: copy input to output first, then perform in-place decomposition
-  memcpy(LU_arr->data, x->data, n * n * insight_dtype_size(x->dtype));
+    // Fallback: copy input to output first, then perform in-place decomposition
+    memcpy(LU_arr->data, x->data, n * n * insight_dtype_size(x->dtype));
   if (x->dtype == INSIGHT_DTYPE_F32) {
     lu_f32_fallback((float *)LU_arr->data, ipiv, n);
   } else {

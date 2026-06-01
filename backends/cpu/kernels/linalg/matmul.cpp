@@ -7,8 +7,8 @@
  * Uses OpenBLAS if available, otherwise falls back to simple loops.
  */
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 
 #include <cstring>
 #include <vector>
@@ -197,7 +197,7 @@ static void matmul_f64_batched(const double *a, const double *b, double *c,
 // half-precision helper: convert -> f32 compute -> convert back
 // -----------------------------------------------------------------------------
 static C_Status matmul_half_kernel(InsightArray *a, InsightArray *b,
-                                  InsightArray *out, bool is_f16) {
+                                   InsightArray *out, bool is_f16) {
   auto to_f32_vec = [&](const uint16_t *src, int64_t n) {
     std::vector<float> dst(n);
     if (is_f16) {

@@ -6,8 +6,8 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 
 #include <vector>
 
@@ -87,8 +87,7 @@ C_Status solve_kernel_cpu(void **inputs, void **outputs) {
 
   if (A->dtype == INSIGHT_DTYPE_F32) {
     solve_f32((float *)A->data, (float *)B->data, (float *)out->data, n, nrhs);
-  } else if (A->dtype == INSIGHT_DTYPE_F16 ||
-             A->dtype == INSIGHT_DTYPE_BF16) {
+  } else if (A->dtype == INSIGHT_DTYPE_F16 || A->dtype == INSIGHT_DTYPE_BF16) {
     const uint16_t *a_src = (const uint16_t *)A->data;
     const uint16_t *b_src = (const uint16_t *)B->data;
     uint16_t *x_dst = (uint16_t *)out->data;

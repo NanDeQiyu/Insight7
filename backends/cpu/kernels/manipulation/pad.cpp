@@ -16,8 +16,8 @@
  * @return C_SUCCESS on success, C_FAILED on error
  */
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 #include <complex>
 #include <cstring>
 

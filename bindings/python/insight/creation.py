@@ -90,6 +90,15 @@ def full(shape, fill_value, dtype=DType.float32, place=None):
 
 
 __all__ = [
-    "zeros", "ones", "full", "eye", "arange", "linspace", "logspace",
-    "from_numpy", "from_array", "zeros_like", "ones_like",
+    "zeros",
+    "ones",
+    "full",
+    "eye",
+    "arange",
+    "linspace",
+    "logspace",
+    "from_numpy",
+    "from_array",
+    "zeros_like",
+    "ones_like",
 ]

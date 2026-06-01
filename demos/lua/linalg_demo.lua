@@ -34,7 +34,9 @@ local function run_cpu_linalg()
   print(tostring(C32))
 
   -- Determinant
-  local ok_det, det_val = pcall(function() return ins.det(A)[1] end)
+  local ok_det, det_val = pcall(function()
+    return ins.det(A)[1]
+  end)
   if ok_det then
     print(string.format("det([[1,2],[3,4]]) = %g", det_val))
   else
@@ -89,13 +91,17 @@ local function run_gpu_linalg()
   print(tostring(C32:to(ins.CPUPlace())))
 
   local A = ins.from_table({ { 1, 2 }, { 3, 4 } }):to(ins.GPUPlace(0))
-  local ok_gdet, gdet = pcall(function() return ins.det(A):to(ins.CPUPlace())[1] end)
+  local ok_gdet, gdet = pcall(function()
+    return ins.det(A):to(ins.CPUPlace())[1]
+  end)
   if ok_gdet then
     print(string.format("GPU det = %g", gdet))
   else
     print("GPU det: skipped (requires OpenBLAS)")
   end
-  local ok_ginv, A_inv_gpu = pcall(function() return ins.inv(A):to(ins.CPUPlace()) end)
+  local ok_ginv, A_inv_gpu = pcall(function()
+    return ins.inv(A):to(ins.CPUPlace())
+  end)
   if ok_ginv then
     print("GPU inv:")
     print(tostring(A_inv_gpu))
@@ -113,7 +119,9 @@ local function run_gpu_linalg()
 end
 
 local ok = pcall(ins.init, { "cpu", "cuda" })
-if not ok then ins.init({ "cpu" }) end
+if not ok then
+  ins.init({ "cpu" })
+end
 
 print("Insight7 Linear Algebra Demo (Lua)")
 

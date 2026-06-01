@@ -4,8 +4,8 @@
  * @brief CPU kernel for outer product of two 1D vectors.
  */
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 
 #include <vector>
 
@@ -57,7 +57,8 @@ C_Status outer_kernel_cpu(void **inputs, void **outputs) {
       for (int i = 0; i < m; ++i) {
         float ai = insight::f16_to_f32(a_data[i]);
         for (int j = 0; j < n; ++j) {
-          dst[i * n + j] = insight::f32_to_f16(ai * insight::f16_to_f32(b_data[j]));
+          dst[i * n + j] =
+              insight::f32_to_f16(ai * insight::f16_to_f32(b_data[j]));
         }
       }
     } else {

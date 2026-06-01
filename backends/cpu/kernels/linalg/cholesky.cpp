@@ -6,8 +6,8 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -110,8 +110,7 @@ C_Status cholesky_kernel_cpu(void **inputs, void **outputs) {
 
   if (x->dtype == INSIGHT_DTYPE_F32) {
     cholesky_f32((float *)x->data, (float *)out->data, n, lower);
-  } else if (x->dtype == INSIGHT_DTYPE_F16 ||
-             x->dtype == INSIGHT_DTYPE_BF16) {
+  } else if (x->dtype == INSIGHT_DTYPE_F16 || x->dtype == INSIGHT_DTYPE_BF16) {
     const uint16_t *x_src = (const uint16_t *)x->data;
     uint16_t *dst = (uint16_t *)out->data;
     bool is_f16 = (x->dtype == INSIGHT_DTYPE_F16);

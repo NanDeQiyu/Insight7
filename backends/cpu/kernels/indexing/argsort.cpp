@@ -15,8 +15,8 @@
  * @return C_SUCCESS on success, C_FAILED on error
  */
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 #include <algorithm>
 #include <vector>
 
@@ -134,17 +134,15 @@ C_Status argsort_kernel_cpu(void **inputs, void **outputs) {
       for (int64_t i = 0; i < last_dim; ++i)
         indices[i] = i;
       if (descending) {
-        std::sort(indices.begin(), indices.end(),
-                  [&](int64_t a, int64_t b) {
-                    return insight::f16_to_f32(src[batch * last_dim + a]) >
-                           insight::f16_to_f32(src[batch * last_dim + b]);
-                  });
+        std::sort(indices.begin(), indices.end(), [&](int64_t a, int64_t b) {
+          return insight::f16_to_f32(src[batch * last_dim + a]) >
+                 insight::f16_to_f32(src[batch * last_dim + b]);
+        });
       } else {
-        std::sort(indices.begin(), indices.end(),
-                  [&](int64_t a, int64_t b) {
-                    return insight::f16_to_f32(src[batch * last_dim + a]) <
-                           insight::f16_to_f32(src[batch * last_dim + b]);
-                  });
+        std::sort(indices.begin(), indices.end(), [&](int64_t a, int64_t b) {
+          return insight::f16_to_f32(src[batch * last_dim + a]) <
+                 insight::f16_to_f32(src[batch * last_dim + b]);
+        });
       }
       for (int64_t i = 0; i < last_dim; ++i) {
         out_data[batch * last_dim + i] = indices[i];
@@ -159,17 +157,15 @@ C_Status argsort_kernel_cpu(void **inputs, void **outputs) {
       for (int64_t i = 0; i < last_dim; ++i)
         indices[i] = i;
       if (descending) {
-        std::sort(indices.begin(), indices.end(),
-                  [&](int64_t a, int64_t b) {
-                    return insight::bf16_to_f32(src[batch * last_dim + a]) >
-                           insight::bf16_to_f32(src[batch * last_dim + b]);
-                  });
+        std::sort(indices.begin(), indices.end(), [&](int64_t a, int64_t b) {
+          return insight::bf16_to_f32(src[batch * last_dim + a]) >
+                 insight::bf16_to_f32(src[batch * last_dim + b]);
+        });
       } else {
-        std::sort(indices.begin(), indices.end(),
-                  [&](int64_t a, int64_t b) {
-                    return insight::bf16_to_f32(src[batch * last_dim + a]) <
-                           insight::bf16_to_f32(src[batch * last_dim + b]);
-                  });
+        std::sort(indices.begin(), indices.end(), [&](int64_t a, int64_t b) {
+          return insight::bf16_to_f32(src[batch * last_dim + a]) <
+                 insight::bf16_to_f32(src[batch * last_dim + b]);
+        });
       }
       for (int64_t i = 0; i < last_dim; ++i) {
         out_data[batch * last_dim + i] = indices[i];

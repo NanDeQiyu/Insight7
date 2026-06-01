@@ -4,8 +4,8 @@
  * @brief CPU kernel for trace of a square matrix.
  */
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 
 #ifdef __cplusplus
 extern "C" {

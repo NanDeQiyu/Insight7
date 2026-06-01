@@ -7,8 +7,8 @@
  * otherwise falls back to a hand-optimized Householder implementation.
  */
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -350,7 +350,7 @@ C_Status qr_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 #else
-  if (x->dtype == INSIGHT_DTYPE_F64) {
+      if (x->dtype == INSIGHT_DTYPE_F64) {
     qr_f64_fallback((double *)x->data, (double *)Q->data, (double *)R->data, m,
                     n, mode);
   } else if (x->dtype == INSIGHT_DTYPE_F32) {

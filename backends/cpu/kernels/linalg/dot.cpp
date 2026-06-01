@@ -4,8 +4,8 @@
  * @brief CPU kernel for dot product of two 1D vectors.
  */
 
-#include "common.h"
 #include "../common/half_utils.h"
+#include "common.h"
 
 #include <vector>
 
@@ -64,8 +64,8 @@ C_Status dot_kernel_cpu(void **inputs, void **outputs) {
       *dst = insight::f32_to_f16(sum);
     } else {
       for (int i = 0; i < n; ++i)
-        sum += insight::bf16_to_f32(a_data[i]) *
-               insight::bf16_to_f32(b_data[i]);
+        sum +=
+            insight::bf16_to_f32(a_data[i]) * insight::bf16_to_f32(b_data[i]);
       *dst = insight::f32_to_bf16(sum);
     }
   } else {
