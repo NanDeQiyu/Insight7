@@ -166,4 +166,31 @@ function M.size(arr)
   return arr.numel
 end
 
+-- ============================================================================
+-- Load sub-modules
+-- ============================================================================
+
+-- Signal submodule
+local ok_signal, signal_mod = pcall(require, "insight.signal")
+if ok_signal then
+  M.signal = signal_mod
+end
+
+-- Non-signal sub-modules (organized by C++ source structure)
+local submodules = {
+  "elementwise", "unary", "reduction", "manipulation",
+  "linalg", "fft", "complex", "random", "cast", "indexing",
+}
+
+for _, mod_name in ipairs(submodules) do
+  local ok_mod, mod = pcall(require, "insight." .. mod_name)
+  if ok_mod then
+    for k, v in pairs(mod) do
+      if M[k] == nil then
+        M[k] = v
+      end
+    end
+  end
+end
+
 return M

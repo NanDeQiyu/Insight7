@@ -226,13 +226,12 @@ def exponential(scale, shape, dtype=None, place=None):
     return _exponential(scale, shape, **kwargs)
 
 
-def gamma(shape_p, rate, out_shape, dtype=None, place=None):
+def gamma(alpha, shape, dtype=None, place=None):
     """Create an array with values from a gamma distribution.
 
     Args:
-        shape_p: Shape parameter (alpha) of the gamma distribution.
-        rate: Rate parameter (1 / theta) of the gamma distribution.
-        out_shape: Shape of the output array.
+        alpha: Shape parameter (k) of the gamma distribution.
+        shape: Shape of the output array.
         dtype: Data type of the output.  Default is ``float32``.
         place: Device placement.  Default is the current device.
 
@@ -244,7 +243,7 @@ def gamma(shape_p, rate, out_shape, dtype=None, place=None):
         kwargs["dtype"] = dtype
     if place is not None:
         kwargs["place"] = place
-    return _gamma(shape_p, rate, out_shape, **kwargs)
+    return _gamma(alpha, shape, **kwargs)
 
 
 def beta(a, b, shape, dtype=None, place=None):

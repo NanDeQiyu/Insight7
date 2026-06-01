@@ -1,7 +1,5 @@
 # demos/CMakeLists.txt
 
-file(GLOB DEMO_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
-
 # Helper function to create a demo target with backend DLL copying
 function(add_insight_demo TARGET_NAME SOURCE_FILE)
     add_executable(${TARGET_NAME} ${SOURCE_FILE})
@@ -41,17 +39,17 @@ function(add_insight_demo TARGET_NAME SOURCE_FILE)
     endif()
 endfunction()
 
-# Register each demo
-add_insight_demo(demo_basic_ops   basic_ops.cpp)
-add_insight_demo(demo_linalg      linalg_demo.cpp)
-add_insight_demo(demo_fft         fft_demo.cpp)
-add_insight_demo(demo_gpu_transfer gpu_transfer.cpp)
+# Register each C++ demo (sources in cpp/ subdirectory)
+add_insight_demo(demo_basic_ops    cpp/basic_ops.cpp)
+add_insight_demo(demo_linalg       cpp/linalg_demo.cpp)
+add_insight_demo(demo_fft          cpp/fft_demo.cpp)
+add_insight_demo(demo_gpu_transfer cpp/gpu_transfer.cpp)
 
 if(INSIGHT_USE_SNDFILE)
-    add_insight_demo(demo_sndfile sndfile_demo.cpp)
+    add_insight_demo(demo_sndfile cpp/sndfile_demo.cpp)
     target_compile_definitions(demo_sndfile PRIVATE
         AUDIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../audio"
     )
 endif()
 
-add_insight_demo(demo_radar_task1 radar_task1.cpp)
+add_insight_demo(demo_radar_task1  cpp/radar_task1.cpp)
