@@ -17,6 +17,7 @@
  * @return C_SUCCESS on success, C_FAILED on error
  */
 
+#include "../common/half_utils.h"
 #include "common.h"
 #include <string.h>
 
@@ -363,6 +364,96 @@ C_Status scatter_reduce_kernel_cpu(void **inputs, void **outputs) {
       }
     }
     break;
+  case INSIGHT_DTYPE_F16: {
+    uint16_t *dst = (uint16_t *)out->data;
+    const uint16_t *src_data = (const uint16_t *)src->data;
+    int64_t total = idx->numel;
+    int64_t src_size = src->numel;
+    for (int64_t linear = 0; linear < total; ++linear) {
+      int64_t indices[INSIGHT_MAX_NDIM];
+      int64_t tmp = linear;
+      for (int d = ndim - 1; d >= 0; --d) {
+        indices[d] = tmp % dims[d];
+        tmp /= dims[d];
+      }
+      int64_t pos = idx_data[linear];
+      if (pos < 0)
+        pos += out->dims[dim];
+      int64_t out_offset = 0;
+      for (int d = 0; d < ndim; ++d) {
+        if (d == dim)
+          out_offset += pos * out_strides[d];
+        else
+          out_offset += indices[d] * out_strides[d];
+      }
+      uint16_t sval = src_data[linear % src_size];
+      if (replace) {
+        dst[out_offset] = sval;
+      } else if (add) {
+        dst[out_offset] = insight::f32_to_f16(
+            insight::f16_to_f32(dst[out_offset]) + insight::f16_to_f32(sval));
+      } else if (mul) {
+        dst[out_offset] = insight::f32_to_f16(
+            insight::f16_to_f32(dst[out_offset]) * insight::f16_to_f32(sval));
+      } else if (max_op) {
+        float dv = insight::f16_to_f32(dst[out_offset]);
+        float sv = insight::f16_to_f32(sval);
+        if (sv > dv)
+          dst[out_offset] = sval;
+      } else if (min_op) {
+        float dv = insight::f16_to_f32(dst[out_offset]);
+        float sv = insight::f16_to_f32(sval);
+        if (sv < dv)
+          dst[out_offset] = sval;
+      }
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    uint16_t *dst = (uint16_t *)out->data;
+    const uint16_t *src_data = (const uint16_t *)src->data;
+    int64_t total = idx->numel;
+    int64_t src_size = src->numel;
+    for (int64_t linear = 0; linear < total; ++linear) {
+      int64_t indices[INSIGHT_MAX_NDIM];
+      int64_t tmp = linear;
+      for (int d = ndim - 1; d >= 0; --d) {
+        indices[d] = tmp % dims[d];
+        tmp /= dims[d];
+      }
+      int64_t pos = idx_data[linear];
+      if (pos < 0)
+        pos += out->dims[dim];
+      int64_t out_offset = 0;
+      for (int d = 0; d < ndim; ++d) {
+        if (d == dim)
+          out_offset += pos * out_strides[d];
+        else
+          out_offset += indices[d] * out_strides[d];
+      }
+      uint16_t sval = src_data[linear % src_size];
+      if (replace) {
+        dst[out_offset] = sval;
+      } else if (add) {
+        dst[out_offset] = insight::f32_to_bf16(
+            insight::bf16_to_f32(dst[out_offset]) + insight::bf16_to_f32(sval));
+      } else if (mul) {
+        dst[out_offset] = insight::f32_to_bf16(
+            insight::bf16_to_f32(dst[out_offset]) * insight::bf16_to_f32(sval));
+      } else if (max_op) {
+        float dv = insight::bf16_to_f32(dst[out_offset]);
+        float sv = insight::bf16_to_f32(sval);
+        if (sv > dv)
+          dst[out_offset] = sval;
+      } else if (min_op) {
+        float dv = insight::bf16_to_f32(dst[out_offset]);
+        float sv = insight::bf16_to_f32(sval);
+        if (sv < dv)
+          dst[out_offset] = sval;
+      }
+    }
+    break;
+  }
   default:
     cpu_set_last_error("scatter_reduce: unsupported dtype");
     return C_FAILED;
@@ -382,4 +473,8 @@ REGISTER_CPU_KERNEL(scatter_reduce, INSIGHT_DTYPE_F64,
 REGISTER_CPU_KERNEL(scatter_reduce, INSIGHT_DTYPE_I32,
                     scatter_reduce_kernel_cpu);
 REGISTER_CPU_KERNEL(scatter_reduce, INSIGHT_DTYPE_I64,
+                    scatter_reduce_kernel_cpu);
+REGISTER_CPU_KERNEL(scatter_reduce, INSIGHT_DTYPE_F16,
+                    scatter_reduce_kernel_cpu);
+REGISTER_CPU_KERNEL(scatter_reduce, INSIGHT_DTYPE_BF16,
                     scatter_reduce_kernel_cpu);
