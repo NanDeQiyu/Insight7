@@ -740,6 +740,18 @@ end
 # FFT
 # ============================================================================
 
+"""
+    fft(x::InsightArray; n::Union{Int,Nothing}=nothing) -> InsightArray
+
+1-D discrete Fourier transform.
+
+# Arguments
+- `x`: Input array (real or complex).
+- `n`: Length of the transform (default: same as input length).
+
+# Returns
+- `InsightArray`: Complex-valued DFT result.
+"""
 function fft(x::InsightArray; n::Union{Int,Nothing}=nothing)::InsightArray
     has_n = n !== nothing ? Int32(1) : Int32(0)
     nv = n !== nothing ? Int64(n) : Int64(-1)
