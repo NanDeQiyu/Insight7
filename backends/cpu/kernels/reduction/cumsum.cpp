@@ -171,3 +171,5 @@ REGISTER_CPU_KERNEL(cumsum, INSIGHT_DTYPE_F32, cumsum_kernel_cpu);
 REGISTER_CPU_KERNEL(cumsum, INSIGHT_DTYPE_F64, cumsum_kernel_cpu);
 REGISTER_CPU_KERNEL(cumsum, INSIGHT_DTYPE_I32, cumsum_kernel_cpu);
 REGISTER_CPU_KERNEL(cumsum, INSIGHT_DTYPE_I64, cumsum_kernel_cpu);
+REGISTER_CPU_KERNEL(cumsum, INSIGHT_DTYPE_F16, cumsum_kernel_cpu);
+REGISTER_CPU_KERNEL(cumsum, INSIGHT_DTYPE_BF16, cumsum_kernel_cpu);
