@@ -11,10 +11,11 @@
 extern "C" {
 
 // lfilter_zi kernel
-// inputs: [0]=b_norm (normalized numerator), [1]=a_norm (normalized denominator)
-// outputs: [0]=zi (initial conditions, length max(nb,na)-1)
+// inputs: [0]=b_norm (normalized numerator), [1]=a_norm (normalized
+// denominator) outputs: [0]=zi (initial conditions, length max(nb,na)-1)
 //
-// Both b_norm and a_norm are pre-normalized by a[0] and passed as double arrays.
+// Both b_norm and a_norm are pre-normalized by a[0] and passed as double
+// arrays.
 C_Status lfilter_zi_kernel_cpu(void **inputs, void **outputs) {
   InsightArray *b_arr = (InsightArray *)inputs[0];
   InsightArray *a_arr = (InsightArray *)inputs[1];

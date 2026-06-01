@@ -10,8 +10,8 @@
 extern "C" {
 
 // ca_cfar kernel — 1D and 2D
-// inputs: [0]=data, [1]=alpha (scalar f64), [2]=guard_cells (int32), [3]=reference_cells (int32)
-// outputs: [0]=threshold, [1]=detections (bool)
+// inputs: [0]=data, [1]=alpha (scalar f64), [2]=guard_cells (int32),
+// [3]=reference_cells (int32) outputs: [0]=threshold, [1]=detections (bool)
 C_Status ca_cfar_kernel_cpu(void **inputs, void **outputs) {
   InsightArray *data = (InsightArray *)inputs[0];
   InsightArray *alpha_arr = (InsightArray *)inputs[1];
@@ -132,7 +132,8 @@ C_Status ca_cfar_kernel_cpu(void **inputs, void **outputs) {
           }
           double noise_level = ref_sum / ref_count;
           th_data[row * cols + col] = noise_level * alpha;
-          det_data[row * cols + col] = src[row * cols + col] > th_data[row * cols + col];
+          det_data[row * cols + col] =
+              src[row * cols + col] > th_data[row * cols + col];
         }
       }
     } else {
@@ -173,7 +174,8 @@ C_Status ca_cfar_kernel_cpu(void **inputs, void **outputs) {
           }
           float noise_level = ref_sum / ref_count;
           th_data[row * cols + col] = noise_level * static_cast<float>(alpha);
-          det_data[row * cols + col] = src[row * cols + col] > th_data[row * cols + col];
+          det_data[row * cols + col] =
+              src[row * cols + col] > th_data[row * cols + col];
         }
       }
     }

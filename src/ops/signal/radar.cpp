@@ -81,9 +81,7 @@ Array pulse_compression(const Array &x, const Array &template_tx,
 
   for (int64_t p = 0; p < num_pulses; ++p) {
     // Extract pulse p using slice
-    Array pulse =
-        slice(x_cpu, {0, 1}, {static_cast<int>(p), 0},
-              {static_cast<int>(p + 1), static_cast<int>(samples_per_pulse)});
+    Array pulse = slice(x_cpu, {Slice(p, p + 1), Slice(0, samples_per_pulse)});
     pulse = reshape(pulse, {samples_per_pulse});
     if (pulse.dtype() != work_dtype)
       pulse = pulse.to(work_dtype);

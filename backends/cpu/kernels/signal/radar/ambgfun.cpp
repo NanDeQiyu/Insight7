@@ -15,7 +15,8 @@
 extern "C" {
 
 // ambgfun kernel
-// inputs: [0]=x_data (complex128, normalized), [1]=y_data (complex128, normalized),
+// inputs: [0]=x_data (complex128, normalized), [1]=y_data (complex128,
+// normalized),
 //         [2]=params (float64 array: [fs, N, M])
 // outputs: [0]=ambg (float64, doppler_len x delay_len)
 //
