@@ -1,6 +1,7 @@
 // src/ops/signal/estimation.cpp
 #include "insight/ops/signal/estimation.h"
 #include "insight/core/exception.h"
+#include "insight/core/op_registry.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
 #include "insight/ops/linalg.h"
@@ -26,68 +27,24 @@ Array batched_eye(int points, int n, DType dtype, const Place &place) {
   return stack(copies, 0);
 }
 
-// Simple Gauss-Jordan inverse for small matrices (no LAPACK dependency)
+// Simple Gauss-Jordan inverse for small matrices (backend kernel)
 Array simple_inv(const Array &mat) {
-  int n = mat.shape().dim(0);
   Place cpu = CPUPlace();
-  DType dtype = mat.dtype();
-
   Array m = (mat.place().kind() == DeviceKind::CPU) ? mat : mat.to(cpu);
+  DType dtype = m.dtype();
+  int n = m.shape().dim(0);
 
-  Array result = eye(n, n, 0, dtype, cpu);
+  // Ensure F64 for the kernel (kernel expects double)
+  if (dtype != DType::F64)
+    m = m.to(DType::F64);
 
-  // Work with copies
-  std::vector<double> A(n * n), I(n * n);
-  if (dtype == DType::F64) {
-    const double *src = m.data<double>();
-    for (int i = 0; i < n * n; ++i)
-      A[i] = src[i];
-  } else {
-    const float *src = m.data<float>();
-    for (int i = 0; i < n * n; ++i)
-      A[i] = src[i];
-  }
-  for (int i = 0; i < n; ++i)
-    I[i * n + i] = 1.0;
+  Array out = zeros({n, n}, DType::F64, cpu);
+  ops().launch("simple_inv", cpu, DType::F64, {(void *)m.layout_ptr()},
+               {out.layout_ptr()});
 
-  for (int col = 0; col < n; ++col) {
-    int pivot = col;
-    double max_val = std::abs(A[col * n + col]);
-    for (int row = col + 1; row < n; ++row) {
-      if (std::abs(A[row * n + col]) > max_val) {
-        max_val = std::abs(A[row * n + col]);
-        pivot = row;
-      }
-    }
-    if (pivot != col) {
-      for (int j = 0; j < n; ++j) {
-        std::swap(A[col * n + j], A[pivot * n + j]);
-        std::swap(I[col * n + j], I[pivot * n + j]);
-      }
-    }
-    double piv = A[col * n + col];
-    for (int j = 0; j < n; ++j) {
-      A[col * n + j] /= piv;
-      I[col * n + j] /= piv;
-    }
-    for (int row = 0; row < n; ++row) {
-      if (row == col)
-        continue;
-      double factor = A[row * n + col];
-      for (int j = 0; j < n; ++j) {
-        A[row * n + j] -= factor * A[col * n + j];
-        I[row * n + j] -= factor * I[col * n + j];
-      }
-    }
-  }
-
-  if (dtype == DType::F64) {
-    return to_array(std::vector<double>(I.begin(), I.end()), Shape({n, n}),
-                    dtype, cpu);
-  } else {
-    std::vector<float> I_f(I.begin(), I.end());
-    return to_array(I_f, Shape({n, n}), dtype, cpu);
-  }
+  if (dtype != DType::F64)
+    out = out.to(dtype);
+  return out;
 }
 
 } // anonymous namespace

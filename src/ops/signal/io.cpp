@@ -1,4 +1,9 @@
 // src/ops/signal/io.cpp
+//
+// I/O functions are exempt from the no-raw-pointer rule because they
+// interface with the operating system's file I/O API which requires
+// raw buffer access (ifs.read, ofs.write, memcpy for binary data).
+//
 #include "insight/ops/signal/io.h"
 #include "insight/c_api/dtype.h"
 #include "insight/core/exception.h"

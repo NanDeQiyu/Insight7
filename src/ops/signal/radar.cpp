@@ -1,6 +1,8 @@
 // src/ops/signal/radar.cpp
 #include "insight/ops/signal/radar.h"
 #include "insight/core/exception.h"
+#include "insight/core/op_registry.h"
+#include "insight/ops/cast.h"
 #include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
@@ -142,8 +144,7 @@ Array pulse_doppler(const Array &x, const std::string &window, int64_t nfft) {
 
   std::vector<Array> col_results;
   for (int64_t s = 0; s < samples_per_pulse; ++s) {
-    Array col =
-        slice(x_t_cpu, {0}, {static_cast<int>(s)}, {static_cast<int>(s + 1)});
+    Array col = slice(x_t_cpu, 0, s, s + 1);
     col = reshape(col, {num_pulses});
 
     Array col_cpx = to_complex(col);
@@ -195,73 +196,66 @@ std::pair<Array, Array> ca_cfar(const Array &data,
     alpha = cfar_alpha(pfa, N_row * N_col);
   }
 
-  int64_t total = data_cpu.numel();
-  Array threshold = zeros(data.shape(), work_dtype, cpu);
-  Array detections = zeros(data.shape(), DType::BOOL, cpu);
-
   if (ndim == 1) {
     int64_t n = data.shape().dim(0);
     int g = guard_cells.empty() ? 1 : guard_cells[0];
     int r = reference_cells.empty() ? 1 : reference_cells[0];
 
-    if (work_dtype == DType::F64) {
-      const double *src = data_cpu.data<double>();
-      double *th = threshold.data<double>();
-      bool *det = detections.data<bool>();
+    // Build cumsum using composite op: prepend 0, then cumsum
+    Array zero_elem = zeros({1}, work_dtype, cpu);
+    Array data_with_zero = concat({zero_elem, data_cpu}, 0);
+    Array cs_arr = cumsum(data_with_zero, 0);
 
-      // Use cumsum for efficient cell averaging
-      std::vector<double> cumsum(n + 1, 0.0);
-      for (int64_t i = 0; i < n; ++i)
-        cumsum[i + 1] = cumsum[i] + src[i];
+    // Helper to read cumsum value
+    auto cs_val = [&](int64_t idx) -> double {
+      Array v = slice(cs_arr, 0, idx, idx + 1);
+      return (work_dtype == DType::F64) ? v.item<double>()
+                                        : static_cast<double>(v.item<float>());
+    };
 
-      for (int64_t i = 0; i < n; ++i) {
-        int64_t left_start = std::max((int64_t)0, i - g - r);
-        int64_t left_end = std::max((int64_t)0, i - g);
-        int64_t right_start = std::min(n, i + g + 1);
-        int64_t right_end = std::min(n, i + g + r + 1);
+    // Helper to read data value
+    auto data_val = [&](int64_t idx) -> double {
+      Array v = slice(data_cpu, 0, idx, idx + 1);
+      return (work_dtype == DType::F64) ? v.item<double>()
+                                        : static_cast<double>(v.item<float>());
+    };
 
-        int64_t count = (left_end - left_start) + (right_end - right_start);
-        if (count == 0) {
-          th[i] = 0;
-          det[i] = false;
-          continue;
-        }
+    std::vector<double> th_vec(n);
+    std::vector<bool> det_vec(n);
 
-        double sum_lr = (cumsum[left_end] - cumsum[left_start]) +
-                        (cumsum[right_end] - cumsum[right_start]);
-        double noise_level = sum_lr / count;
-        th[i] = noise_level * alpha;
-        det[i] = src[i] > th[i];
+    for (int64_t i = 0; i < n; ++i) {
+      int64_t left_start = std::max((int64_t)0, i - g - r);
+      int64_t left_end = std::max((int64_t)0, i - g);
+      int64_t right_start = std::min(n, i + g + 1);
+      int64_t right_end = std::min(n, i + g + r + 1);
+
+      int64_t count = (left_end - left_start) + (right_end - right_start);
+      if (count == 0) {
+        th_vec[i] = 0;
+        det_vec[i] = false;
+        continue;
       }
-    } else {
-      const float *src = data_cpu.data<float>();
-      float *th = threshold.data<float>();
-      bool *det = detections.data<bool>();
 
-      std::vector<float> cumsum(n + 1, 0.0f);
-      for (int64_t i = 0; i < n; ++i)
-        cumsum[i + 1] = cumsum[i] + src[i];
-
-      for (int64_t i = 0; i < n; ++i) {
-        int64_t left_start = std::max((int64_t)0, i - g - r);
-        int64_t left_end = std::max((int64_t)0, i - g);
-        int64_t right_start = std::min(n, i + g + 1);
-        int64_t right_end = std::min(n, i + g + r + 1);
-
-        int64_t count = (left_end - left_start) + (right_end - right_start);
-        if (count == 0) {
-          th[i] = 0;
-          det[i] = false;
-          continue;
-        }
-
-        float sum_lr = (cumsum[left_end] - cumsum[left_start]) +
-                       (cumsum[right_end] - cumsum[right_start]);
-        float noise_level = sum_lr / count;
-        th[i] = noise_level * static_cast<float>(alpha);
-        det[i] = src[i] > th[i];
-      }
+      double sum_lr = (cs_val(left_end) - cs_val(left_start)) +
+                      (cs_val(right_end) - cs_val(right_start));
+      double noise_level = sum_lr / count;
+      th_vec[i] = noise_level * alpha;
+      det_vec[i] = data_val(i) > th_vec[i];
     }
+
+    Array threshold = to_array(th_vec, work_dtype, cpu);
+    std::vector<uint8_t> det_bytes(n);
+    for (int64_t i = 0; i < n; ++i)
+      det_bytes[i] = det_vec[i] ? 1 : 0;
+    Array detections = to_array(det_bytes, DType::U8, cpu);
+    detections = cast(detections, DType::BOOL);
+
+    if (data.place().kind() != DeviceKind::CPU) {
+      threshold = threshold.to(data.place());
+      detections = detections.to(data.place());
+    }
+    return {threshold, detections};
+
   } else if (ndim == 2) {
     int64_t rows = data.shape().dim(0);
     int64_t cols = data.shape().dim(1);
@@ -270,101 +264,75 @@ std::pair<Array, Array> ca_cfar(const Array &data,
     int rr = reference_cells.empty() ? 1 : reference_cells[0];
     int rc = reference_cells.size() > 1 ? reference_cells[1] : rr;
 
-    if (work_dtype == DType::F64) {
-      const double *src = data_cpu.data<double>();
-      double *th = threshold.data<double>();
-      bool *det = detections.data<bool>();
-
-      // Build 2D cumsum
-      std::vector<double> cs((rows + 1) * (cols + 1), 0.0);
-      for (int64_t r = 0; r < rows; ++r) {
-        for (int64_t c = 0; c < cols; ++c) {
-          cs[(r + 1) * (cols + 1) + (c + 1)] =
-              src[r * cols + c] + cs[r * (cols + 1) + (c + 1)] +
-              cs[(r + 1) * (cols + 1) + c] - cs[r * (cols + 1) + c];
-        }
-      }
-
-      for (int64_t r = 0; r < rows; ++r) {
-        for (int64_t c = 0; c < cols; ++c) {
-          int64_t r0 = std::max((int64_t)0, r - gr - rr);
-          int64_t r1 = std::max((int64_t)0, r - gr);
-          int64_t r2 = std::min(rows, r + gr + 1);
-          int64_t r3 = std::min(rows, r + gr + rr + 1);
-          int64_t c0 = std::max((int64_t)0, c - gc - rc);
-          int64_t c1 = std::max((int64_t)0, c - gc);
-          int64_t c2 = std::min(cols, c + gc + 1);
-          int64_t c3 = std::min(cols, c + gc + rc + 1);
-
-          double outer = cs[r3 * (cols + 1) + c3] - cs[r0 * (cols + 1) + c3] -
-                         cs[r3 * (cols + 1) + c0] + cs[r0 * (cols + 1) + c0];
-          double inner = cs[r2 * (cols + 1) + c2] - cs[r1 * (cols + 1) + c2] -
-                         cs[r2 * (cols + 1) + c1] + cs[r1 * (cols + 1) + c1];
-          double ref_sum = outer - inner;
-
-          int64_t ref_count = ((r3 - r0) * (c3 - c0)) - ((r2 - r1) * (c2 - c1));
-          if (ref_count <= 0) {
-            th[r * cols + c] = 0;
-            det[r * cols + c] = false;
-            continue;
-          }
-
-          double noise_level = ref_sum / ref_count;
-          th[r * cols + c] = noise_level * alpha;
-          det[r * cols + c] = src[r * cols + c] > th[r * cols + c];
-        }
-      }
-    } else {
-      const float *src = data_cpu.data<float>();
-      float *th = threshold.data<float>();
-      bool *det = detections.data<bool>();
-
-      std::vector<float> cs((rows + 1) * (cols + 1), 0.0f);
-      for (int64_t r = 0; r < rows; ++r) {
-        for (int64_t c = 0; c < cols; ++c) {
-          cs[(r + 1) * (cols + 1) + (c + 1)] =
-              src[r * cols + c] + cs[r * (cols + 1) + (c + 1)] +
-              cs[(r + 1) * (cols + 1) + c] - cs[r * (cols + 1) + c];
-        }
-      }
-
-      for (int64_t r = 0; r < rows; ++r) {
-        for (int64_t c = 0; c < cols; ++c) {
-          int64_t r0 = std::max((int64_t)0, r - gr - rr);
-          int64_t r1 = std::max((int64_t)0, r - gr);
-          int64_t r2 = std::min(rows, r + gr + 1);
-          int64_t r3 = std::min(rows, r + gr + rr + 1);
-          int64_t c0 = std::max((int64_t)0, c - gc - rc);
-          int64_t c1 = std::max((int64_t)0, c - gc);
-          int64_t c2 = std::min(cols, c + gc + 1);
-          int64_t c3 = std::min(cols, c + gc + rc + 1);
-
-          float outer = cs[r3 * (cols + 1) + c3] - cs[r0 * (cols + 1) + c3] -
-                        cs[r3 * (cols + 1) + c0] + cs[r0 * (cols + 1) + c0];
-          float inner = cs[r2 * (cols + 1) + c2] - cs[r1 * (cols + 1) + c2] -
-                        cs[r2 * (cols + 1) + c1] + cs[r1 * (cols + 1) + c1];
-          float ref_sum = outer - inner;
-
-          int64_t ref_count = ((r3 - r0) * (c3 - c0)) - ((r2 - r1) * (c2 - c1));
-          if (ref_count <= 0) {
-            th[r * cols + c] = 0;
-            det[r * cols + c] = false;
-            continue;
-          }
-
-          float noise_level = ref_sum / ref_count;
-          th[r * cols + c] = noise_level * static_cast<float>(alpha);
-          det[r * cols + c] = src[r * cols + c] > th[r * cols + c];
-        }
+    // Build 2D cumsum using element-wise reads
+    std::vector<double> cs((rows + 1) * (cols + 1), 0.0);
+    for (int64_t r = 0; r < rows; ++r) {
+      for (int64_t c = 0; c < cols; ++c) {
+        Array di = slice(data_cpu, {Slice(r, r + 1), Slice(c, c + 1)});
+        double val = (work_dtype == DType::F64)
+                         ? di.item<double>()
+                         : static_cast<double>(di.item<float>());
+        cs[(r + 1) * (cols + 1) + (c + 1)] =
+            val + cs[r * (cols + 1) + (c + 1)] + cs[(r + 1) * (cols + 1) + c] -
+            cs[r * (cols + 1) + c];
       }
     }
+
+    std::vector<double> th_vec(rows * cols);
+    std::vector<bool> det_vec(rows * cols);
+
+    for (int64_t r = 0; r < rows; ++r) {
+      for (int64_t c = 0; c < cols; ++c) {
+        int64_t r0 = std::max((int64_t)0, r - gr - rr);
+        int64_t r1 = std::max((int64_t)0, r - gr);
+        int64_t r2 = std::min(rows, r + gr + 1);
+        int64_t r3 = std::min(rows, r + gr + rr + 1);
+        int64_t c0 = std::max((int64_t)0, c - gc - rc);
+        int64_t c1 = std::max((int64_t)0, c - gc);
+        int64_t c2 = std::min(cols, c + gc + 1);
+        int64_t c3 = std::min(cols, c + gc + rc + 1);
+
+        double outer = cs[r3 * (cols + 1) + c3] - cs[r0 * (cols + 1) + c3] -
+                       cs[r3 * (cols + 1) + c0] + cs[r0 * (cols + 1) + c0];
+        double inner = cs[r2 * (cols + 1) + c2] - cs[r1 * (cols + 1) + c2] -
+                       cs[r2 * (cols + 1) + c1] + cs[r1 * (cols + 1) + c1];
+        double ref_sum = outer - inner;
+
+        int64_t ref_count = ((r3 - r0) * (c3 - c0)) - ((r2 - r1) * (c2 - c1));
+        if (ref_count <= 0) {
+          th_vec[r * cols + c] = 0;
+          det_vec[r * cols + c] = false;
+          continue;
+        }
+
+        double noise_level = ref_sum / ref_count;
+        th_vec[r * cols + c] = noise_level * alpha;
+
+        Array di = slice(data_cpu, {Slice(r, r + 1), Slice(c, c + 1)});
+        double di_val = (work_dtype == DType::F64)
+                            ? di.item<double>()
+                            : static_cast<double>(di.item<float>());
+        det_vec[r * cols + c] = di_val > th_vec[r * cols + c];
+      }
+    }
+
+    Array threshold = to_array(th_vec, Shape({rows, cols}), work_dtype, cpu);
+    std::vector<uint8_t> det_bytes(rows * cols);
+    for (int64_t i = 0; i < rows * cols; ++i)
+      det_bytes[i] = det_vec[i] ? 1 : 0;
+    Array detections = to_array(det_bytes, Shape({rows, cols}), DType::U8, cpu);
+    detections = cast(detections, DType::BOOL);
+
+    if (data.place().kind() != DeviceKind::CPU) {
+      threshold = threshold.to(data.place());
+      detections = detections.to(data.place());
+    }
+    return {threshold, detections};
   }
 
-  if (data.place().kind() != DeviceKind::CPU) {
-    threshold = threshold.to(data.place());
-    detections = detections.to(data.place());
-  }
-  return {threshold, detections};
+  // Should not reach here
+  return {zeros(data.shape(), work_dtype, cpu),
+          zeros(data.shape(), DType::BOOL, cpu)};
 }
 
 // ============================================================================
@@ -445,30 +413,29 @@ Array ambgfun(const Array &x, double fs, double prf, const Array &y,
 
   // Convert to complex vectors
   std::vector<std::complex<double>> x_data(N), y_data(M);
-  auto to_cpx = [](const Array &arr, std::vector<std::complex<double>> &out) {
+  // Convert to complex using composite ops
+  Array x_cpx = x_cpu;
+  if (x_cpu.dtype() != DType::C64 && x_cpu.dtype() != DType::C32) {
+    x_cpx = to_complex(x_cpu);
+  }
+  Array y_cpx = y_cpu;
+  if (y_cpu.dtype() != DType::C64 && y_cpu.dtype() != DType::C32) {
+    y_cpx = to_complex(y_cpu);
+  }
+
+  // Build complex vectors using element-wise reads
+  auto read_cpx = [](const Array &arr, std::vector<std::complex<double>> &out) {
     int64_t n = arr.numel();
-    if (arr.dtype() == DType::C64) {
-      const std::complex<double> *d =
-          reinterpret_cast<const std::complex<double> *>(arr.data<char>());
-      for (int64_t i = 0; i < n; ++i)
-        out[i] = d[i];
-    } else if (arr.dtype() == DType::C32) {
-      const std::complex<float> *d =
-          reinterpret_cast<const std::complex<float> *>(arr.data<char>());
-      for (int64_t i = 0; i < n; ++i)
-        out[i] = d[i];
-    } else if (arr.dtype() == DType::F64) {
-      const double *d = arr.data<double>();
-      for (int64_t i = 0; i < n; ++i)
-        out[i] = {d[i], 0.0};
-    } else {
-      const float *d = arr.data<float>();
-      for (int64_t i = 0; i < n; ++i)
-        out[i] = {d[i], 0.0};
+    Array r = real(arr);
+    Array im = imag(arr);
+    for (int64_t i = 0; i < n; ++i) {
+      double rv = slice(r, 0, i, i + 1).item<double>();
+      double iv = slice(im, 0, i, i + 1).item<double>();
+      out[i] = {rv, iv};
     }
   };
-  to_cpx(x_cpu, x_data);
-  to_cpx(y_cpu, y_data);
+  read_cpx(x_cpx, x_data);
+  read_cpx(y_cpx, y_data);
 
   // Normalize
   double x_norm = 0, y_norm = 0;
