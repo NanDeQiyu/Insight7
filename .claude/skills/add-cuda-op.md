@@ -31,6 +31,11 @@ REGISTER_GPU_KERNEL(<op>, INSIGHT_DTYPE_F32, <op>_kernel_gpu);
 - 每个算子一个文件
 - `common.cuh` 提供模块内共享的结构体、工具函数、宏
 
+**Signal kernel 命名规范**: 所有 signal 模块的 kernel 必须使用 `signal_` 前缀，
+例如 `signal_morlet_kernel_gpu`、`signal_lombscargle_kernel_gpu`。
+注册时也用 `REGISTER_GPU_KERNEL(signal_morlet, dtype, func)`。
+CUDA signal kernel 使用 256 threads/block。dtype 支持: F64, F32, F16, BF16。
+
 ## 3. common.cuh 设计
 
 每个模块根据自身需求在 `common.cuh` 中定义所需内容，包括但不限于：

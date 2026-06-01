@@ -3,11 +3,40 @@ name: fix-cuda-kernel-interface-mismatch
 description: Fix CUDA kernels whose input/output interface doesn't match the CPU kernel, causing segfaults or wrong results.
 source: auto-skill
 extracted_at: '2026-05-29T12:00:00.000Z'
+updated: '2026-06-01'
 ---
 
 # Fix CUDA Kernel Interface Mismatch
 
 The most common source of segfaults and wrong results in CUDA kernels is a mismatch between the kernel's `inputs[]`/`outputs[]` expectations and what the frontend actually passes.
+
+## Signal Kernel Interface Patterns (2026-06-01)
+
+All 14 signal submodules have backend kernels with `signal_` prefix convention.
+Common signal kernel interface patterns:
+
+### Window/waveform kernels (data generation, no input array)
+```
+inputs[0..N-1] = scalar parameters as 1-element arrays (e.g., alpha, width)
+outputs[0]     = output array (pre-allocated by frontend)
+```
+Example: `signal_morlet` — inputs: [width_arr, center_arr, s_arr], output: [wavelet_arr]
+On CUDA, copy scalar params to host with `cudaMemcpy` before launch.
+
+### Filter/processing kernels
+```
+inputs[0] = coefficients/weights array
+inputs[1] = input signal array
+inputs[2..N] = scalar parameters (axis, mode, etc.)
+outputs[0] = output signal array
+```
+Example: `lfilter` — inputs: [b, a, x], output: [y]
+
+### Key rules for signal kernels:
+- Kernel name must use `signal_` prefix in both `REGISTER_*_KERNEL` and `ops().launch()`
+- dtype support: CPU (F64, F32), CUDA (F64, F32, F16, BF16)
+- CUDA kernels: 256 threads/block
+- CPU kernels: OpenMP when `numel > 1000`
 
 ## How to Diagnose
 

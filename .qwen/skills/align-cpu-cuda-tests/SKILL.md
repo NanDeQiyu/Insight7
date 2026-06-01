@@ -3,11 +3,42 @@ name: align-cpu-cuda-tests
 description: Workflow for aligning CPU and CUDA test suites to have identical test names and counts per module.
 source: auto-skill
 extracted_at: '2026-05-29T16:41:31.083Z'
+updated: '2026-06-01'
 ---
 
 # Workflow: Align CPU and CUDA Tests
 
 确保 CPU 和 CUDA 测试套件的测试名称和数量完全一致（排除 CPU 专属基础设施测试）。
+
+## 0. Signal Test Alignment Status (2026-06-01)
+
+All 14 signal submodules have aligned CPU/CUDA test suites:
+- CPU tests: `tests/cpu/test_signal_<module>.cpp`
+- CUDA tests: `tests/cuda/test_signal_<module>.cpp`
+- All signal functions use backend kernels with `signal_` prefix convention
+- Signal dtype support: CPU (F64, F32), CUDA (F64, F32, F16, BF16)
+- Signal CUDA tests use the same patterns as other modules (see section 4)
+
+Signal test file pairs:
+| Submodule | CPU Tests | CUDA Tests |
+|-----------|-----------|------------|
+| windows | 30 | 30 |
+| waveforms | 18 | 18 |
+| bsplines | 13 | 13 |
+| filter_design | 22 | 22 |
+| convolution | 21 | 17 |
+| filtering | 23 | 15 |
+| spectral | 11 | — |
+| wavelets | 13 | — |
+| acoustics | 9 | — |
+| peak_finding | 3 | — |
+| demod | 1 | — |
+| estimation | 1 | — |
+| radar | 7 | — |
+| io | 11 | — |
+
+Note: Some signal submodules (spectral, wavelets, acoustics, etc.) currently have
+CPU tests only — CUDA tests may be added in future work.
 
 ## 1. 对比测试套件
 

@@ -1,11 +1,17 @@
 ---
 name: migrate-signal-to-backend-kernels
-description: Move signal frontend raw pointer operations into registered backend kernels following project HAL conventions
+description: Move signal frontend raw pointer operations into registered backend kernels following project HAL conventions — COMPLETE as of 2026-06-01
 source: auto-skill
 extracted_at: '2026-06-01T15:54:00.295Z'
 ---
 
-# Migrate Signal Functions to Backend Kernels
+# Migrate Signal Functions to Backend Kernels — COMPLETE
+
+> **STATUS: COMPLETE (2026-06-01)** — All 14 signal submodules have been migrated to
+> registered backend kernels. 50 total kernels with `signal_` prefix convention.
+> dtype support: CPU (F64, F32), CUDA (F64, F32, F16, BF16).
+> OpenMP parallelism enabled for CPU kernels when M > 1000.
+> CUDA kernels use 256 threads/block.
 
 ## Problem
 
@@ -225,7 +231,13 @@ done
 
 ## Complete Module Coverage (2026-06-01)
 
-All 14 signal submodules now have backend kernels:
+All 14 signal submodules now have backend kernels. Kernel naming convention:
+all signal kernels use `signal_` prefix to avoid collisions with non-signal kernels
+(e.g., `signal_exponential` not `exponential`, which collides with `random/exponential`).
+
+**dtype support**: CPU (F64, F32), CUDA (F64, F32, F16, BF16)
+**CPU parallelism**: OpenMP `#pragma omp parallel for if (numel > 1000)` for element-wise kernels
+**CUDA config**: 256 threads/block, `elementwise_blocks(numel)` for grid dimensions
 
 | Module | Kernel Count | Key Kernels |
 |--------|-------------|-------------|
@@ -243,3 +255,4 @@ All 14 signal submodules now have backend kernels:
 | estimation | 1 | simple_inv |
 | radar | 2 | ca_cfar, ambgfun |
 | demod | 0 | (pure composite — no kernel needed) |
+| **Total** | **50** | |

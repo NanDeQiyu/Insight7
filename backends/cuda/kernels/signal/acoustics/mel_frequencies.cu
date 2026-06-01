@@ -7,6 +7,8 @@
 // outputs[0]: frequency array (F64)
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
@@ -17,6 +19,41 @@ __global__ void signal_mel_frequencies_kernel(double *out, int64_t n_mels,
     return;
   double mel_val = mel_low + (double)i * mel_step;
   out[i] = 700.0 * (pow(10.0, mel_val / 2595.0) - 1.0);
+}
+
+__global__ void signal_mel_frequencies_kernel_f32(float *out, int64_t n_mels,
+                                                  float mel_low,
+                                                  float mel_step) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n_mels)
+    return;
+  float mel_val = mel_low + (float)i * mel_step;
+  out[i] = 700.0f * (powf(10.0f, mel_val / 2595.0f) - 1.0f);
+}
+
+__global__ void signal_mel_frequencies_kernel_f16(uint16_t *out, int64_t n_mels,
+                                                  float mel_low,
+                                                  float mel_step) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n_mels)
+    return;
+  float mel_val = mel_low + (float)i * mel_step;
+  float result = 700.0f * (powf(10.0f, mel_val / 2595.0f) - 1.0f);
+  __half res = __float2half(result);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void signal_mel_frequencies_kernel_bf16(uint16_t *out,
+                                                   int64_t n_mels,
+                                                   float mel_low,
+                                                   float mel_step) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n_mels)
+    return;
+  float mel_val = mel_low + (float)i * mel_step;
+  float result = 700.0f * (powf(10.0f, mel_val / 2595.0f) - 1.0f);
+  __nv_bfloat16 res = __float2bfloat16(result);
+  out[i] = *(uint16_t *)&res;
 }
 
 extern "C" {
@@ -62,8 +99,22 @@ C_Status signal_mel_frequencies_kernel_gpu(void **inputs, void **outputs) {
     signal_mel_frequencies_kernel<<<blocks, threads>>>(
         (double *)out->data, n_mels, mel_low, mel_step);
     break;
+  case INSIGHT_DTYPE_F32:
+    signal_mel_frequencies_kernel_f32<<<blocks, threads>>>(
+        (float *)out->data, n_mels, (float)mel_low, (float)mel_step);
+    break;
+  case INSIGHT_DTYPE_F16:
+    signal_mel_frequencies_kernel_f16<<<blocks, threads>>>(
+        (uint16_t *)out->data, n_mels, (float)mel_low, (float)mel_step);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    signal_mel_frequencies_kernel_bf16<<<blocks, threads>>>(
+        (uint16_t *)out->data, n_mels, (float)mel_low, (float)mel_step);
+    break;
   default:
-    gpu_set_last_error("signal_mel_frequencies: only F64 dtype supported");
+    gpu_set_last_error(
+        "signal_mel_frequencies: unsupported dtype, need F32, F64, F16, or "
+        "BF16");
     return C_FAILED;
   }
 
@@ -78,4 +129,10 @@ C_Status signal_mel_frequencies_kernel_gpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_GPU_KERNEL(signal_mel_frequencies, INSIGHT_DTYPE_F64,
+                    signal_mel_frequencies_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_mel_frequencies, INSIGHT_DTYPE_F32,
+                    signal_mel_frequencies_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_mel_frequencies, INSIGHT_DTYPE_F16,
+                    signal_mel_frequencies_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_mel_frequencies, INSIGHT_DTYPE_BF16,
                     signal_mel_frequencies_kernel_gpu);

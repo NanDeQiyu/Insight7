@@ -5,6 +5,8 @@
 // outputs[0]: mel array (same type)
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
@@ -14,6 +16,28 @@ __global__ void signal_hz2mel_kernel(T *out, const T *in, int64_t n) {
   if (i >= n)
     return;
   out[i] = T(2595.0) * log10(T(1.0) + in[i] / T(700.0));
+}
+
+__global__ void signal_hz2mel_kernel_f16(uint16_t *out, const uint16_t *in,
+                                         int64_t n) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+  float val = __half2float(*(const __half *)&in[i]);
+  float result = 2595.0f * log10f(1.0f + val / 700.0f);
+  __half res = __float2half(result);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void signal_hz2mel_kernel_bf16(uint16_t *out, const uint16_t *in,
+                                          int64_t n) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+  float val = __bfloat162float(*(const __nv_bfloat16 *)&in[i]);
+  float result = 2595.0f * log10f(1.0f + val / 700.0f);
+  __nv_bfloat16 res = __float2bfloat16(result);
+  out[i] = *(uint16_t *)&res;
 }
 
 extern "C" {
@@ -48,8 +72,17 @@ C_Status signal_hz2mel_kernel_gpu(void **inputs, void **outputs) {
     signal_hz2mel_kernel<float><<<blocks, threads>>>(
         (float *)mel_arr->data, (const float *)hz_arr->data, n);
     break;
+  case INSIGHT_DTYPE_F16:
+    signal_hz2mel_kernel_f16<<<blocks, threads>>>(
+        (uint16_t *)mel_arr->data, (const uint16_t *)hz_arr->data, n);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    signal_hz2mel_kernel_bf16<<<blocks, threads>>>(
+        (uint16_t *)mel_arr->data, (const uint16_t *)hz_arr->data, n);
+    break;
   default:
-    gpu_set_last_error("signal_hz2mel: unsupported dtype, need F32 or F64");
+    gpu_set_last_error(
+        "signal_hz2mel: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -65,3 +98,6 @@ C_Status signal_hz2mel_kernel_gpu(void **inputs, void **outputs) {
 
 REGISTER_GPU_KERNEL(signal_hz2mel, INSIGHT_DTYPE_F64, signal_hz2mel_kernel_gpu);
 REGISTER_GPU_KERNEL(signal_hz2mel, INSIGHT_DTYPE_F32, signal_hz2mel_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_hz2mel, INSIGHT_DTYPE_F16, signal_hz2mel_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_hz2mel, INSIGHT_DTYPE_BF16,
+                    signal_hz2mel_kernel_gpu);

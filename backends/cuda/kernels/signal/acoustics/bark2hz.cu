@@ -6,6 +6,8 @@
 // bark array (F64 or F32) outputs[0]: hz array (same type)
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
@@ -65,6 +67,50 @@ __global__ void signal_bark2hz_kernel_f32(float *out, const float *in,
   out[i] = h;
 }
 
+__global__ void signal_bark2hz_kernel_f16(uint16_t *out, const uint16_t *in,
+                                          int64_t n) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+  float val = __half2float(*(const __half *)&in[i]);
+  float b = val;
+  float h = 600.0f * sinhf(b / 3.0f);
+  for (int iter = 0; iter < 5; ++iter) {
+    double hd = (double)h;
+    double f = bark_func_dev(hd) - (double)b;
+    double df = bark_deriv_dev(hd);
+    if (fabs(df) < 1e-30)
+      break;
+    h -= (float)(f / df);
+    if (h < 0.0f)
+      h = 0.0f;
+  }
+  __half res = __float2half(h);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void signal_bark2hz_kernel_bf16(uint16_t *out, const uint16_t *in,
+                                           int64_t n) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+  float val = __bfloat162float(*(const __nv_bfloat16 *)&in[i]);
+  float b = val;
+  float h = 600.0f * sinhf(b / 3.0f);
+  for (int iter = 0; iter < 5; ++iter) {
+    double hd = (double)h;
+    double f = bark_func_dev(hd) - (double)b;
+    double df = bark_deriv_dev(hd);
+    if (fabs(df) < 1e-30)
+      break;
+    h -= (float)(f / df);
+    if (h < 0.0f)
+      h = 0.0f;
+  }
+  __nv_bfloat16 res = __float2bfloat16(h);
+  out[i] = *(uint16_t *)&res;
+}
+
 extern "C" {
 
 C_Status signal_bark2hz_kernel_gpu(void **inputs, void **outputs) {
@@ -97,8 +143,17 @@ C_Status signal_bark2hz_kernel_gpu(void **inputs, void **outputs) {
     signal_bark2hz_kernel_f32<<<blocks, threads>>>(
         (float *)hz_arr->data, (const float *)bark_arr->data, n);
     break;
+  case INSIGHT_DTYPE_F16:
+    signal_bark2hz_kernel_f16<<<blocks, threads>>>(
+        (uint16_t *)hz_arr->data, (const uint16_t *)bark_arr->data, n);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    signal_bark2hz_kernel_bf16<<<blocks, threads>>>(
+        (uint16_t *)hz_arr->data, (const uint16_t *)bark_arr->data, n);
+    break;
   default:
-    gpu_set_last_error("signal_bark2hz: unsupported dtype, need F32 or F64");
+    gpu_set_last_error(
+        "signal_bark2hz: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -115,4 +170,8 @@ C_Status signal_bark2hz_kernel_gpu(void **inputs, void **outputs) {
 REGISTER_GPU_KERNEL(signal_bark2hz, INSIGHT_DTYPE_F64,
                     signal_bark2hz_kernel_gpu);
 REGISTER_GPU_KERNEL(signal_bark2hz, INSIGHT_DTYPE_F32,
+                    signal_bark2hz_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_bark2hz, INSIGHT_DTYPE_F16,
+                    signal_bark2hz_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_bark2hz, INSIGHT_DTYPE_BF16,
                     signal_bark2hz_kernel_gpu);

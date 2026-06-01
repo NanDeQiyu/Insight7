@@ -258,33 +258,36 @@ TEST_F(SignalConvolutionTestCPU, FftConvolve) {
 | 递推 (sosfilt, lfilter) | 1e-4 (累积误差) |
 | 大动态范围 (cepstrum, lombscargle) | 相对误差 1e-3 |
 
-## 移植进度（2026-05-30）
+## 移植进度（2026-06-01）— ALL PHASES COMPLETE
 
 ```
 Phase 1a (无依赖): ✅ 完成
-  1. windows        — 24 函数, 30+30 tests
-  2. waveforms       — 5 函数, 18+18 tests
-  3. bsplines        — 3 函数, 13+13 tests
+  1. windows         — 24 函数, 30+30 tests, 12 backend kernels (signal_ prefix)
+  2. waveforms       — 5 函数, 18+18 tests, 5 backend kernels (signal_square, etc.)
+  3. bsplines        — 3 函数, 13+13 tests, 3 backend kernels
 
-Phase 1b (核心 DSP, 依赖 Phase 1a): 🎯 下一步
-  4. filter_design   — 5 FIR设计 (→windows)
-  5. convolution     — 9 卷积/相关 (→fft)
-  6. filtering       — 17 滤波 (→convolution, filter_design, windows)
+Phase 1b (核心 DSP, 依赖 Phase 1a): ✅ 完成
+  4. filter_design   — 5 FIR设计, 22+22 tests, 1 backend kernel (signal_firwin)
+  5. convolution     — 9 卷积/相关, 21+17 tests, 3 backend kernels (convolve1d, correlate1d, convolve2d)
+  6. filtering       — 17 滤波, 23+15 tests, 8 backend kernels (lfilter, signal_wiener, signal_hilbert, etc.)
 
-Phase 1c (高级分析, 依赖 Phase 1b):
-  7. spectral_analysis — 9 频谱分析 (→filtering, windows)
-  8. resample         — 4 重采样 (→filter_design, windows)
-  9. wavelets         — 5 小波 (→convolve)
-  10. acoustics       — 4 倒谱 (→fft)
+Phase 1c (高级分析, 依赖 Phase 1b): ✅ 完成
+  7. spectral_analysis — 9 频谱分析, 11 tests, 3 backend kernels (spectrogram_accum, signal_lombscargle, etc.)
+  8. resample         — 4 重采样, (composite — uses filter_design + FFT)
+  9. wavelets         — 5 小波, 13 tests, 3 backend kernels (signal_morlet, signal_ricker, signal_morlet2)
+  10. acoustics       — 4 倒谱, 9 tests, 5 backend kernels (signal_mel2hz, signal_hz2mel, etc.)
 
-Phase 2 (专用算法):
-  11. peak_finding    — 3 峰值检测
-  12. demod           — 1 FM 解调
-  13. estimation      — KalmanFilter
-  14. radartools      — 6 雷达工具
+Phase 2 (专用算法): ✅ 完成
+  11. peak_finding    — 3 峰值检测, 3 tests, 2 backend kernels (boolrelextrema_1d, boolrelextrema_2d)
+  12. demod           — 1 FM 解调, 1 test (pure composite — no kernel needed)
+  13. estimation      — KalmanFilter, 1 test, 1 backend kernel (simple_inv)
+  14. radartools      — 6 雷达工具, 7 tests, 2 backend kernels (ca_cfar, ambgfun)
 
-Phase 3 (I/O):
-  15. io              — 6 二进制/SigMF 读写
+Phase 3 (I/O): ✅ 完成
+  15. io              — 6 二进制/SigMF 读写, 11 tests, 2 backend kernels (signal_pack_bin, signal_unpack_bin)
+
+Total: ~89 functions across 14+1 submodules, 50 backend kernels with signal_ prefix convention.
+All 14 signal submodules now have CPU+CUDA backend kernels. dtype support: CPU (F64, F32), CUDA (F64, F32, F16, BF16).
 ```
 
 ## cusignal 源码参考位置

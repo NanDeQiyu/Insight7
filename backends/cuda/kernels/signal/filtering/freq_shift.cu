@@ -8,6 +8,8 @@
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
 #include <cuComplex.h>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
@@ -59,6 +61,30 @@ __global__ void signal_freq_shift_kernel_c32(cuFloatComplex *out,
   float re = cuCrealf(in[i]);
   float im = cuCimagf(in[i]);
   out[i] = make_cuFloatComplex(re * c - im * s, re * s + im * c);
+}
+
+__global__ void signal_freq_shift_kernel_f16(uint16_t *out, const uint16_t *in,
+                                             int64_t n, float phase_inc) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+  float val = __half2float(*(const __half *)&in[i]);
+  float phase = phase_inc * (float)i;
+  float result = val * cosf(phase);
+  __half res = __float2half(result);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void signal_freq_shift_kernel_bf16(uint16_t *out, const uint16_t *in,
+                                              int64_t n, float phase_inc) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+  float val = __bfloat162float(*(const __nv_bfloat16 *)&in[i]);
+  float phase = phase_inc * (float)i;
+  float result = val * cosf(phase);
+  __nv_bfloat16 res = __float2bfloat16(result);
+  out[i] = *(uint16_t *)&res;
 }
 
 extern "C" {
@@ -115,6 +141,16 @@ C_Status signal_freq_shift_kernel_gpu(void **inputs, void **outputs) {
         (cuFloatComplex *)y_arr->data, (const cuFloatComplex *)x_arr->data, n,
         (float)phase_inc);
     break;
+  case INSIGHT_DTYPE_F16:
+    signal_freq_shift_kernel_f16<<<blocks, threads>>>(
+        (uint16_t *)y_arr->data, (const uint16_t *)x_arr->data, n,
+        (float)phase_inc);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    signal_freq_shift_kernel_bf16<<<blocks, threads>>>(
+        (uint16_t *)y_arr->data, (const uint16_t *)x_arr->data, n,
+        (float)phase_inc);
+    break;
   default:
     gpu_set_last_error("signal_freq_shift: unsupported dtype");
     return C_FAILED;
@@ -137,4 +173,8 @@ REGISTER_GPU_KERNEL(signal_freq_shift, INSIGHT_DTYPE_F32,
 REGISTER_GPU_KERNEL(signal_freq_shift, INSIGHT_DTYPE_C64,
                     signal_freq_shift_kernel_gpu);
 REGISTER_GPU_KERNEL(signal_freq_shift, INSIGHT_DTYPE_C32,
+                    signal_freq_shift_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_freq_shift, INSIGHT_DTYPE_F16,
+                    signal_freq_shift_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_freq_shift, INSIGHT_DTYPE_BF16,
                     signal_freq_shift_kernel_gpu);

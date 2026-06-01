@@ -3,11 +3,25 @@ name: fix-cuda-kernel-runtime
 description: Fix CUDA kernel runtime bugs discovered through test alignment (missing dtypes, wrong dims, incorrect parameter reading).
 source: auto-skill
 extracted_at: '2026-05-29T10:24:53.502Z'
+updated: '2026-06-01'
 ---
 
 # Fix CUDA Kernel Runtime Bugs
 
 When aligning CUDA tests with CPU tests, several categories of runtime bugs commonly appear. This skill covers the systematic approach to finding and fixing them.
+
+## 0. Signal Kernel Patterns (2026-06-01)
+
+All 14 signal submodules have backend kernels with these conventions:
+- **Naming**: `signal_` prefix on all kernel names (e.g., `signal_morlet`, `signal_lombscargle`)
+- **CPU dtype**: F64, F32 — with OpenMP `#pragma omp parallel for if (numel > 1000)`
+- **CUDA dtype**: F64, F32, F16, BF16 — 256 threads/block
+- **Kernel files**: `backends/cpu/kernels/signal/<module>/<op>.cpp` and `backends/cuda/kernels/signal/<module>/<op>.cu`
+- **Registration**: `REGISTER_CPU_KERNEL(signal_<op>, dtype, func)` / `REGISTER_GPU_KERNEL(signal_<op>, dtype, func)`
+- **Window/waveform kernels**: These generate data (no input array). Output is `outputs[0]`. Scalar params come via `inputs[]` as 1-element arrays.
+
+When fixing signal CUDA kernel bugs, verify the `signal_` prefix is used consistently
+in both `REGISTER_GPU_KERNEL` name and the frontend's `ops().launch("signal_<op>", ...)` call.
 
 ## 1. Missing Dtype Registration
 

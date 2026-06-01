@@ -43,8 +43,22 @@ C_Status signal_exponential_kernel_cpu(void **inputs, void **outputs) {
     for (int64_t i = 0; i < M; ++i) {
       data[i] = exp(-fabs(i - center) * inv_tau);
     }
+  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    float *data = (float *)out->data;
+    if (tau <= 0.0) {
+      cpu_set_last_error("exponential: tau must be positive");
+      return C_FAILED;
+    }
+    float inv_tau = 1.0f / (float)tau;
+    float center_f = (float)center;
+#ifdef _OPENMP
+#pragma omp parallel for if (M > 1000)
+#endif
+    for (int64_t i = 0; i < M; ++i) {
+      data[i] = std::exp(-std::fabs((float)i - center_f) * inv_tau);
+    }
   } else {
-    cpu_set_last_error("exponential: only F64 dtype supported");
+    cpu_set_last_error("exponential: unsupported dtype, need F32 or F64");
     return C_FAILED;
   }
 
@@ -54,4 +68,6 @@ C_Status signal_exponential_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(signal_exponential, INSIGHT_DTYPE_F64,
+                    signal_exponential_kernel_cpu);
+REGISTER_CPU_KERNEL(signal_exponential, INSIGHT_DTYPE_F32,
                     signal_exponential_kernel_cpu);

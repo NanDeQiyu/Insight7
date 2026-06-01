@@ -3,6 +3,8 @@
 // w[n] = 1 if (n/(M-1)) mod 1.0 < duty else -1
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
@@ -22,6 +24,28 @@ __global__ void square_kernel_f32(float *out, float duty, int64_t M) {
   float inv_M1 = (M > 1) ? 1.0f / (float)(M - 1) : 1.0f;
   float phase = fmodf((float)i * inv_M1, 1.0f);
   out[i] = (phase < duty) ? 1.0f : -1.0f;
+}
+
+__global__ void square_kernel_f16(uint16_t *out, float duty, int64_t M) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float inv_M1 = (M > 1) ? 1.0f / (float)(M - 1) : 1.0f;
+  float phase = fmodf((float)i * inv_M1, 1.0f);
+  float result = (phase < duty) ? 1.0f : -1.0f;
+  __half res = __float2half(result);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void square_kernel_bf16(uint16_t *out, float duty, int64_t M) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float inv_M1 = (M > 1) ? 1.0f / (float)(M - 1) : 1.0f;
+  float phase = fmodf((float)i * inv_M1, 1.0f);
+  float result = (phase < duty) ? 1.0f : -1.0f;
+  __nv_bfloat16 res = __float2bfloat16(result);
+  out[i] = *(uint16_t *)&res;
 }
 
 extern "C" {
@@ -51,8 +75,15 @@ C_Status signal_square_kernel_gpu(void **inputs, void **outputs) {
     square_kernel_f64<<<blocks, threads>>>((double *)out->data, duty, M);
   } else if (out->dtype == INSIGHT_DTYPE_F32) {
     square_kernel_f32<<<blocks, threads>>>((float *)out->data, (float)duty, M);
+  } else if (out->dtype == INSIGHT_DTYPE_F16) {
+    square_kernel_f16<<<blocks, threads>>>((uint16_t *)out->data, (float)duty,
+                                           M);
+  } else if (out->dtype == INSIGHT_DTYPE_BF16) {
+    square_kernel_bf16<<<blocks, threads>>>((uint16_t *)out->data, (float)duty,
+                                            M);
   } else {
-    gpu_set_last_error("square: unsupported dtype, need F32 or F64");
+    gpu_set_last_error(
+        "square: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -68,3 +99,6 @@ C_Status signal_square_kernel_gpu(void **inputs, void **outputs) {
 
 REGISTER_GPU_KERNEL(signal_square, INSIGHT_DTYPE_F64, signal_square_kernel_gpu);
 REGISTER_GPU_KERNEL(signal_square, INSIGHT_DTYPE_F32, signal_square_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_square, INSIGHT_DTYPE_F16, signal_square_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_square, INSIGHT_DTYPE_BF16,
+                    signal_square_kernel_gpu);

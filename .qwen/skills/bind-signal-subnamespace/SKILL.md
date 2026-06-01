@@ -3,16 +3,18 @@ name: bind-signal-subnamespace
 description: Binding ins::signal:: sub-namespace functions to Python/Lua/Julia with proper type conversion
 source: auto-skill
 extracted_at: '2026-05-30T20:00:00.010Z'
+updated: '2026-06-01'
 ---
 
 # Binding ins::signal:: Sub-namespace to Scripting Languages
 
 ## Problem
 
-The `ins::signal::` namespace contains 78+ functions across 9 sub-modules
+The `ins::signal::` namespace contains ~89 functions across 14 sub-modules
 (windows, waveforms, bsplines, filter_design, convolution, filtering,
-spectral_analysis, wavelets, acoustics). None are currently bound to
-Python/Lua/Julia.
+spectral_analysis, wavelets, acoustics, peak_finding, demod, estimation,
+radartools, io). All sub-modules have CPU+CUDA backend kernels with the
+`signal_` prefix convention. dtype support: CPU (F64, F32), CUDA (F64, F32, F16, BF16).
 
 ## Key Challenges
 
@@ -119,12 +121,22 @@ end
 
 ## Sub-module mapping
 
-| C++ module | Python | Lua | Julia |
-|-----------|--------|-----|-------|
-| `ins::signal::hann` | `ins.signal.hann` | `ins.signal.hann` | `signal_hann` |
-| `ins::signal::welch` | `ins.signal.welch` | `ins.signal.welch` | `signal_welch` |
-| `ins::signal::firwin` | `ins.signal.firwin` | `ins.signal.firwin` | `signal_firwin` |
-| `ins::signal::lfilter` | `ins.signal.lfilter` | `ins.signal.lfilter` | `signal_lfilter` |
+| C++ module | Python | Lua | Julia | Backend Kernels |
+|-----------|--------|-----|-------|-----------------|
+| `ins::signal::hann` | `ins.signal.hann` | `ins.signal.hann` | `signal_hann` | 12 windows kernels |
+| `ins::signal::welch` | `ins.signal.welch` | `ins.signal.welch` | `signal_welch` | 3 spectral kernels |
+| `ins::signal::firwin` | `ins.signal.firwin` | `ins.signal.firwin` | `signal_firwin` | 1 filter_design kernel |
+| `ins::signal::lfilter` | `ins.signal.lfilter` | `ins.signal.lfilter` | `signal_lfilter` | 8 filtering kernels |
+| `ins::signal::convolve` | `ins.signal.convolve` | `ins.signal.convolve` | `signal_convolve` | 3 convolution kernels |
+| `ins::signal::morlet` | `ins.signal.morlet` | `ins.signal.morlet` | `signal_morlet` | 3 wavelet kernels |
+| `ins::signal::sawtooth` | `ins.signal.sawtooth` | `ins.signal.sawtooth` | `signal_sawtooth` | 5 waveform kernels |
+| `ins::signal::cubic` | `ins.signal.cubic` | `ins.signal.cubic` | `signal_cubic` | 3 bspline kernels |
+| `ins::signal::mel2hz` | `ins.signal.mel2hz` | `ins.signal.mel2hz` | `signal_mel2hz` | 5 acoustics kernels |
+| `ins::signal::argrelmax` | `ins.signal.argrelmax` | `ins.signal.argrelmax` | `signal_argrelmax` | 2 peak_finding kernels |
+| `ins::signal::fm_demod` | `ins.signal.fm_demod` | `ins.signal.fm_demod` | `signal_fm_demod` | 0 (pure composite) |
+| `ins::signal::KalmanFilter` | `ins.signal.KalmanFilter` | `ins.signal.KalmanFilter` | `KalmanFilter` | 1 estimation kernel |
+| `ins::signal::ca_cfar` | `ins.signal.ca_cfar` | `ins.signal.ca_cfar` | `signal_ca_cfar` | 2 radar kernels |
+| `ins::signal::read_bin` | `ins.signal.read_bin` | `ins.signal.read_bin` | `signal_read_bin` | 2 io kernels |
 
 ## Struct return handling
 
