@@ -143,19 +143,23 @@ SpectralResult csd(const Array &x, const Array &y, double fs,
     // Accumulate real part
     Array Pxy_cpu = (Pxy.place().kind() == DeviceKind::CPU) ? Pxy : Pxy.to(cpu);
 
-    // Extract real part and accumulate
-    if (Pxy_cpu.dtype() == DType::C64) {
-      const std::complex<double> *pd =
-          reinterpret_cast<const std::complex<double> *>(Pxy_cpu.data<char>());
-      for (int64_t i = 0; i < freq_len; ++i) {
-        Pxx_accum[i] += pd[i].real();
+    // Extract real part and accumulate using composite ops
+    Array Pxy_real = real(Pxy_cpu);
+    Array Pxy_real_slice =
+        slice(Pxy_real, {0}, {0}, {static_cast<int>(freq_len)});
+    for (int64_t i = 0; i < freq_len; ++i) {
+      double val;
+      if (Pxy_real_slice.dtype() == DType::F64) {
+        val = slice(Pxy_real_slice, {0}, {static_cast<int>(i)},
+                    {static_cast<int>(i + 1)})
+                  .item<double>();
+      } else {
+        val = static_cast<double>(slice(Pxy_real_slice, {0},
+                                        {static_cast<int>(i)},
+                                        {static_cast<int>(i + 1)})
+                                      .item<float>());
       }
-    } else {
-      const std::complex<float> *pd =
-          reinterpret_cast<const std::complex<float> *>(Pxy_cpu.data<char>());
-      for (int64_t i = 0; i < freq_len; ++i) {
-        Pxx_accum[i] += pd[i].real();
-      }
+      Pxx_accum[i] += val;
     }
   }
 
@@ -282,25 +286,35 @@ SpectrogramResult spectrogram(const Array &x, double fs,
     Array Xf = fft::fft(seg_cpx, nfft);
     Array Xf_cpu = (Xf.place().kind() == DeviceKind::CPU) ? Xf : Xf.to(cpu);
 
-    // Extract values based on mode
-    if (mode == "psd" || mode == "complex") {
-      if (Xf_cpu.dtype() == DType::C64) {
-        const std::complex<double> *xd =
-            reinterpret_cast<const std::complex<double> *>(Xf_cpu.data<char>());
-        for (int64_t i = 0; i < freq_len; ++i) {
-          Sxx[seg * freq_len + i] =
-              (mode == "complex") ? xd[i].real() : std::norm(xd[i]);
-        }
-      }
+    // Extract values based on mode using composite ops
+    Array Xf_real;
+    if (mode == "psd") {
+      // |Xf|^2 = real^2 + imag^2
+      Array r = real(Xf_cpu);
+      Array im = imag(Xf_cpu);
+      Xf_real = add(square(r), square(im));
+    } else if (mode == "complex") {
+      Xf_real = real(Xf_cpu);
     } else if (mode == "magnitude") {
-      Array mag = abs(Xf_cpu);
-      if (Xf_cpu.dtype() == DType::C64) {
-        // abs of complex returns real
-        const double *md = mag.data<double>();
-        for (int64_t i = 0; i < freq_len; ++i) {
-          Sxx[seg * freq_len + i] = md[i];
-        }
+      Xf_real = abs(Xf_cpu);
+    } else {
+      // Default: magnitude
+      Xf_real = abs(Xf_cpu);
+    }
+
+    Array Xf_slice = slice(Xf_real, {0}, {0}, {static_cast<int>(freq_len)});
+    for (int64_t i = 0; i < freq_len; ++i) {
+      double val;
+      if (Xf_slice.dtype() == DType::F64) {
+        val = slice(Xf_slice, {0}, {static_cast<int>(i)},
+                    {static_cast<int>(i + 1)})
+                  .item<double>();
+      } else {
+        val = static_cast<double>(slice(Xf_slice, {0}, {static_cast<int>(i)},
+                                        {static_cast<int>(i + 1)})
+                                      .item<float>());
       }
+      Sxx[seg * freq_len + i] = val;
     }
   }
 

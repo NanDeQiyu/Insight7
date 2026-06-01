@@ -1,7 +1,7 @@
 // backends/cpu/kernels/signal/spectral/spectrogram_accum.cpp
 // Accumulate real part from complex STFT output for spectrogram computation.
 // Equivalent to: out[i] = real(in[i]) for each element.
-#include "../../registry/cpu_registry.h"
+#include "../../../registry/cpu_registry.h"
 #include "insight/c_api/array.h"
 #include <complex>
 #include <cstring>
@@ -69,8 +69,7 @@ C_Status spectrogram_accum_kernel_cpu(void **inputs, void **outputs) {
     break;
   }
   default:
-    cpu_set_last_error(
-        "spectrogram_accum: unsupported dtype, need C32 or C64");
+    cpu_set_last_error("spectrogram_accum: unsupported dtype, need C32 or C64");
     return C_FAILED;
   }
 
@@ -133,8 +132,7 @@ C_Status spectrogram_power_kernel_cpu(void **inputs, void **outputs) {
     break;
   }
   default:
-    cpu_set_last_error(
-        "spectrogram_power: unsupported dtype, need C32 or C64");
+    cpu_set_last_error("spectrogram_power: unsupported dtype, need C32 or C64");
     return C_FAILED;
   }
 
@@ -144,10 +142,10 @@ C_Status spectrogram_power_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(spectrogram_accum, INSIGHT_DTYPE_C64,
-                   spectrogram_accum_kernel_cpu);
+                    spectrogram_accum_kernel_cpu);
 REGISTER_CPU_KERNEL(spectrogram_accum, INSIGHT_DTYPE_C32,
-                   spectrogram_accum_kernel_cpu);
+                    spectrogram_accum_kernel_cpu);
 REGISTER_CPU_KERNEL(spectrogram_power, INSIGHT_DTYPE_C64,
-                   spectrogram_power_kernel_cpu);
+                    spectrogram_power_kernel_cpu);
 REGISTER_CPU_KERNEL(spectrogram_power, INSIGHT_DTYPE_C32,
-                   spectrogram_power_kernel_cpu);
+                    spectrogram_power_kernel_cpu);

@@ -1,6 +1,6 @@
 // backends/cpu/kernels/signal/estimation/simple_inv.cpp
 // Gauss-Jordan elimination for matrix inverse (no LAPACK dependency)
-#include "../../registry/cpu_registry.h"
+#include "../../../registry/cpu_registry.h"
 #include "insight/c_api/array.h"
 #include <cmath>
 #include <cstring>

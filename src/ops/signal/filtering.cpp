@@ -217,9 +217,9 @@ Array firfilter(const Array &b, const Array &x, int axis) {
   Array b_cpu = (b.place().kind() == DeviceKind::CPU) ? b : b.to(cpu);
   Array x_cpu = (x_2d.place().kind() == DeviceKind::CPU) ? x_2d : x_2d.to(cpu);
 
-  // Process each row
-  std::vector<double> out_data(batch_size * out_len);
+  // Process each row using composite ops
   DType work_dtype = (x.dtype() == DType::F32) ? DType::F32 : DType::F64;
+  std::vector<Array> row_results;
 
   for (int64_t row = 0; row < batch_size; ++row) {
     // Extract row as 1D array
@@ -231,29 +231,16 @@ Array firfilter(const Array &b, const Array &x, int axis) {
 
     // Convolve
     Array conv = convolve(row_arr, b_cpu, "full");
-
-    // Copy result
-    if (work_dtype == DType::F64) {
-      const double *cd = conv.data<double>();
-      for (int64_t i = 0; i < out_len; ++i)
-        out_data[row * out_len + i] = cd[i];
-    } else {
-      const float *cd = conv.data<float>();
-      for (int64_t i = 0; i < out_len; ++i)
-        out_data[row * out_len + i] = cd[i];
-    }
+    if (conv.dtype() != work_dtype)
+      conv = conv.to(work_dtype);
+    row_results.push_back(conv);
   }
+
+  // Stack all rows into a 2D array
+  Array stacked = stack(row_results, 0);
 
   // Reshape back
-  std::vector<int64_t> out_shape;
-  for (int i = 0; i < ndim; ++i) {
-    if (i == ax)
-      out_shape.push_back(out_len);
-    else
-      out_shape.push_back(x.shape().dim(i));
-  }
-
-  Array result = to_array(out_data, Shape(out_shape), DType::F64, cpu);
+  Array result = stacked;
 
   // Move axis back if needed
   if (ax != ndim - 1) {
@@ -307,30 +294,30 @@ Array lfilter(const Array &b, const Array &a, const Array &x, int axis) {
   int64_t nb = b_cpu.numel();
   int64_t na = a_cpu.numel();
 
-  // Normalize coefficients by a[0]
-  double a0;
-  {
-    Array a0_arr = slice(a_cpu, {0}, {0}, {1});
-    a0 = (work_dtype == DType::F64) ? a0_arr.item<double>()
-                                    : static_cast<double>(a0_arr.item<float>());
-  }
-  INS_CHECK(std::abs(a0) > 1e-15, "lfilter: a[0] must not be zero");
+  // Normalize coefficients by a[0] using composite ops
+  Array a0_arr = slice(a_cpu, {0}, {0}, {1});
+  INS_CHECK(std::abs((work_dtype == DType::F64) ? a0_arr.item<double>()
+                                                : a0_arr.item<float>()) > 1e-15,
+            "lfilter: a[0] must not be zero");
 
+  Array b_norm_arr = div(b_cpu, a0_arr);
+  Array a_norm_arr = div(a_cpu, a0_arr);
+
+  // Extract normalized coefficients to vectors for sequential processing
   std::vector<double> b_norm(nb), a_norm(na);
-  if (work_dtype == DType::F64) {
-    const double *bp = b_cpu.data<double>();
-    const double *ap = a_cpu.data<double>();
-    for (int64_t i = 0; i < nb; ++i)
-      b_norm[i] = bp[i] / a0;
-    for (int64_t i = 0; i < na; ++i)
-      a_norm[i] = ap[i] / a0;
-  } else {
-    const float *bp = b_cpu.data<float>();
-    const float *ap = a_cpu.data<float>();
-    for (int64_t i = 0; i < nb; ++i)
-      b_norm[i] = bp[i] / a0;
-    for (int64_t i = 0; i < na; ++i)
-      a_norm[i] = ap[i] / a0;
+  for (int64_t i = 0; i < nb; ++i) {
+    Array bi = slice(b_norm_arr, {0}, {static_cast<int>(i)},
+                     {static_cast<int>(i + 1)});
+    b_norm[i] = (work_dtype == DType::F64)
+                    ? bi.item<double>()
+                    : static_cast<double>(bi.item<float>());
+  }
+  for (int64_t i = 0; i < na; ++i) {
+    Array ai = slice(a_norm_arr, {0}, {static_cast<int>(i)},
+                     {static_cast<int>(i + 1)});
+    a_norm[i] = (work_dtype == DType::F64)
+                    ? ai.item<double>()
+                    : static_cast<double>(ai.item<float>());
   }
 
   int ndim = x_cpu.shape().ndim();
@@ -348,52 +335,38 @@ Array lfilter(const Array &b, const Array &a, const Array &x, int axis) {
     x_moved = permute(x_moved, perm);
   }
 
-  // Direct-form II transpose IIR filter
+  // Direct-form II transpose IIR filter using element-wise API
   std::vector<double> out_data(batch * n);
   int64_t nmax = std::max(nb, na);
 
-  if (work_dtype == DType::F64) {
-    const double *x_ptr = x_moved.data<double>();
-    for (int64_t b_idx = 0; b_idx < batch; ++b_idx) {
-      const double *xi = x_ptr + b_idx * n;
-      double *yi = out_data.data() + b_idx * n;
-      std::vector<double> z(nmax - 1, 0.0);
+  // Flatten x_moved for element-wise access
+  Array x_flat = reshape(x_moved, {batch * n});
 
-      for (int64_t i = 0; i < n; ++i) {
-        double val = xi[i] + z[0];
-        yi[i] = val;
-        for (int64_t j = 0; j < nmax - 2; ++j) {
-          double bj1 = (j + 1 < nb) ? b_norm[j + 1] : 0.0;
-          double aj1 = (j + 1 < na) ? a_norm[j + 1] : 0.0;
-          z[j] = z[j + 1] + bj1 * xi[i] - aj1 * val;
-        }
-        if (nmax >= 2) {
-          double bn = (nmax - 1 < nb) ? b_norm[nmax - 1] : 0.0;
-          double an = (nmax - 1 < na) ? a_norm[nmax - 1] : 0.0;
-          z[nmax - 2] = bn * xi[i] - an * val;
-        }
+  for (int64_t b_idx = 0; b_idx < batch; ++b_idx) {
+    std::vector<double> z(nmax - 1, 0.0);
+
+    for (int64_t i = 0; i < n; ++i) {
+      int64_t idx = b_idx * n + i;
+      double xi_val;
+      {
+        Array xi_arr = slice(x_flat, {0}, {static_cast<int>(idx)},
+                             {static_cast<int>(idx + 1)});
+        xi_val = (work_dtype == DType::F64)
+                     ? xi_arr.item<double>()
+                     : static_cast<double>(xi_arr.item<float>());
       }
-    }
-  } else {
-    const float *x_ptr = x_moved.data<float>();
-    for (int64_t b_idx = 0; b_idx < batch; ++b_idx) {
-      const float *xi = x_ptr + b_idx * n;
-      double *yi = out_data.data() + b_idx * n;
-      std::vector<double> z(nmax - 1, 0.0);
 
-      for (int64_t i = 0; i < n; ++i) {
-        double val = static_cast<double>(xi[i]) + z[0];
-        yi[i] = val;
-        for (int64_t j = 0; j < nmax - 2; ++j) {
-          double bj1 = (j + 1 < nb) ? b_norm[j + 1] : 0.0;
-          double aj1 = (j + 1 < na) ? a_norm[j + 1] : 0.0;
-          z[j] = z[j + 1] + bj1 * xi[i] - aj1 * val;
-        }
-        if (nmax >= 2) {
-          double bn = (nmax - 1 < nb) ? b_norm[nmax - 1] : 0.0;
-          double an = (nmax - 1 < na) ? a_norm[nmax - 1] : 0.0;
-          z[nmax - 2] = bn * xi[i] - an * val;
-        }
+      double val = xi_val + z[0];
+      out_data[b_idx * n + i] = val;
+      for (int64_t j = 0; j < nmax - 2; ++j) {
+        double bj1 = (j + 1 < nb) ? b_norm[j + 1] : 0.0;
+        double aj1 = (j + 1 < na) ? a_norm[j + 1] : 0.0;
+        z[j] = z[j + 1] + bj1 * xi_val - aj1 * val;
+      }
+      if (nmax >= 2) {
+        double bn_coeff = (nmax - 1 < nb) ? b_norm[nmax - 1] : 0.0;
+        double an_coeff = (nmax - 1 < na) ? a_norm[nmax - 1] : 0.0;
+        z[nmax - 2] = bn_coeff * xi_val - an_coeff * val;
       }
     }
   }
@@ -443,29 +416,27 @@ Array lfilter_zi(const Array &b, const Array &a) {
   int64_t na = a_cpu.numel();
   int64_t n = std::max(nb, na);
 
-  // Normalize by a[0] using item()
-  double a0;
-  {
-    Array a0_arr = slice(a_cpu, {0}, {0}, {1});
-    a0 = (work_dtype == DType::F64) ? a0_arr.item<double>()
-                                    : static_cast<double>(a0_arr.item<float>());
-  }
+  // Normalize by a[0] using composite ops
+  Array a0_arr = slice(a_cpu, {0}, {0}, {1});
 
+  Array b_norm_arr = div(b_cpu, a0_arr);
+  Array a_norm_arr = div(a_cpu, a0_arr);
+
+  // Extract normalized coefficients to vectors
   std::vector<double> b_norm(nb), a_norm(na);
-  if (work_dtype == DType::F64) {
-    const double *bp = b_cpu.data<double>();
-    const double *ap = a_cpu.data<double>();
-    for (int64_t i = 0; i < nb; ++i)
-      b_norm[i] = bp[i] / a0;
-    for (int64_t i = 0; i < na; ++i)
-      a_norm[i] = ap[i] / a0;
-  } else {
-    const float *bp = b_cpu.data<float>();
-    const float *ap = a_cpu.data<float>();
-    for (int64_t i = 0; i < nb; ++i)
-      b_norm[i] = bp[i] / a0;
-    for (int64_t i = 0; i < na; ++i)
-      a_norm[i] = ap[i] / a0;
+  for (int64_t i = 0; i < nb; ++i) {
+    Array bi = slice(b_norm_arr, {0}, {static_cast<int>(i)},
+                     {static_cast<int>(i + 1)});
+    b_norm[i] = (work_dtype == DType::F64)
+                    ? bi.item<double>()
+                    : static_cast<double>(bi.item<float>());
+  }
+  for (int64_t i = 0; i < na; ++i) {
+    Array ai = slice(a_norm_arr, {0}, {static_cast<int>(i)},
+                     {static_cast<int>(i + 1)});
+    a_norm[i] = (work_dtype == DType::F64)
+                    ? ai.item<double>()
+                    : static_cast<double>(ai.item<float>());
   }
 
   int64_t m = n - 1;
@@ -583,44 +554,79 @@ Array resample(const Array &x, int64_t num, int axis) {
 
   // For 1D case
   Array Xf = fft::fft(x, n);
-
-  // Build new spectrum with zero-padding or truncation
-  std::vector<std::complex<double>> new_X(num, {0.0, 0.0});
-
-  // Extract spectrum data
   Array Xf_cpu = (Xf.place().kind() == DeviceKind::CPU) ? Xf : Xf.to(cpu);
-  const std::complex<double> *X_data =
-      reinterpret_cast<const std::complex<double> *>(Xf_cpu.data<char>());
+
+  // Build new spectrum using composite ops
+  // Extract positive frequencies: Xf[0:half+1]
+  int64_t half_n = n / 2;
+  Array X_pos = slice(Xf_cpu, {0}, {0}, {static_cast<int>(half_n + 1)});
+
+  // Build negative frequencies: Xf[n-half:n] reversed = Xf[n-half], ...,
+  // Xf[n-1]
+  Array X_neg;
+  if (half_n > 1) {
+    X_neg = slice(Xf_cpu, {0}, {static_cast<int>(n - half_n)},
+                  {static_cast<int>(n)});
+    X_neg = flip(X_neg, 0);
+  }
+
+  std::vector<Array> parts;
+  // DC
+  parts.push_back(slice(X_pos, {0}, {0}, {1}));
 
   if (num > n) {
-    // Zero-pad in frequency domain
-    int64_t half_n = n / 2;
-    new_X[0] = X_data[0];
-    for (int64_t i = 1; i <= half_n; ++i) {
-      new_X[i] = X_data[i];
+    // Zero-pad positive frequencies
+    int64_t pad_pos = (num / 2) - half_n;
+    if (pad_pos > 0) {
+      Array pad_zeros_pos = zeros({pad_pos}, cdtype, cpu);
+      parts.push_back(slice(X_pos, {0}, {1}, {static_cast<int>(half_n + 1)}));
+      parts.push_back(pad_zeros_pos);
+    } else {
+      parts.push_back(slice(X_pos, {0}, {1}, {static_cast<int>(half_n + 1)}));
     }
+    // Nyquist
     if (n % 2 == 0) {
-      new_X[num - half_n] = X_data[half_n];
+      parts.push_back(slice(X_pos, {0}, {static_cast<int>(half_n)},
+                            {static_cast<int>(half_n + 1)}));
     }
-    for (int64_t i = 1; i < half_n; ++i) {
-      new_X[num - i] = X_data[n - i];
+    // Zero-pad
+    if (pad_pos > 0) {
+      Array pad_zeros_neg = zeros({pad_pos}, cdtype, cpu);
+      parts.push_back(pad_zeros_neg);
+    }
+    // Negative frequencies (flipped back)
+    if (X_neg.defined() && X_neg.numel() > 0) {
+      parts.push_back(X_neg);
     }
   } else {
-    // Truncate in frequency domain
+    // Truncate positive frequencies
     int64_t half_num = num / 2;
-    new_X[0] = X_data[0];
-    for (int64_t i = 1; i <= half_num; ++i) {
-      new_X[i] = X_data[i];
-    }
-    for (int64_t i = 1; i < half_num; ++i) {
-      new_X[num - i] = X_data[n - i];
-    }
+    parts.push_back(slice(X_pos, {0}, {1}, {static_cast<int>(half_num + 1)}));
+    // Nyquist
     if (num % 2 == 0) {
-      new_X[half_num] = X_data[half_num];
+      parts.push_back(slice(X_pos, {0}, {static_cast<int>(half_num)},
+                            {static_cast<int>(half_num + 1)}));
+    }
+    // Truncated negative frequencies
+    if (X_neg.defined() && X_neg.numel() > 0) {
+      int64_t neg_keep = std::min(half_num - 1, X_neg.numel());
+      if (neg_keep > 0) {
+        parts.push_back(slice(X_neg, {0}, {0}, {static_cast<int>(neg_keep)}));
+      }
     }
   }
 
-  Array new_X_arr = to_array(new_X, cdtype, cpu);
+  Array new_X_arr = concat(parts, 0);
+  // Ensure correct size
+  if (new_X_arr.numel() != num) {
+    // Pad or truncate to exact size
+    if (new_X_arr.numel() < num) {
+      Array pad = zeros({num - new_X_arr.numel()}, cdtype, cpu);
+      new_X_arr = concat({new_X_arr, pad}, 0);
+    } else {
+      new_X_arr = slice(new_X_arr, {0}, {0}, {static_cast<int>(num)});
+    }
+  }
   Array result = fft::ifft(new_X_arr, num);
   result = mul(result, full(result.shape(), static_cast<double>(num) / n,
                             result.dtype()));

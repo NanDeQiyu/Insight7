@@ -77,41 +77,27 @@ Array pulse_compression(const Array &x, const Array &template_tx,
   if (conj_fft_tpl.place().kind() != DeviceKind::CPU)
     conj_fft_tpl = conj_fft_tpl.to(cpu);
 
-  std::vector<std::complex<double>> result_data(num_pulses * nfft);
+  std::vector<Array> result_rows;
 
   for (int64_t p = 0; p < num_pulses; ++p) {
-    // Extract pulse p as vector
-    std::vector<double> pulse_vec(samples_per_pulse);
-    if (work_dtype == DType::F64) {
-      const double *xd = x_cpu.data<double>();
-      for (int64_t i = 0; i < samples_per_pulse; ++i)
-        pulse_vec[i] = xd[p * samples_per_pulse + i];
-    } else {
-      const float *xd = x_cpu.data<float>();
-      for (int64_t i = 0; i < samples_per_pulse; ++i)
-        pulse_vec[i] = xd[p * samples_per_pulse + i];
-    }
+    // Extract pulse p using slice
+    Array pulse =
+        slice(x_cpu, {0, 1}, {static_cast<int>(p), 0},
+              {static_cast<int>(p + 1), static_cast<int>(samples_per_pulse)});
+    pulse = reshape(pulse, {samples_per_pulse});
+    if (pulse.dtype() != work_dtype)
+      pulse = pulse.to(work_dtype);
 
-    Array pulse = to_array(pulse_vec, work_dtype, cpu);
     Array fft_pulse = fft::rfft(pulse, nfft);
     Array product = mul(fft_pulse, conj_fft_tpl);
     Array ifft_result = fft::irfft(product, nfft);
 
-    // Store result as complex
-    if (work_dtype == DType::F64) {
-      const double *ird = ifft_result.data<double>();
-      for (int64_t i = 0; i < nfft; ++i) {
-        result_data[p * nfft + i] = std::complex<double>(ird[i], 0.0);
-      }
-    } else {
-      const float *ird = ifft_result.data<float>();
-      for (int64_t i = 0; i < nfft; ++i) {
-        result_data[p * nfft + i] = std::complex<double>(ird[i], 0.0);
-      }
-    }
+    // Convert to complex for storage
+    Array ifft_cpx = to_complex(ifft_result);
+    result_rows.push_back(ifft_cpx);
   }
 
-  Array result = to_array(result_data, Shape({num_pulses, nfft}), cdtype, cpu);
+  Array result = stack(result_rows, 0);
   if (x.place().kind() != DeviceKind::CPU)
     result = result.to(x.place());
   return result;
@@ -156,7 +142,7 @@ Array pulse_doppler(const Array &x, const std::string &window, int64_t nfft) {
   Place cpu = CPUPlace();
   Array x_t_cpu = (x_t.place().kind() == DeviceKind::CPU) ? x_t : x_t.to(cpu);
 
-  std::vector<std::complex<double>> result_data(nfft * samples_per_pulse);
+  std::vector<Array> col_results;
   for (int64_t s = 0; s < samples_per_pulse; ++s) {
     Array col =
         slice(x_t_cpu, {0}, {static_cast<int>(s)}, {static_cast<int>(s + 1)});
@@ -164,16 +150,12 @@ Array pulse_doppler(const Array &x, const std::string &window, int64_t nfft) {
 
     Array col_cpx = to_complex(col);
     Array fft_col = fft::fft(col_cpx, nfft);
-
-    const std::complex<double> *fd =
-        reinterpret_cast<const std::complex<double> *>(fft_col.data<char>());
-    for (int64_t p = 0; p < nfft; ++p) {
-      result_data[p * samples_per_pulse + s] = fd[p];
-    }
+    col_results.push_back(fft_col);
   }
 
-  Array result =
-      to_array(result_data, Shape({nfft, samples_per_pulse}), cdtype, cpu);
+  // Stack columns and transpose back to [nfft, samples_per_pulse]
+  Array stacked = stack(col_results, 0); // [samples_per_pulse, nfft]
+  Array result = transpose(stacked);     // [nfft, samples_per_pulse]
   if (x.place().kind() != DeviceKind::CPU)
     result = result.to(x.place());
   return result;

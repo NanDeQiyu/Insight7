@@ -4,7 +4,7 @@
 // With initial state zi (length nb-1) prepended to x.
 // Returns both the output y and the final state zf (last nb-1 samples of
 // extended input).
-#include "../../registry/cpu_registry.h"
+#include "../../../registry/cpu_registry.h"
 #include "insight/c_api/array.h"
 #include <cstring>
 
@@ -32,13 +32,12 @@ C_Status firfilter_zi_state_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
-  int64_t nb = b_arr->numel; // number of filter taps
-  int64_t n = x_arr->numel;  // input signal length
+  int64_t nb = b_arr->numel;      // number of filter taps
+  int64_t n = x_arr->numel;       // input signal length
   int64_t zi_len = zi_arr->numel; // initial state length (should be nb-1)
 
   if (zi_len != nb - 1) {
-    cpu_set_last_error(
-        "firfilter_zi_state: zi length must be len(b) - 1");
+    cpu_set_last_error("firfilter_zi_state: zi length must be len(b) - 1");
     return C_FAILED;
   }
 
@@ -158,6 +157,6 @@ C_Status firfilter_zi_state_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(firfilter_zi_state, INSIGHT_DTYPE_F32,
-                   firfilter_zi_state_kernel_cpu);
+                    firfilter_zi_state_kernel_cpu);
 REGISTER_CPU_KERNEL(firfilter_zi_state, INSIGHT_DTYPE_F64,
-                   firfilter_zi_state_kernel_cpu);
+                    firfilter_zi_state_kernel_cpu);
