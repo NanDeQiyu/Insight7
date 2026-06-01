@@ -2,7 +2,7 @@
 name: migrate-signal-to-backend-kernels
 description: Move signal frontend raw pointer operations into registered backend kernels following project HAL conventions
 source: auto-skill
-extracted_at: '2026-06-01T05:24:40.155Z'
+extracted_at: '2026-06-01T15:54:00.295Z'
 ---
 
 # Migrate Signal Functions to Backend Kernels
@@ -215,3 +215,31 @@ done
 6. **item() only for scalars**: `arr.item<double>()` requires `numel==1`
    — use `slice(arr, 0, i, i+1).item<double>()` for element extraction
 7. **conj() declaration**: In `unary.h`, not `complex.h` — include both
+8. **signal_ prefix REQUIRED**: All signal kernel names must use `signal_` prefix
+   to avoid collisions with non-signal kernels (e.g., `signal_exponential` not
+   `exponential`, which collides with `random/exponential`). Use prefix for both
+   REGISTER macro name and C function name.
+9. **CUDA window/waveform kernels**: These generate data (no input array). The
+   output array is `outputs[0]`. Scalar parameters come via `inputs[]` as
+   1-element arrays. On CUDA, copy param to host with `cudaMemcpy` before launch.
+
+## Complete Module Coverage (2026-06-01)
+
+All 14 signal submodules now have backend kernels:
+
+| Module | Kernel Count | Key Kernels |
+|--------|-------------|-------------|
+| windows | 12 | hann, hamming, blackman, bartlett, boxcar, triang, cosine, gaussian, kaiser, signal_exponential, tukey, general_cosine |
+| waveforms | 5 | sawtooth, signal_square, unit_impulse, chirp, gausspulse |
+| bsplines | 3 | cubic, quadratic, gauss_spline |
+| convolution | 3 | convolve1d, correlate1d, convolve2d |
+| peak_finding | 2 | boolrelextrema_1d, boolrelextrema_2d |
+| filtering | 8 | lfilter, lfilter_zi, firfilter, firfilter_zi_state, signal_wiener, signal_hilbert, signal_detrend, signal_freq_shift |
+| spectral | 3 | spectrogram_accum, spectrogram_power, signal_lombscargle |
+| wavelets | 3 | signal_morlet, signal_ricker, signal_morlet2 |
+| filter_design | 1 | signal_firwin |
+| acoustics | 5 | signal_mel2hz, signal_hz2mel, signal_mel_frequencies, signal_hz2bark, signal_bark2hz |
+| io | 2 | signal_pack_bin, signal_unpack_bin |
+| estimation | 1 | simple_inv |
+| radar | 2 | ca_cfar, ambgfun |
+| demod | 0 | (pure composite — no kernel needed) |
