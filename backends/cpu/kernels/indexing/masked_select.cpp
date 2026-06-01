@@ -96,6 +96,26 @@ C_Status masked_select_kernel_cpu(void **inputs, void **outputs) {
     }
     break;
   }
+  case INSIGHT_DTYPE_F16: {
+    uint16_t *dst = (uint16_t *)out->data;
+    const uint16_t *src = (const uint16_t *)x->data;
+    for (int64_t i = 0; i < total; ++i) {
+      if (msk[i]) {
+        dst[out_idx++] = src[i];
+      }
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    uint16_t *dst = (uint16_t *)out->data;
+    const uint16_t *src = (const uint16_t *)x->data;
+    for (int64_t i = 0; i < total; ++i) {
+      if (msk[i]) {
+        dst[out_idx++] = src[i];
+      }
+    }
+    break;
+  }
   default:
     cpu_set_last_error("masked_select: unsupported dtype");
     return C_FAILED;
@@ -114,4 +134,8 @@ REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_I32, masked_select_kernel_cpu);
 REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_I64, masked_select_kernel_cpu);
 REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_U8, masked_select_kernel_cpu);
 REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_BOOL,
+                    masked_select_kernel_cpu);
+REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_F16,
+                    masked_select_kernel_cpu);
+REGISTER_CPU_KERNEL(masked_select, INSIGHT_DTYPE_BF16,
                     masked_select_kernel_cpu);

@@ -49,26 +49,38 @@ static void run_cpu_linalg() {
   {
     Array A =
         to_array({1.0, 2.0, 3.0, 4.0}, Shape({2, 2}), DType::F64, CPUPlace());
-    printf("det([[1,2],[3,4]]) = %g\n", det(A).item<double>());
+    try {
+      printf("det([[1,2],[3,4]]) = %g\n", det(A).item<double>());
+    } catch (...) {
+      printf("det: skipped (requires OpenBLAS)\n");
+    }
   }
 
   // Inverse
   {
     Array A =
         to_array({1.0, 2.0, 3.0, 4.0}, Shape({2, 2}), DType::F64, CPUPlace());
-    Array A_inv = inv(A);
-    printf("inv([[1,2],[3,4]]):\n%s\n", to_string(A_inv).c_str());
+    try {
+      Array A_inv = inv(A);
+      printf("inv([[1,2],[3,4]]):\n%s\n", to_string(A_inv).c_str());
 
-    Array I = matmul(A, A_inv);
-    printf("A * A_inv (should be identity):\n%s\n", to_string(I).c_str());
+      Array I = matmul(A, A_inv);
+      printf("A * A_inv (should be identity):\n%s\n", to_string(I).c_str());
+    } catch (...) {
+      printf("inv: skipped (requires OpenBLAS)\n");
+    }
   }
 
   // SVD
   {
     Array A = to_array({1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0},
                        Shape({3, 3}), DType::F64, CPUPlace());
-    auto [U, S, VT] = svd(A, false);
-    printf("SVD singular values: %s\n", to_string(S).c_str());
+    try {
+      auto [U, S, VT] = svd(A, false);
+      printf("SVD singular values: %s\n", to_string(S).c_str());
+    } catch (...) {
+      printf("SVD: skipped (requires OpenBLAS)\n");
+    }
   }
 
   // Solve linear system
@@ -76,8 +88,12 @@ static void run_cpu_linalg() {
     Array A = to_array({3.0, 2.0, -1.0, 2.0, -2.0, 4.0, -1.0, 0.5, -1.0},
                        Shape({3, 3}), DType::F64, CPUPlace());
     Array b = to_array({1.0, -2.0, 0.0}, Shape({3}), DType::F64, CPUPlace());
-    Array x = solve(A, b);
-    printf("Ax=b solution: %s\n", to_string(x).c_str());
+    try {
+      Array x = solve(A, b);
+      printf("Ax=b solution: %s\n", to_string(x).c_str());
+    } catch (...) {
+      printf("solve: skipped (requires OpenBLAS)\n");
+    }
   }
 }
 
@@ -115,10 +131,17 @@ static void run_gpu_linalg() {
     Array A =
         to_array({1.0, 2.0, 3.0, 4.0}, Shape({2, 2}), DType::F64, CPUPlace())
             .to(GPUPlace(0));
-    printf("GPU det = %g\n", det(A).to(CPUPlace()).item<double>());
-
-    Array A_inv = inv(A).to(CPUPlace());
-    printf("GPU inv:\n%s\n", to_string(A_inv).c_str());
+    try {
+      printf("GPU det = %g\n", det(A).to(CPUPlace()).item<double>());
+    } catch (...) {
+      printf("GPU det: skipped (requires OpenBLAS)\n");
+    }
+    try {
+      Array A_inv = inv(A).to(CPUPlace());
+      printf("GPU inv:\n%s\n", to_string(A_inv).c_str());
+    } catch (...) {
+      printf("GPU inv: skipped (requires OpenBLAS)\n");
+    }
   }
 
   // GPU SVD (F32)
@@ -126,14 +149,22 @@ static void run_gpu_linalg() {
     Array A = to_array({1.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 3.0f},
                        Shape({3, 3}), DType::F32, CPUPlace())
                   .to(GPUPlace(0));
-    auto [U, S, VT] = svd(A, false);
-    Array cpu_S = S.to(CPUPlace());
-    printf("GPU SVD singular values (F32): %s\n", to_string(cpu_S).c_str());
+    try {
+      auto [U, S, VT] = svd(A, false);
+      Array cpu_S = S.to(CPUPlace());
+      printf("GPU SVD singular values (F32): %s\n", to_string(cpu_S).c_str());
+    } catch (...) {
+      printf("GPU SVD: skipped (requires OpenBLAS)\n");
+    }
   }
 }
 
 int main() {
-  ins::init({"cpu", "cuda"});
+  try {
+    ins::init({"cpu", "cuda"});
+  } catch (...) {
+    ins::init({"cpu"});
+  }
 
   printf("Insight7 Linear Algebra Demo\n");
   printf("OpenBLAS: %s\n", is_compiled_with_openblas() ? "yes" : "no");

@@ -12,7 +12,11 @@ static void separator(const char *title) {
 }
 
 int main() {
-  ins::init({"cpu", "cuda"});
+  try {
+    ins::init({"cpu", "cuda"});
+  } catch (...) {
+    ins::init({"cpu"});
+  }
   set_device(CPUPlace());
 
   printf("Insight7 Basic Operations Demo\n");

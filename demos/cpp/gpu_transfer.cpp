@@ -22,7 +22,11 @@ static bool gpu_available() {
 }
 
 int main() {
-  ins::init({"cpu", "cuda"});
+  try {
+    ins::init({"cpu", "cuda"});
+  } catch (...) {
+    ins::init({"cpu"});
+  }
 
   printf("Insight7 GPU Transfer Demo\n");
 

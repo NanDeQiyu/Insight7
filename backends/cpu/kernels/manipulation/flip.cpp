@@ -156,6 +156,14 @@ C_Status flip_kernel_cpu(void **inputs, void **outputs) {
                                         (std::complex<double> *)out->data, ndim,
                                         dims, src_strides, dst_strides, axis);
     break;
+  case INSIGHT_DTYPE_F16:
+    cpu_flip_impl<uint16_t>((const uint16_t *)x->data, (uint16_t *)out->data,
+                            ndim, dims, src_strides, dst_strides, axis);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    cpu_flip_impl<uint16_t>((const uint16_t *)x->data, (uint16_t *)out->data,
+                            ndim, dims, src_strides, dst_strides, axis);
+    break;
   default:
     cpu_set_last_error("flip: unsupported dtype");
     return C_FAILED;
@@ -181,3 +189,5 @@ REGISTER_CPU_KERNEL(flip, INSIGHT_DTYPE_F32, flip_kernel_cpu);
 REGISTER_CPU_KERNEL(flip, INSIGHT_DTYPE_F64, flip_kernel_cpu);
 REGISTER_CPU_KERNEL(flip, INSIGHT_DTYPE_C32, flip_kernel_cpu);
 REGISTER_CPU_KERNEL(flip, INSIGHT_DTYPE_C64, flip_kernel_cpu);
+REGISTER_CPU_KERNEL(flip, INSIGHT_DTYPE_F16, flip_kernel_cpu);
+REGISTER_CPU_KERNEL(flip, INSIGHT_DTYPE_BF16, flip_kernel_cpu);

@@ -31,27 +31,50 @@ function run_cpu_linalg()
     println("MatMul F64:")
     println(C)
 
+    # MatMul F32
+    A32 = Insight.cast(A, Insight.float32)
+    B32 = Insight.cast(B, Insight.float32)
+    C32 = Insight.matmul(A32, B32)
+    println("MatMul F32:")
+    println(C32)
+
     # Determinant
-    println("det([[1,2],[3,4]]) = $(Insight.det(A))")
+    try
+        println("det([[1,2],[3,4]]) = $(Insight.det(A))")
+    catch
+        println("det: skipped (requires OpenBLAS)")
+    end
 
     # Inverse
-    A_inv = Insight.inv(A)
-    println("inv([[1,2],[3,4]]):")
-    println(A_inv)
-    I_mat = Insight.matmul(A, A_inv)
-    println("A * A_inv (should be identity):")
-    println(I_mat)
+    try
+        A_inv = Insight.inv(A)
+        println("inv([[1,2],[3,4]]):")
+        println(A_inv)
+        I_mat = Insight.matmul(A, A_inv)
+        println("A * A_inv (should be identity):")
+        println(I_mat)
+    catch
+        println("inv: skipped (requires OpenBLAS)")
+    end
 
     # SVD
-    D = Insight.from_data([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], [3, 3])
-    U, S, VT = Insight.svd(D, false)
-    println("SVD singular values: $S")
+    try
+        D = Insight.from_data([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], [3, 3])
+        U, S, VT = Insight.svd(D, false)
+        println("SVD singular values: $S")
+    catch
+        println("SVD: skipped (requires OpenBLAS)")
+    end
 
     # Solve linear system
-    A3 = Insight.from_data([3.0, 2.0, -1.0, 2.0, -2.0, 4.0, -1.0, 0.5, -1.0], [3, 3])
-    b = Insight.from_data([1.0, -2.0, 0.0], [3])
-    x = Insight.solve(A3, b)
-    println("Ax=b solution: $x")
+    try
+        A3 = Insight.from_data([3.0, 2.0, -1.0, 2.0, -2.0, 4.0, -1.0, 0.5, -1.0], [3, 3])
+        b = Insight.from_data([1.0, -2.0, 0.0], [3])
+        x = Insight.solve(A3, b)
+        println("Ax=b solution: $x")
+    catch
+        println("solve: skipped (requires OpenBLAS)")
+    end
 end
 
 function run_gpu_linalg()
@@ -65,19 +88,42 @@ function run_gpu_linalg()
     println("GPU MatMul F64:")
     println(Insight.to(C, 0))  # CPUPlace
 
-    println("GPU det = $(Insight.det(A_gpu))")
-    A_inv = Insight.inv(A_gpu)
-    println("GPU inv:")
-    println(Insight.to(A_inv, 0))
+    # GPU MatMul F32
+    A32_gpu = Insight.to(Insight.cast(A, Insight.float32), 1)
+    B32_gpu = Insight.to(Insight.cast(B, Insight.float32), 1)
+    C32 = Insight.matmul(A32_gpu, B32_gpu)
+    println("GPU MatMul F32:")
+    println(Insight.to(C32, 0))
+
+    try
+        println("GPU det = $(Insight.det(A_gpu))")
+    catch
+        println("GPU det: skipped (requires OpenBLAS)")
+    end
+    try
+        A_inv = Insight.inv(A_gpu)
+        println("GPU inv:")
+        println(Insight.to(A_inv, 0))
+    catch
+        println("GPU inv: skipped (requires OpenBLAS)")
+    end
 
     D = Insight.from_data([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], [3, 3])
     D_gpu = Insight.cast(D, Insight.float32)
     D_gpu = Insight.to(D_gpu, 1)
-    U, S, VT = Insight.svd(D_gpu, false)
-    println("GPU SVD singular values (F32): $(Insight.to(S, 0))")
+    try
+        U, S, VT = Insight.svd(D_gpu, false)
+        println("GPU SVD singular values (F32): $(Insight.to(S, 0))")
+    catch
+        println("GPU SVD: skipped (requires OpenBLAS)")
+    end
 end
 
-Insight.init(["cpu", "cuda"])
+try
+    Insight.init(["cpu", "cuda"])
+catch
+    Insight.init(["cpu"])
+end
 
 println("Insight7 Linear Algebra Demo (Julia)")
 

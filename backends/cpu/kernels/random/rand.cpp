@@ -13,6 +13,7 @@
  */
 
 #include "common.h"
+#include "../common/half_utils.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,6 +38,50 @@ C_Status rand_kernel_cpu(void **inputs, void **outputs) {
     RANDOM_FILL_LOOP(double, std::uniform_real_distribution<double>,
                      (0.0, 1.0));
     break;
+  case INSIGHT_DTYPE_F16: {
+    uint16_t *out_data = (uint16_t *)out->data;
+    int64_t n = out->numel;
+    int64_t ndim = out->ndim;
+    int64_t dims[INSIGHT_MAX_NDIM];
+    int64_t out_strides[INSIGHT_MAX_NDIM];
+    for (int i = 0; i < ndim; ++i) {
+      dims[i] = out->dims[i];
+      out_strides[i] = out->strides[i];
+    }
+#pragma omp parallel
+    {
+      std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+#pragma omp for
+      for (int64_t linear = 0; linear < n; ++linear) {
+        int64_t off_out =
+            cpu_offset_from_linear(linear, ndim, dims, out_strides);
+        out_data[off_out] = insight::f32_to_f16(dist(cpu_get_rng()));
+      }
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    uint16_t *out_data = (uint16_t *)out->data;
+    int64_t n = out->numel;
+    int64_t ndim = out->ndim;
+    int64_t dims[INSIGHT_MAX_NDIM];
+    int64_t out_strides[INSIGHT_MAX_NDIM];
+    for (int i = 0; i < ndim; ++i) {
+      dims[i] = out->dims[i];
+      out_strides[i] = out->strides[i];
+    }
+#pragma omp parallel
+    {
+      std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+#pragma omp for
+      for (int64_t linear = 0; linear < n; ++linear) {
+        int64_t off_out =
+            cpu_offset_from_linear(linear, ndim, dims, out_strides);
+        out_data[off_out] = insight::f32_to_bf16(dist(cpu_get_rng()));
+      }
+    }
+    break;
+  }
   default:
     cpu_set_last_error("rand: unsupported dtype");
     return C_FAILED;
@@ -51,3 +96,5 @@ C_Status rand_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(rand, INSIGHT_DTYPE_F32, rand_kernel_cpu);
 REGISTER_CPU_KERNEL(rand, INSIGHT_DTYPE_F64, rand_kernel_cpu);
+REGISTER_CPU_KERNEL(rand, INSIGHT_DTYPE_F16, rand_kernel_cpu);
+REGISTER_CPU_KERNEL(rand, INSIGHT_DTYPE_BF16, rand_kernel_cpu);

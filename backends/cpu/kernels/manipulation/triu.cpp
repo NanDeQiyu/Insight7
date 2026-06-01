@@ -124,6 +124,14 @@ C_Status triu_kernel_cpu(void **inputs, void **outputs) {
     cpu_triu_impl<double>((const double *)x->data, (double *)out->data, rows,
                           cols, k);
     break;
+  case INSIGHT_DTYPE_F16:
+    cpu_triu_impl<uint16_t>((const uint16_t *)x->data, (uint16_t *)out->data,
+                            rows, cols, k);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    cpu_triu_impl<uint16_t>((const uint16_t *)x->data, (uint16_t *)out->data,
+                            rows, cols, k);
+    break;
   default:
     cpu_set_last_error("triu: unsupported dtype");
     return C_FAILED;
@@ -147,3 +155,5 @@ REGISTER_CPU_KERNEL(triu, INSIGHT_DTYPE_U32, triu_kernel_cpu);
 REGISTER_CPU_KERNEL(triu, INSIGHT_DTYPE_U64, triu_kernel_cpu);
 REGISTER_CPU_KERNEL(triu, INSIGHT_DTYPE_F32, triu_kernel_cpu);
 REGISTER_CPU_KERNEL(triu, INSIGHT_DTYPE_F64, triu_kernel_cpu);
+REGISTER_CPU_KERNEL(triu, INSIGHT_DTYPE_F16, triu_kernel_cpu);
+REGISTER_CPU_KERNEL(triu, INSIGHT_DTYPE_BF16, triu_kernel_cpu);

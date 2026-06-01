@@ -16,6 +16,7 @@
  */
 
 #include "common.h"
+#include "../common/half_utils.h"
 #include <algorithm>
 #include <vector>
 
@@ -126,6 +127,56 @@ C_Status argsort_kernel_cpu(void **inputs, void **outputs) {
     }
     break;
   }
+  case INSIGHT_DTYPE_F16: {
+    const uint16_t *src = (const uint16_t *)x->data;
+    for (int64_t batch = 0; batch < batch_size; ++batch) {
+      std::vector<int64_t> indices(last_dim);
+      for (int64_t i = 0; i < last_dim; ++i)
+        indices[i] = i;
+      if (descending) {
+        std::sort(indices.begin(), indices.end(),
+                  [&](int64_t a, int64_t b) {
+                    return insight::f16_to_f32(src[batch * last_dim + a]) >
+                           insight::f16_to_f32(src[batch * last_dim + b]);
+                  });
+      } else {
+        std::sort(indices.begin(), indices.end(),
+                  [&](int64_t a, int64_t b) {
+                    return insight::f16_to_f32(src[batch * last_dim + a]) <
+                           insight::f16_to_f32(src[batch * last_dim + b]);
+                  });
+      }
+      for (int64_t i = 0; i < last_dim; ++i) {
+        out_data[batch * last_dim + i] = indices[i];
+      }
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    const uint16_t *src = (const uint16_t *)x->data;
+    for (int64_t batch = 0; batch < batch_size; ++batch) {
+      std::vector<int64_t> indices(last_dim);
+      for (int64_t i = 0; i < last_dim; ++i)
+        indices[i] = i;
+      if (descending) {
+        std::sort(indices.begin(), indices.end(),
+                  [&](int64_t a, int64_t b) {
+                    return insight::bf16_to_f32(src[batch * last_dim + a]) >
+                           insight::bf16_to_f32(src[batch * last_dim + b]);
+                  });
+      } else {
+        std::sort(indices.begin(), indices.end(),
+                  [&](int64_t a, int64_t b) {
+                    return insight::bf16_to_f32(src[batch * last_dim + a]) <
+                           insight::bf16_to_f32(src[batch * last_dim + b]);
+                  });
+      }
+      for (int64_t i = 0; i < last_dim; ++i) {
+        out_data[batch * last_dim + i] = indices[i];
+      }
+    }
+    break;
+  }
   default:
     cpu_set_last_error("argsort: unsupported dtype");
     return C_FAILED;
@@ -142,3 +193,5 @@ REGISTER_CPU_KERNEL(argsort, INSIGHT_DTYPE_F32, argsort_kernel_cpu);
 REGISTER_CPU_KERNEL(argsort, INSIGHT_DTYPE_F64, argsort_kernel_cpu);
 REGISTER_CPU_KERNEL(argsort, INSIGHT_DTYPE_I32, argsort_kernel_cpu);
 REGISTER_CPU_KERNEL(argsort, INSIGHT_DTYPE_I64, argsort_kernel_cpu);
+REGISTER_CPU_KERNEL(argsort, INSIGHT_DTYPE_F16, argsort_kernel_cpu);
+REGISTER_CPU_KERNEL(argsort, INSIGHT_DTYPE_BF16, argsort_kernel_cpu);

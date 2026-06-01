@@ -8,8 +8,10 @@
  */
 
 #include "common.h"
+#include "../common/half_utils.h"
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 // ============================================================================
 // Fallback implementation (used when OpenBLAS is not available)
@@ -302,8 +304,42 @@ C_Status qr_kernel_cpu(void **inputs, void **outputs) {
 
   cpu_set_last_error("");
 
+  if (x->dtype == INSIGHT_DTYPE_F16 || x->dtype == INSIGHT_DTYPE_BF16) {
+    const uint16_t *x_src = (const uint16_t *)x->data;
+    uint16_t *q_dst = (uint16_t *)Q->data;
+    uint16_t *r_dst = (uint16_t *)R->data;
+    bool is_f16 = (x->dtype == INSIGHT_DTYPE_F16);
+    int k = m < n ? m : n;
+    int q_cols = (mode == 0) ? m : k;
+    std::vector<float> x_f32((int64_t)m * n);
+    std::vector<float> q_f32((int64_t)m * q_cols);
+    std::vector<float> r_f32((int64_t)k * n);
+    if (is_f16) {
+      for (int64_t i = 0; i < (int64_t)m * n; ++i)
+        x_f32[i] = insight::f16_to_f32(x_src[i]);
+    } else {
+      for (int64_t i = 0; i < (int64_t)m * n; ++i)
+        x_f32[i] = insight::bf16_to_f32(x_src[i]);
+    }
 #ifdef INSIGHT_USE_OPENBLAS
-  if (x->dtype == INSIGHT_DTYPE_F64) {
+    qr_f32_lapack(x_f32.data(), q_f32.data(), r_f32.data(), m, n, mode);
+#else
+    qr_f32_fallback(x_f32.data(), q_f32.data(), r_f32.data(), m, n, mode);
+#endif
+    if (is_f16) {
+      for (int64_t i = 0; i < (int64_t)m * q_cols; ++i)
+        q_dst[i] = insight::f32_to_f16(q_f32[i]);
+      for (int64_t i = 0; i < (int64_t)k * n; ++i)
+        r_dst[i] = insight::f32_to_f16(r_f32[i]);
+    } else {
+      for (int64_t i = 0; i < (int64_t)m * q_cols; ++i)
+        q_dst[i] = insight::f32_to_bf16(q_f32[i]);
+      for (int64_t i = 0; i < (int64_t)k * n; ++i)
+        r_dst[i] = insight::f32_to_bf16(r_f32[i]);
+    }
+  } else
+#ifdef INSIGHT_USE_OPENBLAS
+      if (x->dtype == INSIGHT_DTYPE_F64) {
     qr_f64_lapack((double *)x->data, (double *)Q->data, (double *)R->data, m, n,
                   mode);
   } else if (x->dtype == INSIGHT_DTYPE_F32) {
@@ -338,3 +374,5 @@ C_Status qr_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(qr, INSIGHT_DTYPE_F64, qr_kernel_cpu);
 REGISTER_CPU_KERNEL(qr, INSIGHT_DTYPE_F32, qr_kernel_cpu);
+REGISTER_CPU_KERNEL(qr, INSIGHT_DTYPE_F16, qr_kernel_cpu);
+REGISTER_CPU_KERNEL(qr, INSIGHT_DTYPE_BF16, qr_kernel_cpu);

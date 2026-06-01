@@ -124,6 +124,14 @@ C_Status tril_kernel_cpu(void **inputs, void **outputs) {
     cpu_tril_impl<double>((const double *)x->data, (double *)out->data, rows,
                           cols, k);
     break;
+  case INSIGHT_DTYPE_F16:
+    cpu_tril_impl<uint16_t>((const uint16_t *)x->data, (uint16_t *)out->data,
+                            rows, cols, k);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    cpu_tril_impl<uint16_t>((const uint16_t *)x->data, (uint16_t *)out->data,
+                            rows, cols, k);
+    break;
   default:
     cpu_set_last_error("tril: unsupported dtype");
     return C_FAILED;
@@ -147,3 +155,5 @@ REGISTER_CPU_KERNEL(tril, INSIGHT_DTYPE_U32, tril_kernel_cpu);
 REGISTER_CPU_KERNEL(tril, INSIGHT_DTYPE_U64, tril_kernel_cpu);
 REGISTER_CPU_KERNEL(tril, INSIGHT_DTYPE_F32, tril_kernel_cpu);
 REGISTER_CPU_KERNEL(tril, INSIGHT_DTYPE_F64, tril_kernel_cpu);
+REGISTER_CPU_KERNEL(tril, INSIGHT_DTYPE_F16, tril_kernel_cpu);
+REGISTER_CPU_KERNEL(tril, INSIGHT_DTYPE_BF16, tril_kernel_cpu);

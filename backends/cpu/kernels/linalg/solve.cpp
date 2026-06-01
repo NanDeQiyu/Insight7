@@ -7,6 +7,9 @@
 #ifdef INSIGHT_USE_OPENBLAS
 
 #include "common.h"
+#include "../common/half_utils.h"
+
+#include <vector>
 
 #ifdef __cplusplus
 extern "C" {
@@ -84,6 +87,35 @@ C_Status solve_kernel_cpu(void **inputs, void **outputs) {
 
   if (A->dtype == INSIGHT_DTYPE_F32) {
     solve_f32((float *)A->data, (float *)B->data, (float *)out->data, n, nrhs);
+  } else if (A->dtype == INSIGHT_DTYPE_F16 ||
+             A->dtype == INSIGHT_DTYPE_BF16) {
+    const uint16_t *a_src = (const uint16_t *)A->data;
+    const uint16_t *b_src = (const uint16_t *)B->data;
+    uint16_t *x_dst = (uint16_t *)out->data;
+    int64_t a_total = (int64_t)n * n;
+    int64_t b_total = (int64_t)n * nrhs;
+    int64_t x_total = (int64_t)n * nrhs;
+    std::vector<float> a_f32(a_total), b_f32(b_total), x_f32(x_total);
+    bool is_f16 = (A->dtype == INSIGHT_DTYPE_F16);
+    if (is_f16) {
+      for (int64_t i = 0; i < a_total; ++i)
+        a_f32[i] = insight::f16_to_f32(a_src[i]);
+      for (int64_t i = 0; i < b_total; ++i)
+        b_f32[i] = insight::f16_to_f32(b_src[i]);
+    } else {
+      for (int64_t i = 0; i < a_total; ++i)
+        a_f32[i] = insight::bf16_to_f32(a_src[i]);
+      for (int64_t i = 0; i < b_total; ++i)
+        b_f32[i] = insight::bf16_to_f32(b_src[i]);
+    }
+    solve_f32(a_f32.data(), b_f32.data(), x_f32.data(), n, nrhs);
+    if (is_f16) {
+      for (int64_t i = 0; i < x_total; ++i)
+        x_dst[i] = insight::f32_to_f16(x_f32[i]);
+    } else {
+      for (int64_t i = 0; i < x_total; ++i)
+        x_dst[i] = insight::f32_to_bf16(x_f32[i]);
+    }
   } else {
     solve_f64((double *)A->data, (double *)B->data, (double *)out->data, n,
               nrhs);
@@ -97,5 +129,7 @@ C_Status solve_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(solve, INSIGHT_DTYPE_F32, solve_kernel_cpu);
 REGISTER_CPU_KERNEL(solve, INSIGHT_DTYPE_F64, solve_kernel_cpu);
+REGISTER_CPU_KERNEL(solve, INSIGHT_DTYPE_F16, solve_kernel_cpu);
+REGISTER_CPU_KERNEL(solve, INSIGHT_DTYPE_BF16, solve_kernel_cpu);
 
 #endif

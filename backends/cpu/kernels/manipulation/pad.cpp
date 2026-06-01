@@ -17,6 +17,7 @@
  */
 
 #include "common.h"
+#include "../common/half_utils.h"
 #include <complex>
 #include <cstring>
 
@@ -216,6 +217,18 @@ C_Status pad_kernel_cpu(void **inputs, void **outputs) {
                                    in_dims, out_dims, pad_before, cval);
     break;
   }
+  case INSIGHT_DTYPE_F16: {
+    uint16_t cval = insight::f32_to_f16((float)constant_value);
+    pad_impl<uint16_t>((const uint16_t *)x->data, (uint16_t *)out->data, ndim,
+                       in_dims, out_dims, pad_before, cval);
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    uint16_t cval = insight::f32_to_bf16((float)constant_value);
+    pad_impl<uint16_t>((const uint16_t *)x->data, (uint16_t *)out->data, ndim,
+                       in_dims, out_dims, pad_before, cval);
+    break;
+  }
   default:
     cpu_set_last_error("pad: unsupported dtype");
     return C_FAILED;
@@ -242,3 +255,5 @@ REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_F32, pad_kernel_cpu);
 REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_F64, pad_kernel_cpu);
 REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_C32, pad_kernel_cpu);
 REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_C64, pad_kernel_cpu);
+REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_F16, pad_kernel_cpu);
+REGISTER_CPU_KERNEL(pad, INSIGHT_DTYPE_BF16, pad_kernel_cpu);

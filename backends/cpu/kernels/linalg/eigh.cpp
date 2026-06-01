@@ -7,8 +7,10 @@
 #ifdef INSIGHT_USE_OPENBLAS
 
 #include "common.h"
+#include "../common/half_utils.h"
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 static void eigh_f32(const float *src, float *vals, float *vecs, int n,
                      int uplo) {
@@ -106,6 +108,33 @@ C_Status eigh_kernel_cpu(void **inputs, void **outputs) {
   if (x->dtype == INSIGHT_DTYPE_F32) {
     eigh_f32((float *)x->data, (float *)vals->data, (float *)vecs->data, n,
              uplo);
+  } else if (x->dtype == INSIGHT_DTYPE_F16 ||
+             x->dtype == INSIGHT_DTYPE_BF16) {
+    const uint16_t *x_src = (const uint16_t *)x->data;
+    uint16_t *vals_dst = (uint16_t *)vals->data;
+    uint16_t *vecs_dst = (uint16_t *)vecs->data;
+    bool is_f16 = (x->dtype == INSIGHT_DTYPE_F16);
+    int64_t total = (int64_t)n * n;
+    std::vector<float> x_f32(total), vals_f32(n), vecs_f32(total);
+    if (is_f16) {
+      for (int64_t i = 0; i < total; ++i)
+        x_f32[i] = insight::f16_to_f32(x_src[i]);
+    } else {
+      for (int64_t i = 0; i < total; ++i)
+        x_f32[i] = insight::bf16_to_f32(x_src[i]);
+    }
+    eigh_f32(x_f32.data(), vals_f32.data(), vecs_f32.data(), n, uplo);
+    if (is_f16) {
+      for (int i = 0; i < n; ++i)
+        vals_dst[i] = insight::f32_to_f16(vals_f32[i]);
+      for (int64_t i = 0; i < total; ++i)
+        vecs_dst[i] = insight::f32_to_f16(vecs_f32[i]);
+    } else {
+      for (int i = 0; i < n; ++i)
+        vals_dst[i] = insight::f32_to_bf16(vals_f32[i]);
+      for (int64_t i = 0; i < total; ++i)
+        vecs_dst[i] = insight::f32_to_bf16(vecs_f32[i]);
+    }
   } else {
     eigh_f64((double *)x->data, (double *)vals->data, (double *)vecs->data, n,
              uplo);
@@ -121,6 +150,8 @@ C_Status eigh_kernel_cpu(void **inputs, void **outputs) {
 
 REGISTER_CPU_KERNEL(eigh, INSIGHT_DTYPE_F32, eigh_kernel_cpu);
 REGISTER_CPU_KERNEL(eigh, INSIGHT_DTYPE_F64, eigh_kernel_cpu);
+REGISTER_CPU_KERNEL(eigh, INSIGHT_DTYPE_F16, eigh_kernel_cpu);
+REGISTER_CPU_KERNEL(eigh, INSIGHT_DTYPE_BF16, eigh_kernel_cpu);
 
 #else // !INSIGHT_USE_OPENBLAS
 

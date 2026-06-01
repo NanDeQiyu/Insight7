@@ -92,6 +92,24 @@ C_Status where_kernel_cpu(void **inputs, void **outputs) {
     }
     break;
   }
+  case INSIGHT_DTYPE_F16: {
+    uint16_t *dst = (uint16_t *)out->data;
+    const uint16_t *x_data = (const uint16_t *)x->data;
+    const uint16_t *y_data = (const uint16_t *)y->data;
+    for (int64_t i = 0; i < n; ++i) {
+      dst[i] = cond_data[i] ? x_data[i] : y_data[i];
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    uint16_t *dst = (uint16_t *)out->data;
+    const uint16_t *x_data = (const uint16_t *)x->data;
+    const uint16_t *y_data = (const uint16_t *)y->data;
+    for (int64_t i = 0; i < n; ++i) {
+      dst[i] = cond_data[i] ? x_data[i] : y_data[i];
+    }
+    break;
+  }
   default:
     cpu_set_last_error("where: unsupported dtype");
     return C_FAILED;
@@ -110,3 +128,5 @@ REGISTER_CPU_KERNEL(where, INSIGHT_DTYPE_I32, where_kernel_cpu);
 REGISTER_CPU_KERNEL(where, INSIGHT_DTYPE_I64, where_kernel_cpu);
 REGISTER_CPU_KERNEL(where, INSIGHT_DTYPE_U8, where_kernel_cpu);
 REGISTER_CPU_KERNEL(where, INSIGHT_DTYPE_BOOL, where_kernel_cpu);
+REGISTER_CPU_KERNEL(where, INSIGHT_DTYPE_F16, where_kernel_cpu);
+REGISTER_CPU_KERNEL(where, INSIGHT_DTYPE_BF16, where_kernel_cpu);

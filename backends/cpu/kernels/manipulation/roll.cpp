@@ -180,6 +180,14 @@ C_Status roll_kernel_cpu(void **inputs, void **outputs) {
       cpu_roll_1d_impl<double>((const double *)x->data, (double *)out->data, n,
                                shift);
       break;
+    case INSIGHT_DTYPE_F16:
+      cpu_roll_1d_impl<uint16_t>((const uint16_t *)x->data,
+                                 (uint16_t *)out->data, n, shift);
+      break;
+    case INSIGHT_DTYPE_BF16:
+      cpu_roll_1d_impl<uint16_t>((const uint16_t *)x->data,
+                                 (uint16_t *)out->data, n, shift);
+      break;
     default:
       cpu_set_last_error("roll: unsupported dtype");
       return C_FAILED;
@@ -248,6 +256,16 @@ C_Status roll_kernel_cpu(void **inputs, void **outputs) {
       cpu_roll_nd_impl<double>((const double *)x->data, (double *)out->data,
                                ndim, dims, strides, axis, shift);
       break;
+    case INSIGHT_DTYPE_F16:
+      cpu_roll_nd_impl<uint16_t>((const uint16_t *)x->data,
+                                 (uint16_t *)out->data, ndim, dims, strides,
+                                 axis, shift);
+      break;
+    case INSIGHT_DTYPE_BF16:
+      cpu_roll_nd_impl<uint16_t>((const uint16_t *)x->data,
+                                 (uint16_t *)out->data, ndim, dims, strides,
+                                 axis, shift);
+      break;
     default:
       cpu_set_last_error("roll: unsupported dtype");
       return C_FAILED;
@@ -272,3 +290,5 @@ REGISTER_CPU_KERNEL(roll, INSIGHT_DTYPE_U32, roll_kernel_cpu);
 REGISTER_CPU_KERNEL(roll, INSIGHT_DTYPE_U64, roll_kernel_cpu);
 REGISTER_CPU_KERNEL(roll, INSIGHT_DTYPE_F32, roll_kernel_cpu);
 REGISTER_CPU_KERNEL(roll, INSIGHT_DTYPE_F64, roll_kernel_cpu);
+REGISTER_CPU_KERNEL(roll, INSIGHT_DTYPE_F16, roll_kernel_cpu);
+REGISTER_CPU_KERNEL(roll, INSIGHT_DTYPE_BF16, roll_kernel_cpu);

@@ -90,7 +90,11 @@ function run_fft_gpu()
     println("GPU F64 FFT roundtrip max error: $max_err64")
 end
 
-Insight.init(["cpu", "cuda"])
+try
+    Insight.init(["cpu", "cuda"])
+catch
+    Insight.init(["cpu"])
+end
 
 println("Insight7 FFT Demo (Julia)")
 

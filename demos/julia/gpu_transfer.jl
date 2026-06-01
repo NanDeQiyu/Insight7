@@ -21,7 +21,11 @@ function gpu_available()
     end
 end
 
-Insight.init(["cpu", "cuda"])
+try
+    Insight.init(["cpu", "cuda"])
+catch
+    Insight.init(["cpu"])
+end
 
 println("Insight7 GPU Transfer Demo (Julia)")
 

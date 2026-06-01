@@ -159,6 +159,14 @@ C_Status diag_kernel_cpu(void **inputs, void **outputs) {
       cpu_diag_construct_impl<double>((const double *)x->data,
                                       (double *)out->data, size, k);
       break;
+    case INSIGHT_DTYPE_F16:
+      cpu_diag_construct_impl<uint16_t>((const uint16_t *)x->data,
+                                        (uint16_t *)out->data, size, k);
+      break;
+    case INSIGHT_DTYPE_BF16:
+      cpu_diag_construct_impl<uint16_t>((const uint16_t *)x->data,
+                                        (uint16_t *)out->data, size, k);
+      break;
     default:
       cpu_set_last_error("diag: unsupported dtype");
       return C_FAILED;
@@ -213,6 +221,14 @@ C_Status diag_kernel_cpu(void **inputs, void **outputs) {
       cpu_diag_extract_impl<double>((const double *)x->data,
                                     (double *)out->data, rows, cols, k);
       break;
+    case INSIGHT_DTYPE_F16:
+      cpu_diag_extract_impl<uint16_t>((const uint16_t *)x->data,
+                                      (uint16_t *)out->data, rows, cols, k);
+      break;
+    case INSIGHT_DTYPE_BF16:
+      cpu_diag_extract_impl<uint16_t>((const uint16_t *)x->data,
+                                      (uint16_t *)out->data, rows, cols, k);
+      break;
     default:
       cpu_set_last_error("diag: unsupported dtype");
       return C_FAILED;
@@ -240,3 +256,5 @@ REGISTER_CPU_KERNEL(diag, INSIGHT_DTYPE_U32, diag_kernel_cpu);
 REGISTER_CPU_KERNEL(diag, INSIGHT_DTYPE_U64, diag_kernel_cpu);
 REGISTER_CPU_KERNEL(diag, INSIGHT_DTYPE_F32, diag_kernel_cpu);
 REGISTER_CPU_KERNEL(diag, INSIGHT_DTYPE_F64, diag_kernel_cpu);
+REGISTER_CPU_KERNEL(diag, INSIGHT_DTYPE_F16, diag_kernel_cpu);
+REGISTER_CPU_KERNEL(diag, INSIGHT_DTYPE_BF16, diag_kernel_cpu);

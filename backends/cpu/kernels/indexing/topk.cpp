@@ -19,6 +19,7 @@
  */
 
 #include "common.h"
+#include "../common/half_utils.h"
 #include <algorithm>
 #include <vector>
 
@@ -144,6 +145,54 @@ C_Status topk_kernel_cpu(void **inputs, void **outputs) {
     }
     break;
   }
+  case INSIGHT_DTYPE_F16: {
+    const uint16_t *src = (const uint16_t *)x->data;
+    uint16_t *dst_vals = (uint16_t *)vals_data;
+    for (int64_t batch = 0; batch < batch_size; ++batch) {
+      std::vector<std::pair<float, int64_t>> pairs(last_dim);
+      for (int64_t i = 0; i < last_dim; ++i) {
+        pairs[i] = {insight::f16_to_f32(src[batch * last_dim + i]), i};
+      }
+      if (largest) {
+        std::partial_sort(
+            pairs.begin(), pairs.begin() + k, pairs.end(),
+            [](const auto &a, const auto &b) { return a.first > b.first; });
+      } else {
+        std::partial_sort(
+            pairs.begin(), pairs.begin() + k, pairs.end(),
+            [](const auto &a, const auto &b) { return a.first < b.first; });
+      }
+      for (int64_t i = 0; i < k; ++i) {
+        dst_vals[batch * k + i] = insight::f32_to_f16(pairs[i].first);
+        idx_data[batch * k + i] = pairs[i].second;
+      }
+    }
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    const uint16_t *src = (const uint16_t *)x->data;
+    uint16_t *dst_vals = (uint16_t *)vals_data;
+    for (int64_t batch = 0; batch < batch_size; ++batch) {
+      std::vector<std::pair<float, int64_t>> pairs(last_dim);
+      for (int64_t i = 0; i < last_dim; ++i) {
+        pairs[i] = {insight::bf16_to_f32(src[batch * last_dim + i]), i};
+      }
+      if (largest) {
+        std::partial_sort(
+            pairs.begin(), pairs.begin() + k, pairs.end(),
+            [](const auto &a, const auto &b) { return a.first > b.first; });
+      } else {
+        std::partial_sort(
+            pairs.begin(), pairs.begin() + k, pairs.end(),
+            [](const auto &a, const auto &b) { return a.first < b.first; });
+      }
+      for (int64_t i = 0; i < k; ++i) {
+        dst_vals[batch * k + i] = insight::f32_to_bf16(pairs[i].first);
+        idx_data[batch * k + i] = pairs[i].second;
+      }
+    }
+    break;
+  }
   default:
     cpu_set_last_error("topk: unsupported dtype");
     return C_FAILED;
@@ -160,3 +209,5 @@ REGISTER_CPU_KERNEL(topk, INSIGHT_DTYPE_F32, topk_kernel_cpu);
 REGISTER_CPU_KERNEL(topk, INSIGHT_DTYPE_F64, topk_kernel_cpu);
 REGISTER_CPU_KERNEL(topk, INSIGHT_DTYPE_I32, topk_kernel_cpu);
 REGISTER_CPU_KERNEL(topk, INSIGHT_DTYPE_I64, topk_kernel_cpu);
+REGISTER_CPU_KERNEL(topk, INSIGHT_DTYPE_F16, topk_kernel_cpu);
+REGISTER_CPU_KERNEL(topk, INSIGHT_DTYPE_BF16, topk_kernel_cpu);
