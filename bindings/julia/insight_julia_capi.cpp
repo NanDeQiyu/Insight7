@@ -1129,4 +1129,84 @@ void insight_jl_firfilter_zi_state(const Array *b, const Array *x,
   *out_zf = new Array(result.second);
 }
 
+// ============================================================================
+// Estimation — KalmanFilter
+// ============================================================================
+
+void *insight_jl_kalman_filter_new(int32_t dim_x, int32_t dim_z, int32_t dim_u,
+                                   int32_t points, int32_t dtype) {
+  DType dt = static_cast<DType>(dtype);
+  auto *kf = new signal::KalmanFilter(dim_x, dim_z, dim_u, points, dt);
+  return static_cast<void *>(kf);
+}
+
+void insight_jl_kalman_filter_free(void *kf) {
+  delete static_cast<signal::KalmanFilter *>(kf);
+}
+
+void insight_jl_kalman_filter_predict(void *kf) {
+  static_cast<signal::KalmanFilter *>(kf)->predict();
+}
+
+void insight_jl_kalman_filter_update(void *kf, const Array *z) {
+  static_cast<signal::KalmanFilter *>(kf)->update(*z);
+}
+
+// Getters — return new heap-allocated Array copies
+Array *insight_jl_kf_get_x(void *kf) {
+  return new Array(static_cast<signal::KalmanFilter *>(kf)->x);
+}
+Array *insight_jl_kf_get_P(void *kf) {
+  return new Array(static_cast<signal::KalmanFilter *>(kf)->P);
+}
+Array *insight_jl_kf_get_z(void *kf) {
+  return new Array(static_cast<signal::KalmanFilter *>(kf)->z);
+}
+Array *insight_jl_kf_get_R(void *kf) {
+  return new Array(static_cast<signal::KalmanFilter *>(kf)->R);
+}
+Array *insight_jl_kf_get_Q(void *kf) {
+  return new Array(static_cast<signal::KalmanFilter *>(kf)->Q);
+}
+Array *insight_jl_kf_get_F(void *kf) {
+  return new Array(static_cast<signal::KalmanFilter *>(kf)->F);
+}
+Array *insight_jl_kf_get_H(void *kf) {
+  return new Array(static_cast<signal::KalmanFilter *>(kf)->H);
+}
+
+// Setters
+void insight_jl_kf_set_x(void *kf, const Array *v) {
+  static_cast<signal::KalmanFilter *>(kf)->x = *v;
+}
+void insight_jl_kf_set_P(void *kf, const Array *v) {
+  static_cast<signal::KalmanFilter *>(kf)->P = *v;
+}
+void insight_jl_kf_set_R(void *kf, const Array *v) {
+  static_cast<signal::KalmanFilter *>(kf)->R = *v;
+}
+void insight_jl_kf_set_Q(void *kf, const Array *v) {
+  static_cast<signal::KalmanFilter *>(kf)->Q = *v;
+}
+void insight_jl_kf_set_F(void *kf, const Array *v) {
+  static_cast<signal::KalmanFilter *>(kf)->F = *v;
+}
+void insight_jl_kf_set_H(void *kf, const Array *v) {
+  static_cast<signal::KalmanFilter *>(kf)->H = *v;
+}
+
+// Read-only dimension accessors
+int32_t insight_jl_kf_get_dim_x(void *kf) {
+  return static_cast<signal::KalmanFilter *>(kf)->dim_x;
+}
+int32_t insight_jl_kf_get_dim_z(void *kf) {
+  return static_cast<signal::KalmanFilter *>(kf)->dim_z;
+}
+int32_t insight_jl_kf_get_dim_u(void *kf) {
+  return static_cast<signal::KalmanFilter *>(kf)->dim_u;
+}
+int32_t insight_jl_kf_get_points(void *kf) {
+  return static_cast<signal::KalmanFilter *>(kf)->points;
+}
+
 } // extern "C"

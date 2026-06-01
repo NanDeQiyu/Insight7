@@ -8,21 +8,47 @@ local sig = native.signal
 
 local M = {}
 
+local function _wrap(names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+          has_names = true
+          break
+        end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(names) do
+          pos[i] = t[name]
+          if pos[i] == nil then
+            pos[i] = t[i]
+          end
+        end
+        return fn(table.unpack(pos, 1, #names))
+      end
+    end
+    return fn(...)
+  end
+end
+
 --- Return a periodic sawtooth or triangle waveform.
 -- @number t Time array or scalar.
 -- @number[opt=1.0] width Width of the rising ramp (0 to 1).
 -- @treturn Array Sawtooth waveform.
-function M.sawtooth(t, width)
+M.sawtooth = _wrap({ "t", "width" }, function(t, width)
   return sig.sawtooth(t, width or 1.0)
-end
+end)
 
 --- Return a periodic square-wave waveform.
 -- @number t Time array or scalar.
 -- @number[opt=0.5] duty Duty cycle (0 to 1).
 -- @treturn Array Square waveform.
-function M.square(t, duty)
+M.square = _wrap({ "t", "duty" }, function(t, duty)
   return sig.square_wf(t, duty or 0.5)
-end
+end)
 
 --- Return a Gaussian pulse.
 -- @number t Time array or scalar.
@@ -32,9 +58,9 @@ end
 -- @number[opt=-60] tpr Pulse reference level in dB.
 -- @number[opt=1] retenv If true, return the envelope.
 -- @treturn Array Gaussian pulse.
-function M.gausspulse(t, fc, bw, bwr, tpr, retenv)
+M.gausspulse = _wrap({ "t", "fc", "bw", "bwr", "tpr", "retenv" }, function(t, fc, bw, bwr, tpr, retenv)
   return sig.gausspulse(t, fc or 0, bw or 1.0, bwr or 6, tpr or -60, retenv or 1)
-end
+end)
 
 --- Return a chirp signal.
 -- @number t Time array or scalar.
@@ -44,19 +70,19 @@ end
 -- @string[opt="linear"] method Chirp method: 'linear', 'quadratic', 'logarithmic', 'hyperbolic'.
 -- @number[opt=0] phi Initial phase in degrees.
 -- @treturn Array Chirp signal.
-function M.chirp(t, f0, t1, f1, method, phi)
+M.chirp = _wrap({ "t", "f0", "t1", "f1", "method", "phi" }, function(t, f0, t1, f1, method, phi)
   return sig.chirp(t, f0, t1, f1, method or "linear", phi or 0)
-end
+end)
 
 --- Return a unit impulse (delta function).
 -- @tparam table|Array shape Shape of the output array or an existing array.
 -- @int[opt] idx Index of the impulse (default: center).
 -- @treturn Array Unit impulse.
-function M.unit_impulse(shape, idx)
+M.unit_impulse = _wrap({ "shape", "idx" }, function(shape, idx)
   if idx then
     return sig.unit_impulse(shape, idx)
   end
   return sig.unit_impulse(shape)
-end
+end)
 
 return M

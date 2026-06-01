@@ -1,3 +1,7 @@
+// NOTE: This kernel is currently not called from the frontend.
+// The frontend uses composite ops for this operation.
+// This kernel is preserved for future backend dispatch optimization.
+//
 // backends/cuda/kernels/signal/filtering/firfilter.cu
 // CUDA kernel for FIR filter — each thread computes one output element.
 #include "../../../registry/cuda_registry.h"

@@ -1,3 +1,7 @@
+// NOTE: This kernel is currently not called from the frontend.
+// The frontend uses composite ops for this operation.
+// This kernel is preserved for future backend dispatch optimization.
+//
 // backends/cuda/kernels/signal/filtering/firfilter_zi_state.cu
 // FIR filter with initial state: C_FALLBACK for now.
 #include "../../../registry/cuda_registry.h"

@@ -31,8 +31,8 @@ __device__ void lfilter_f64_impl(const double *b, int nb, const double *a,
   }
 }
 
-__device__ void lfilter_f32_impl(const float *b, int nb, const float *a,
-                                 int na, const float *x, int n, float *y) {
+__device__ void lfilter_f32_impl(const float *b, int nb, const float *a, int na,
+                                 const float *x, int n, float *y) {
   int nmax = nb > na ? nb : na;
   float z[MAX_FILTER_ORDER];
   for (int j = 0; j < nmax - 1 && j < MAX_FILTER_ORDER; ++j)

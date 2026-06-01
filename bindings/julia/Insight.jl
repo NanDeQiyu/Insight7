@@ -1343,6 +1343,9 @@ module signal
     const barthann_win = Insight.barthann_win
     const exponential_win = Insight.exponential_win
     const general_gaussian_win = Insight.general_gaussian_win
+    const KalmanFilter = Insight.KalmanFilter
+    const kf_predict = Insight.predict
+    const kf_update = Insight.update
 end
 
 end # module Insight

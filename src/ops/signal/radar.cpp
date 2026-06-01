@@ -202,13 +202,8 @@ std::pair<Array, Array> ca_cfar(const Array &data,
   int g = guard_cells.empty() ? 1 : guard_cells[0];
   int r = reference_cells.empty() ? 1 : reference_cells[0];
 
-  // guard_cells and reference_cells as int arrays
-  // Kernel reads as int (not int64)
-  Array gc_arr = zeros({1}, DType::I32, cpu);
-  Array rc_arr = zeros({1}, DType::I32, cpu);
-  // Write scalar values via layout pointer
-  *(int *)gc_arr.layout_ptr()->data = g;
-  *(int *)rc_arr.layout_ptr()->data = r;
+  Array gc_arr = to_array(std::vector<int>{g}, Shape({1}), DType::I32, cpu);
+  Array rc_arr = to_array(std::vector<int>{r}, Shape({1}), DType::I32, cpu);
 
   // Pre-allocate outputs
   Array threshold = zeros(data_cpu.shape(), work_dtype, cpu);

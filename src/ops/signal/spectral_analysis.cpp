@@ -305,7 +305,8 @@ SpectrogramResult spectrogram(const Array &x, double fs,
     Sxx_2d = mul(Sxx_2d, full({1}, scale, DType::F64, cpu));
     if (return_onesided && nfft > 1) {
       Array mask = ones({freq_len}, DType::F64, cpu);
-      Array idx_mid = arange(1.0, static_cast<double>(freq_len - 1), 1.0, DType::I64, cpu);
+      Array idx_mid =
+          arange(1.0, static_cast<double>(freq_len - 1), 1.0, DType::I64, cpu);
       Array twos = full({freq_len - 2}, 2.0, DType::F64, cpu);
       mask = put(mask, idx_mid, twos);
       // Broadcast mask across segments: mask is [freq_len], Sxx_2d is

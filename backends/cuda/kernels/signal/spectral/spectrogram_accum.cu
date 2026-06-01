@@ -1,3 +1,8 @@
+// NOTE: These kernels (spectrogram_accum, spectrogram_power) are currently
+// not called from the frontend. The frontend uses composite ops for these
+// operations. These kernels are preserved for future backend dispatch
+// optimization.
+//
 // backends/cuda/kernels/signal/spectral/spectrogram_accum.cu
 // CUDA kernel for extracting real/imag parts from complex STFT output
 // and computing power spectrum |Xf|^2.
@@ -64,8 +69,8 @@ C_Status spectrogram_accum_kernel_gpu(void **inputs, void **outputs) {
     spectrogram_accum_c64<<<blocks, threads>>>(
         (const cuDoubleComplex *)in->data, (double *)out->data, numel);
   } else if (in->dtype == INSIGHT_DTYPE_C32) {
-    spectrogram_accum_c32<<<blocks, threads>>>(
-        (const cuFloatComplex *)in->data, (float *)out->data, numel);
+    spectrogram_accum_c32<<<blocks, threads>>>((const cuFloatComplex *)in->data,
+                                               (float *)out->data, numel);
   } else {
     gpu_set_last_error("spectrogram_accum: unsupported dtype");
     return C_FAILED;
@@ -96,8 +101,8 @@ C_Status spectrogram_power_kernel_gpu(void **inputs, void **outputs) {
     spectrogram_power_c64<<<blocks, threads>>>(
         (const cuDoubleComplex *)in->data, (double *)out->data, numel);
   } else if (in->dtype == INSIGHT_DTYPE_C32) {
-    spectrogram_power_c32<<<blocks, threads>>>(
-        (const cuFloatComplex *)in->data, (float *)out->data, numel);
+    spectrogram_power_c32<<<blocks, threads>>>((const cuFloatComplex *)in->data,
+                                               (float *)out->data, numel);
   } else {
     gpu_set_last_error("spectrogram_power: unsupported dtype");
     return C_FAILED;

@@ -1,3 +1,8 @@
+// NOTE: These kernels (spectrogram_accum, spectrogram_power) are currently
+// not called from the frontend. The frontend uses composite ops for these
+// operations. These kernels are preserved for future backend dispatch
+// optimization.
+//
 // backends/cpu/kernels/signal/spectral/spectrogram_accum.cpp
 // Accumulate real part from complex STFT output for spectrogram computation.
 // Equivalent to: out[i] = real(in[i]) for each element.

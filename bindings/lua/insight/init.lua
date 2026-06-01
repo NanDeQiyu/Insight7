@@ -160,6 +160,91 @@ function M.size(arr)
 end
 
 -- ============================================================================
+-- Argument parsing helpers
+-- ============================================================================
+
+--- Parse arguments supporting both positional and named-table calling styles.
+--
+-- Usage:
+--   local args = ins.args({"x", "y", "axis"}, ...)
+--
+-- Supports:
+--   func(x, y, 1)           -- positional
+--   func{x, y, axis=1}      -- mixed positional + named
+--   func{x=x, y=y, axis=1}  -- fully named
+--
+-- @tparam table names Ordered list of argument names.
+-- @param ... The actual call arguments.
+-- @treturn table A table mapping each name to its value.
+function M.args(names, ...)
+  local nargs = select("#", ...)
+  if nargs == 1 and type(select(1, ...)) == "table" then
+    local t = select(1, ...)
+    -- Check if this is a positional array table (has numeric keys only)
+    -- or a named argument table
+    local has_names = false
+    for k, _ in pairs(t) do
+      if type(k) ~= "number" then
+        has_names = true
+        break
+      end
+    end
+    if has_names then
+      local result = {}
+      for i, name in ipairs(names) do
+        result[name] = t[name]
+        if result[name] == nil and t[i] ~= nil then
+          result[name] = t[i]
+        end
+      end
+      return result
+    end
+  end
+  -- Positional arguments
+  local result = {}
+  for i, name in ipairs(names) do
+    result[name] = select(i, ...)
+  end
+  return result
+end
+
+--- Create a dual-mode wrapper function that supports positional and table args.
+--
+-- @tparam table arg_names Ordered argument names.
+-- @tparam function fn The underlying function to call.
+-- @treturn function A wrapper supporting both calling conventions.
+--
+-- Example:
+--   local my_add = ins.wrap({"a", "b"}, function(a, b) return native.add(a, b) end)
+--   my_add(x, y)       -- positional
+--   my_add{a=x, b=y}   -- named table
+function M.wrap(arg_names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+          has_names = true
+          break
+        end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(arg_names) do
+          pos[i] = t[name]
+          if pos[i] == nil then
+            pos[i] = t[i]
+          end
+        end
+        return fn(table.unpack(pos, 1, #arg_names))
+      end
+    end
+    return fn(...)
+  end
+end
+
+-- ============================================================================
 -- Load sub-modules
 -- ============================================================================
 

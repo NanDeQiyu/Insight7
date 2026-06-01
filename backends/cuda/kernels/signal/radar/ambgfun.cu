@@ -8,9 +8,9 @@
 #include <cuda_runtime.h>
 
 __global__ void ambgfun_kernel(const double *x, const double *y_real,
-                               const double *y_imag, double *ambg,
-                               double fs, int64_t N, int64_t M,
-                               int64_t delay_len, int64_t doppler_len) {
+                               const double *y_imag, double *ambg, double fs,
+                               int64_t N, int64_t M, int64_t delay_len,
+                               int64_t doppler_len) {
   int64_t fd = (int64_t)blockIdx.y * blockDim.y + threadIdx.y;
   int64_t tau = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (fd >= doppler_len || tau >= delay_len)
@@ -83,8 +83,8 @@ C_Status ambgfun_kernel_gpu(void **inputs, void **outputs) {
   dim3 blocks((int)((delay_len + 15) / 16), (int)((doppler_len + 15) / 16));
 
   ambgfun_kernel<<<blocks, threads>>>((const double *)x_arr->data, y_real,
-                                      y_imag, (double *)out_arr->data, fs, N,
-                                      M, delay_len, doppler_len);
+                                      y_imag, (double *)out_arr->data, fs, N, M,
+                                      delay_len, doppler_len);
 
   cudaFree(y_real);
   cudaFree(y_imag);

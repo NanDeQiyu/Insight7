@@ -1,0 +1,115 @@
+-- Operator CPU binding tests — aligned with C++ test_operator.cpp
+-- Run with:
+--   LUA_PATH="bindings/lua/?/init.lua;;" LUA_CPATH="build/bindings/lua/?.so;;"
+--   LD_LIBRARY_PATH=build/backends/cpu ~/.luarocks/bin/busted tests/cpu/lua/test_operator.lua
+
+describe("Operator CPU Tests", function()
+  local ins
+  setup(function()
+    ins = require("_insight")
+  end)
+
+  it("add_operator", function()
+    local a = ins.from_table({ 1.0, 2.0, 3.0 })
+    local b = ins.from_table({ 4.0, 5.0, 6.0 })
+    local c = a + b
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("sub_operator", function()
+    local a = ins.from_table({ 10.0, 20.0, 30.0 })
+    local b = ins.from_table({ 1.0, 2.0, 3.0 })
+    local c = a - b
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("mul_operator", function()
+    local a = ins.from_table({ 2.0, 3.0, 4.0 })
+    local b = ins.from_table({ 5.0, 6.0, 7.0 })
+    local c = a * b
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("div_operator", function()
+    local a = ins.from_table({ 10.0, 20.0, 30.0 })
+    local b = ins.from_table({ 2.0, 4.0, 5.0 })
+    local c = a / b
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("negation", function()
+    local a = ins.from_table({ 1.0, -2.0, 3.0 })
+    local c = -a
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("scalar_add", function()
+    local a = ins.from_table({ 1.0, 2.0, 3.0 })
+    local c = a + 10.0
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("scalar_mul", function()
+    local a = ins.from_table({ 1.0, 2.0, 3.0 })
+    local c = a * 2.0
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("eq_operator", function()
+    local a = ins.from_table({ 1.0, 2.0, 3.0 })
+    local b = ins.from_table({ 1.0, 0.0, 3.0 })
+    local c = (a == b)
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("lt_operator", function()
+    local a = ins.from_table({ 1.0, 5.0, 3.0 })
+    local b = ins.from_table({ 2.0, 4.0, 5.0 })
+    local c = (a < b)
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("le_operator", function()
+    local a = ins.from_table({ 1.0, 5.0, 3.0 })
+    local b = ins.from_table({ 2.0, 4.0, 5.0 })
+    local c = (a <= b)
+    assert.is_not_nil(c)
+    assert.are.equal(3, c.numel)
+  end)
+
+  it("indexing", function()
+    local a = ins.from_table({ 10.0, 20.0, 30.0, 40.0 })
+    local b = a["0"]
+    assert.is_not_nil(b)
+    assert.are.equal(1, b.numel)
+  end)
+
+  it("string_slice", function()
+    local a = ins.ones({ 4, 4 }, ins.float32)
+    local b = a[":,1:-1"]
+    assert.is_not_nil(b)
+    assert.are.equal(8, b.numel)
+  end)
+
+  it("get_scalar", function()
+    local a = ins.from_table({ 10.0, 20.0, 30.0 })
+    local v = a:get(0)
+    assert.is_not_nil(v)
+  end)
+
+  it("eq_self", function()
+    local a = ins.from_table({ 1.0, 2.0, 3.0 })
+    local b = ins.from_table({ 1.0, 2.0, 3.0 })
+    local c = (a == b)
+    assert.is_not_nil(c)
+  end)
+end)

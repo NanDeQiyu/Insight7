@@ -1,3 +1,7 @@
+// NOTE: This kernel is currently not called from the frontend.
+// The frontend uses composite ops for this operation.
+// This kernel is preserved for future backend dispatch optimization.
+//
 // backends/cpu/kernels/signal/filtering/firfilter_zi_state.cpp
 // FIR filter with initial state support.
 // Implements: y[i] = b[0]*x[i] + b[1]*x[i-1] + ... + b[nb-1]*x[i-nb+1]

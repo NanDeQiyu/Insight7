@@ -176,9 +176,9 @@ C_Status ca_cfar_kernel_gpu(void **inputs, void **outputs) {
 
     // Compute prefix sum on device
     void *cumsum_ptr = nullptr;
-    cudaMalloc(&cumsum_ptr, (n + 1) * (data->dtype == INSIGHT_DTYPE_F64
-                                            ? sizeof(double)
-                                            : sizeof(float)));
+    cudaMalloc(&cumsum_ptr,
+               (n + 1) * (data->dtype == INSIGHT_DTYPE_F64 ? sizeof(double)
+                                                           : sizeof(float)));
 
     if (data->dtype == INSIGHT_DTYPE_F64) {
       // Build cumsum array (shifted by 1, cumsum[0]=0)

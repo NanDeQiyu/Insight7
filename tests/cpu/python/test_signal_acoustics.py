@@ -1,0 +1,72 @@
+"""Signal acoustics CPU binding tests."""
+import sys
+import os
+import pytest
+
+_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
+sys.path.insert(0, os.path.join(_root, "bindings", "python"))
+sys.path.insert(0, os.path.join(_root, "build", "bindings", "python"))
+
+try:
+    import insight as ins
+    import numpy as np
+except ImportError:
+    pytest.skip("Insight or NumPy not available", allow_module_level=True)
+
+
+class TestSignalAcousticsCPU:
+    """Acoustic scale conversions — signal_acoustics CPU tests."""
+
+    def test_mel2hz(self):
+        mel = ins.from_numpy(np.array([0.0, 1000.0, 2000.0]))
+        hz = ins.signal.mel2hz(mel)
+        assert hz is not None
+        assert hz.numel() == 3
+
+    def test_hz2mel(self):
+        hz = ins.from_numpy(np.array([0.0, 1000.0, 4000.0]))
+        mel = ins.signal.hz2mel(hz)
+        assert mel is not None
+        assert mel.numel() == 3
+
+    def test_mel_roundtrip(self):
+        hz_orig = np.array([100.0, 500.0, 1000.0, 4000.0, 8000.0])
+        mel = ins.signal.hz2mel(ins.from_numpy(hz_orig))
+        hz_back = ins.signal.mel2hz(mel)
+        np.testing.assert_allclose(hz_back.numpy(), hz_orig, rtol=1e-5)
+
+    def test_mel_frequencies(self):
+        freqs = ins.signal.mel_frequencies(128, fmin=0.0, fmax=11025.0)
+        assert freqs is not None
+        assert freqs.numel() == 128
+
+    def test_mel_frequencies_custom(self):
+        freqs = ins.signal.mel_frequencies(64, fmin=20.0, fmax=8000.0)
+        assert freqs is not None
+        assert freqs.numel() == 64
+
+    def test_hz2bark(self):
+        hz = ins.from_numpy(np.array([100.0, 500.0, 2000.0]))
+        bark = ins.signal.hz2bark(hz)
+        assert bark is not None
+        assert bark.numel() == 3
+
+    def test_bark2hz(self):
+        bark = ins.from_numpy(np.array([1.0, 5.0, 15.0]))
+        hz = ins.signal.bark2hz(bark)
+        assert hz is not None
+        assert hz.numel() == 3
+
+    def test_bark_roundtrip(self):
+        hz_orig = np.array([100.0, 500.0, 2000.0, 6000.0])
+        bark = ins.signal.hz2bark(ins.from_numpy(hz_orig))
+        hz_back = ins.signal.bark2hz(bark)
+        np.testing.assert_allclose(hz_back.numpy(), hz_orig, rtol=1e-3)
+
+    def test_mel_frequencies_sorted(self):
+        freqs_np = ins.signal.mel_frequencies(128, fmin=0.0, fmax=11025.0).numpy()
+        assert np.all(np.diff(freqs_np) >= 0)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

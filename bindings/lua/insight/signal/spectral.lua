@@ -8,6 +8,32 @@ local sig = native.signal
 
 local M = {}
 
+local function _wrap(names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+          has_names = true
+          break
+        end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(names) do
+          pos[i] = t[name]
+          if pos[i] == nil then
+            pos[i] = t[i]
+          end
+        end
+        return fn(table.unpack(pos, 1, #names))
+      end
+    end
+    return fn(...)
+  end
+end
+
 --- Estimate power spectral density using Welch's method.
 -- @tparam Array x Input signal array.
 -- @number[opt=1.0] fs Sampling frequency.
@@ -17,9 +43,12 @@ local M = {}
 -- @int[opt] nfft FFT length.
 -- @string[opt="density"] scaling 'density' or 'spectrum'.
 -- @treturn table Table with fields 'f' (frequencies) and 'Pxx' (PSD).
-function M.welch(x, fs, window, nperseg, noverlap, nfft, scaling)
-  return sig.welch(x, fs or 1.0, window or "hann", nperseg or 256, noverlap or 128, nfft or 256, scaling or "density")
-end
+M.welch = _wrap(
+  { "x", "fs", "window", "nperseg", "noverlap", "nfft", "scaling" },
+  function(x, fs, window, nperseg, noverlap, nfft, scaling)
+    return sig.welch(x, fs or 1.0, window or "hann", nperseg or 256, noverlap or 128, nfft or 256, scaling or "density")
+  end
+)
 
 --- Estimate power spectral density using a periodogram.
 -- @tparam Array x Input signal array.
@@ -28,9 +57,9 @@ end
 -- @int[opt] nfft FFT length.
 -- @string[opt="density"] scaling 'density' or 'spectrum'.
 -- @treturn table Table with fields 'f' (frequencies) and 'Pxx' (PSD).
-function M.periodogram(x, fs, window, nfft, scaling)
+M.periodogram = _wrap({ "x", "fs", "window", "nfft", "scaling" }, function(x, fs, window, nfft, scaling)
   return sig.periodogram(x, fs or 1.0, window or "hann", nfft or 256, scaling or "density")
-end
+end)
 
 --- Estimate cross-spectral density using Welch's method.
 -- @tparam Array x First input signal.
@@ -41,9 +70,12 @@ end
 -- @int[opt] noverlap Number of overlapping points.
 -- @int[opt] nfft FFT length.
 -- @treturn table Table with fields 'f' (frequencies) and 'Pxy' (CSD).
-function M.csd(x, y, fs, window, nperseg, noverlap, nfft)
-  return sig.csd(x, y, fs or 1.0, window or "hann", nperseg or 256, noverlap or 128, nfft or 256)
-end
+M.csd = _wrap(
+  { "x", "y", "fs", "window", "nperseg", "noverlap", "nfft" },
+  function(x, y, fs, window, nperseg, noverlap, nfft)
+    return sig.csd(x, y, fs or 1.0, window or "hann", nperseg or 256, noverlap or 128, nfft or 256)
+  end
+)
 
 --- Estimate magnitude-squared coherence using Welch's method.
 -- @tparam Array x First input signal.
@@ -54,9 +86,12 @@ end
 -- @int[opt] noverlap Number of overlapping points.
 -- @int[opt] nfft FFT length.
 -- @treturn table Table with fields 'f' (frequencies) and 'Cxy' (coherence).
-function M.coherence(x, y, fs, window, nperseg, noverlap, nfft)
-  return sig.coherence(x, y, fs or 1.0, window or "hann", nperseg or 256, noverlap or 128, nfft or 256)
-end
+M.coherence = _wrap(
+  { "x", "y", "fs", "window", "nperseg", "noverlap", "nfft" },
+  function(x, y, fs, window, nperseg, noverlap, nfft)
+    return sig.coherence(x, y, fs or 1.0, window or "hann", nperseg or 256, noverlap or 128, nfft or 256)
+  end
+)
 
 --- Compute a spectrogram (SSTFT power spectral density).
 -- @tparam Array x Input signal array.
@@ -66,9 +101,12 @@ end
 -- @int[opt] noverlap Number of overlapping points.
 -- @int[opt] nfft FFT length.
 -- @treturn table Table with fields 'f' (frequencies), 't' (times), 'Sxx' (spectrogram).
-function M.spectrogram(x, fs, window, nperseg, noverlap, nfft)
-  return sig.spectrogram(x, fs or 1.0, window or "hann", nperseg or 256, noverlap or 128, nfft or 256)
-end
+M.spectrogram = _wrap(
+  { "x", "fs", "window", "nperseg", "noverlap", "nfft" },
+  function(x, fs, window, nperseg, noverlap, nfft)
+    return sig.spectrogram(x, fs or 1.0, window or "hann", nperseg or 256, noverlap or 128, nfft or 256)
+  end
+)
 
 --- Compute the Short-Time Fourier Transform (STFT).
 -- @tparam Array x Input signal array.
@@ -78,17 +116,17 @@ end
 -- @int[opt] noverlap Number of overlapping points.
 -- @int[opt] nfft FFT length.
 -- @treturn table Table with fields 'f' (frequencies), 't' (times), 'Zxx' (STFT).
-function M.stft(x, fs, window, nperseg, noverlap, nfft)
+M.stft = _wrap({ "x", "fs", "window", "nperseg", "noverlap", "nfft" }, function(x, fs, window, nperseg, noverlap, nfft)
   return sig.stft(x, fs or 1.0, window or "hann", nperseg or 256, noverlap or 128, nfft or 256)
-end
+end)
 
 --- Compute the vector strength (phase coherence).
 -- @tparam Array signal Input signal array.
 -- @number freq Frequency in Hz.
 -- @number fs Sampling frequency in Hz.
 -- @treturn table Table with fields 'strength' and 'angle'.
-function M.vectorstrength(signal, freq, fs)
+M.vectorstrength = _wrap({ "signal", "freq", "fs" }, function(signal, freq, fs)
   return sig.vectorstrength(signal, freq, fs)
-end
+end)
 
 return M

@@ -8,37 +8,63 @@ local sig = native.signal
 
 local M = {}
 
+local function _wrap(names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+          has_names = true
+          break
+        end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(names) do
+          pos[i] = t[name]
+          if pos[i] == nil then
+            pos[i] = t[i]
+          end
+        end
+        return fn(table.unpack(pos, 1, #names))
+      end
+    end
+    return fn(...)
+  end
+end
+
 --- Compute the analytic signal using the Hilbert transform.
 -- @tparam Array x Input real-valued signal array.
 -- @int[opt=-1] N Number of FFT points (-1 = signal length).
 -- @treturn Array Complex-valued analytic signal.
-function M.hilbert(x, N)
+M.hilbert = _wrap({ "x", "N" }, function(x, N)
   return sig.hilbert(x, N or -1)
-end
+end)
 
 --- Compute the 2-D analytic signal using the Hilbert transform.
 -- @tparam Array x Input 2-D real-valued signal array.
 -- @int[opt=-1] N Number of FFT points per axis.
 -- @treturn Array 2-D complex-valued analytic signal.
-function M.hilbert2(x, N)
+M.hilbert2 = _wrap({ "x", "N" }, function(x, N)
   return sig.hilbert2(x, N or -1)
-end
+end)
 
 --- Remove a trend from the data along the given axis.
 -- @tparam Array data Input array.
 -- @int[opt=-1] axis Axis along which to detrend.
 -- @string[opt="linear"] type Trend type: 'linear' or 'constant'.
 -- @treturn Array Detrended array.
-function M.detrend(data, axis, type)
+M.detrend = _wrap({ "data", "axis", "type" }, function(data, axis, type)
   return sig.detrend(data, axis or -1, type or "linear")
-end
+end)
 
 --- Apply a Wiener filter to an N-dimensional array.
 -- @tparam Array im Input array.
 -- @tparam table[opt] mysize Size of the local neighbourhood.
 -- @number[opt=-1] noise Noise power (-1 = estimated).
 -- @treturn Array Wiener-filtered array.
-function M.wiener(im, mysize, noise)
+M.wiener = _wrap({ "im", "mysize", "noise" }, function(im, mysize, noise)
   local kwargs = {}
   if mysize then
     kwargs.mysize = mysize
@@ -47,16 +73,16 @@ function M.wiener(im, mysize, noise)
     kwargs.noise = noise
   end
   return sig.wiener(im, kwargs)
-end
+end)
 
 --- Apply an FIR filter to a signal.
 -- @tparam Array b FIR filter coefficients (1-D array).
 -- @tparam Array x Input signal array.
 -- @int[opt=-1] axis Axis along which to filter.
 -- @treturn Array Filtered signal.
-function M.firfilter(b, x, axis)
+M.firfilter = _wrap({ "b", "x", "axis" }, function(b, x, axis)
   return sig.firfilter(b, x, axis or -1)
-end
+end)
 
 --- Apply an IIR or FIR filter using direct-form II transposed.
 -- @tparam Array b Numerator coefficients.
@@ -64,17 +90,17 @@ end
 -- @tparam Array x Input signal array.
 -- @int[opt=-1] axis Axis along which to filter.
 -- @treturn Array Filtered signal.
-function M.lfilter(b, a, x, axis)
+M.lfilter = _wrap({ "b", "a", "x", "axis" }, function(b, a, x, axis)
   return sig.lfilter(b, a, x, axis or -1)
-end
+end)
 
 --- Compute the initial state for lfilter for step-response steady-state.
 -- @tparam Array b Numerator coefficients.
 -- @tparam Array a Denominator coefficients.
 -- @treturn Array Initial state for lfilter.
-function M.lfilter_zi(b, a)
+M.lfilter_zi = _wrap({ "b", "a" }, function(b, a)
   return sig.lfilter_zi(b, a)
-end
+end)
 
 --- Apply a forward-backward digital filter (zero-phase filtering).
 -- @tparam Array b Numerator coefficients.
@@ -82,9 +108,9 @@ end
 -- @tparam Array x Input signal array.
 -- @int[opt=-1] axis Axis along which to filter.
 -- @treturn Array Zero-phase filtered signal.
-function M.filtfilt(b, a, x, axis)
+M.filtfilt = _wrap({ "b", "a", "x", "axis" }, function(b, a, x, axis)
   return sig.filtfilt(b, a, x, axis or -1)
-end
+end)
 
 --- Downsample a signal after applying an anti-aliasing filter.
 -- @tparam Array x Input signal array.
@@ -92,18 +118,18 @@ end
 -- @int[opt=-1] axis Axis along which to decimate.
 -- @bool[opt=true] zero_phase Use forward-backward filtering.
 -- @treturn Array Decimated signal.
-function M.decimate(x, q, axis, zero_phase)
+M.decimate = _wrap({ "x", "q", "axis", "zero_phase" }, function(x, q, axis, zero_phase)
   return sig.decimate(x, q, axis or -1, zero_phase == nil and true or zero_phase)
-end
+end)
 
 --- Resample a signal to a given number of samples using FFT.
 -- @tparam Array x Input signal array.
 -- @int num Number of output samples.
 -- @int[opt=-1] axis Axis along which to resample.
 -- @treturn Array Resampled signal.
-function M.resample(x, num, axis)
+M.resample = _wrap({ "x", "num", "axis" }, function(x, num, axis)
   return sig.resample(x, num, axis or -1)
-end
+end)
 
 --- Resample a signal using polyphase filtering.
 -- @tparam Array x Input signal array.
@@ -111,17 +137,17 @@ end
 -- @int down Downsampling factor.
 -- @int[opt=-1] axis Axis along which to resample.
 -- @treturn Array Resampled signal.
-function M.resample_poly(x, up, down, axis)
+M.resample_poly = _wrap({ "x", "up", "down", "axis" }, function(x, up, down, axis)
   return sig.resample_poly(x, up, down, axis or -1)
-end
+end)
 
 --- Shift the frequency content of a signal.
 -- @tparam Array x Input signal array.
 -- @number freq Frequency shift in Hz.
 -- @number fs Sampling frequency in Hz.
 -- @treturn Array Frequency-shifted signal.
-function M.freq_shift(x, freq, fs)
+M.freq_shift = _wrap({ "x", "freq", "fs" }, function(x, freq, fs)
   return sig.freq_shift(x, freq, fs)
-end
+end)
 
 return M

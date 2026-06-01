@@ -8,51 +8,77 @@
 local native = require("_insight")
 local M = {}
 
+local function _wrap(names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+          has_names = true
+          break
+        end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(names) do
+          pos[i] = t[name]
+          if pos[i] == nil then
+            pos[i] = t[i]
+          end
+        end
+        return fn(table.unpack(pos, 1, #names))
+      end
+    end
+    return fn(...)
+  end
+end
+
 --- Take elements from an array along an axis by index.
 -- @tparam Array x Input array.
 -- @tparam Array indices Indices of elements to take.
 -- @int[opt] axis Axis along which to take. If nil, operates on flattened array.
 -- @treturn Array Gathered elements.
-function M.take(x, indices, axis)
+M.take = _wrap({ "x", "indices", "axis" }, function(x, indices, axis)
   return native.take(x, indices, axis)
-end
+end)
 
 --- Return indices of non-zero elements.
 -- @tparam Array x Input array.
 -- @treturn Array Indices of non-zero elements.
-function M.nonzero(x)
+M.nonzero = _wrap({ "x" }, function(x)
   return native.nonzero(x)
-end
+end)
 
 --- Return indices of non-zero elements (flattened).
 -- @tparam Array x Input array.
 -- @treturn Array Flat indices of non-zero elements.
-function M.flatnonzero(x)
+M.flatnonzero = _wrap({ "x" }, function(x)
   return native.flatnonzero(x)
-end
+end)
 
 --- Return indices that would sort the array.
 -- @tparam Array x Input array.
 -- @int[opt=-1] axis Axis along which to sort. -1 is last axis.
 -- @treturn Array Index array for sorting.
-function M.argsort(x, axis)
+M.argsort = _wrap({ "x", "axis" }, function(x, axis)
   return native.argsort(x, axis or -1)
-end
+end)
 
 --- Return a sorted copy of the array.
 -- @tparam Array x Input array.
 -- @int[opt=-1] axis Axis along which to sort. -1 is last axis.
 -- @treturn Array Sorted array.
-function M.sort(x, axis)
+M.sort = _wrap({ "x", "axis" }, function(x, axis)
   return native.sort(x, axis or -1)
-end
+end)
 
 --- Return unique elements of the array.
 -- @tparam Array x Input array.
 -- @treturn UniqueResult Table with fields: values, indices, inverse, counts.
-function M.unique(x)
+M.unique = _wrap({ "x" }, function(x)
   return native.unique(x)
-end
+end)
 
 --- Return the k largest or smallest elements.
 -- @tparam Array x Input array.
@@ -60,18 +86,18 @@ end
 -- @int[opt=-1] axis Axis along which to search. -1 is last axis.
 -- @bool[opt=true] largest If true, return largest; otherwise smallest.
 -- @treturn Array Top-k values.
-function M.topk(x, k, axis, largest)
+M.topk = _wrap({ "x", "k", "axis", "largest" }, function(x, k, axis, largest)
   return native.topk(x, k, axis or -1, largest == nil and true or largest)
-end
+end)
 
 --- Gather values along an axis by index.
 -- @tparam Array x Input array.
 -- @tparam Array indices Indices to gather.
 -- @int[opt=0] axis Axis along which to gather.
 -- @treturn Array Gathered values.
-function M.gather(x, indices, axis)
+M.gather = _wrap({ "x", "indices", "axis" }, function(x, indices, axis)
   return native.gather(x, indices, axis or 0)
-end
+end)
 
 --- Scatter values into an array by index.
 -- @tparam Array x Input array.
@@ -79,9 +105,9 @@ end
 -- @tparam Array src Source values to scatter.
 -- @int[opt=0] axis Axis along which to scatter.
 -- @treturn Array Updated array.
-function M.scatter(x, indices, src, axis)
+M.scatter = _wrap({ "x", "indices", "src", "axis" }, function(x, indices, src, axis)
   return native.scatter(x, indices, src, axis or 0)
-end
+end)
 
 --- Scatter-add values into an array by index.
 -- @tparam Array x Input array.
@@ -89,9 +115,9 @@ end
 -- @tparam Array src Source values to add.
 -- @int[opt=0] axis Axis along which to scatter-add.
 -- @treturn Array Updated array.
-function M.scatter_add(x, indices, src, axis)
+M.scatter_add = _wrap({ "x", "indices", "src", "axis" }, function(x, indices, src, axis)
   return native.scatter_add(x, indices, src, axis or 0)
-end
+end)
 
 --- Scatter with reduction into an array by index.
 -- @tparam Array x Input array.
@@ -100,31 +126,31 @@ end
 -- @string reduce Reduction type ("add", "mul", "mean", "amax", "amin").
 -- @int[opt=0] axis Axis along which to scatter-reduce.
 -- @treturn Array Updated array.
-function M.scatter_reduce(x, indices, src, reduce, axis)
+M.scatter_reduce = _wrap({ "x", "indices", "src", "reduce", "axis" }, function(x, indices, src, reduce, axis)
   return native.scatter_reduce(x, indices, src, reduce, axis or 0)
-end
+end)
 
 --- 1-D linear interpolation.
 -- @tparam Array x Points at which to evaluate.
 -- @tparam Array xp Known x-coordinates (must be sorted).
 -- @tparam Array fp Known y-coordinates.
 -- @treturn Array Interpolated values.
-function M.interp(x, xp, fp)
+M.interp = _wrap({ "x", "xp", "fp" }, function(x, xp, fp)
   return native.interp(x, xp, fp)
-end
+end)
 
 --- Return an array of indices (meshgrid-like).
 -- @tparam table dimensions Shape of the output grid.
 -- @treturn Array Index arrays.
-function M.indices(dimensions)
+M.indices = _wrap({ "dimensions" }, function(dimensions)
   return native.indices(dimensions)
-end
+end)
 
 --- Construct open mesh from sequences (for advanced indexing).
 -- @tparam table args Sequence of 1-D arrays.
 -- @treturn table List of open mesh arrays.
-function M.ix_(...)
+M.ix_ = _wrap({}, function(...)
   return native.ix_(...)
-end
+end)
 
 return M

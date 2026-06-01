@@ -8,86 +8,112 @@
 local native = require("_insight")
 local M = {}
 
+local function _wrap(names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+          has_names = true
+          break
+        end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(names) do
+          pos[i] = t[name]
+          if pos[i] == nil then
+            pos[i] = t[i]
+          end
+        end
+        return fn(table.unpack(pos, 1, #names))
+      end
+    end
+    return fn(...)
+  end
+end
+
 --- Sum of array elements.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to sum. Defaults to all elements.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Sum result.
-function M.sum(x, axis, keepdims)
+M.sum = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.sum(x, axis, keepdims or false)
-end
+end)
 
 --- Mean of array elements.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to compute mean.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Mean result.
-function M.mean(x, axis, keepdims)
+M.mean = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.mean(x, axis, keepdims or false)
-end
+end)
 
 --- Maximum of array elements.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to find maximum.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Maximum result.
-function M.max(x, axis, keepdims)
+M.max = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.max(x, axis, keepdims or false)
-end
+end)
 
 --- Minimum of array elements.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to find minimum.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Minimum result.
-function M.min(x, axis, keepdims)
+M.min = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.min(x, axis, keepdims or false)
-end
+end)
 
 --- Product of array elements.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to compute product.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Product result.
-function M.prod(x, axis, keepdims)
+M.prod = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.prod(x, axis, keepdims or false)
-end
+end)
 
 --- Indices of maximum values.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to find argmax.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Indices of maximum values.
-function M.argmax(x, axis, keepdims)
+M.argmax = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.argmax(x, axis, keepdims or false)
-end
+end)
 
 --- Indices of minimum values.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to find argmin.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Indices of minimum values.
-function M.argmin(x, axis, keepdims)
+M.argmin = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.argmin(x, axis, keepdims or false)
-end
+end)
 
 --- Test whether any element is true.
 -- @tparam Array x Input boolean array.
 -- @int[opt] axis Axis along which to test.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Boolean result.
-function M.any(x, axis, keepdims)
+M.any = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.any(x, axis, keepdims or false)
-end
+end)
 
 --- Test whether all elements are true.
 -- @tparam Array x Input boolean array.
 -- @int[opt] axis Axis along which to test.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Boolean result.
-function M.all(x, axis, keepdims)
+M.all = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.all(x, axis, keepdims or false)
-end
+end)
 
 --- Variance of array elements.
 -- @tparam Array x Input array.
@@ -95,9 +121,9 @@ end
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @int[opt=0] ddof Delta degrees of freedom.
 -- @treturn Array Variance result.
-function M.var(x, axis, keepdims, ddof)
+M.var = _wrap({ "x", "axis", "keepdims", "ddof" }, function(x, axis, keepdims, ddof)
   return native.var(x, axis, keepdims or false, ddof or 0)
-end
+end)
 
 --- Standard deviation of array elements.
 -- @tparam Array x Input array.
@@ -105,41 +131,41 @@ end
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @int[opt=0] ddof Delta degrees of freedom.
 -- @treturn Array Standard deviation result.
-function M.std(x, axis, keepdims, ddof)
+M.std = _wrap({ "x", "axis", "keepdims", "ddof" }, function(x, axis, keepdims, ddof)
   return native.std(x, axis, keepdims or false, ddof or 0)
-end
+end)
 
 --- Cumulative sum along an axis.
 -- @tparam Array x Input array.
 -- @int axis Axis along which to compute cumulative sum.
 -- @treturn Array Cumulative sum result.
-function M.cumsum(x, axis)
+M.cumsum = _wrap({ "x", "axis" }, function(x, axis)
   return native.cumsum(x, axis)
-end
+end)
 
 --- Cumulative product along an axis.
 -- @tparam Array x Input array.
 -- @int axis Axis along which to compute cumulative product.
 -- @treturn Array Cumulative product result.
-function M.cumprod(x, axis)
+M.cumprod = _wrap({ "x", "axis" }, function(x, axis)
   return native.cumprod(x, axis)
-end
+end)
 
 --- Cumulative maximum along an axis.
 -- @tparam Array x Input array.
 -- @int axis Axis along which to compute cumulative maximum.
 -- @treturn Array Cumulative maximum result.
-function M.cummax(x, axis)
+M.cummax = _wrap({ "x", "axis" }, function(x, axis)
   return native.cummax(x, axis)
-end
+end)
 
 --- Cumulative minimum along an axis.
 -- @tparam Array x Input array.
 -- @int axis Axis along which to compute cumulative minimum.
 -- @treturn Array Cumulative minimum result.
-function M.cummin(x, axis)
+M.cummin = _wrap({ "x", "axis" }, function(x, axis)
   return native.cummin(x, axis)
-end
+end)
 
 --- Standard error of the mean.
 -- @tparam Array x Input array.
@@ -147,27 +173,27 @@ end
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @int[opt=0] ddof Delta degrees of freedom.
 -- @treturn Array Standard error of the mean.
-function M.sem(x, axis, keepdims, ddof)
+M.sem = _wrap({ "x", "axis", "keepdims", "ddof" }, function(x, axis, keepdims, ddof)
   return native.sem(x, axis, keepdims or false, ddof or 0)
-end
+end)
 
 --- Count non-zero elements.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to count.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Count of non-zero elements.
-function M.count_nonzero(x, axis, keepdims)
+M.count_nonzero = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.count_nonzero(x, axis, keepdims or false)
-end
+end)
 
 --- Median of array elements.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to compute median.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Median result.
-function M.median(x, axis, keepdims)
+M.median = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.median(x, axis, keepdims or false)
-end
+end)
 
 --- Compute the q-th quantile.
 -- @tparam Array x Input array.
@@ -175,9 +201,9 @@ end
 -- @int[opt] axis Axis along which to compute.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Quantile result.
-function M.quantile(x, q, axis, keepdims)
+M.quantile = _wrap({ "x", "q", "axis", "keepdims" }, function(x, q, axis, keepdims)
   return native.quantile(x, q, axis, keepdims or false)
-end
+end)
 
 --- Compute the q-th percentile.
 -- @tparam Array x Input array.
@@ -185,45 +211,45 @@ end
 -- @int[opt] axis Axis along which to compute.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array Percentile result.
-function M.percentile(x, q, axis, keepdims)
+M.percentile = _wrap({ "x", "q", "axis", "keepdims" }, function(x, q, axis, keepdims)
   return native.percentile(x, q, axis, keepdims or false)
-end
+end)
 
 --- Sum of array elements, ignoring NaN values.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to sum.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array NaN-safe sum result.
-function M.nansum(x, axis, keepdims)
+M.nansum = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.nansum(x, axis, keepdims or false)
-end
+end)
 
 --- Mean of array elements, ignoring NaN values.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to compute mean.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array NaN-safe mean result.
-function M.nanmean(x, axis, keepdims)
+M.nanmean = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.nanmean(x, axis, keepdims or false)
-end
+end)
 
 --- Maximum of array elements, ignoring NaN values.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to find maximum.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array NaN-safe maximum result.
-function M.nanmax(x, axis, keepdims)
+M.nanmax = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.nanmax(x, axis, keepdims or false)
-end
+end)
 
 --- Minimum of array elements, ignoring NaN values.
 -- @tparam Array x Input array.
 -- @int[opt] axis Axis along which to find minimum.
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @treturn Array NaN-safe minimum result.
-function M.nanmin(x, axis, keepdims)
+M.nanmin = _wrap({ "x", "axis", "keepdims" }, function(x, axis, keepdims)
   return native.nanmin(x, axis, keepdims or false)
-end
+end)
 
 --- Standard deviation, ignoring NaN values.
 -- @tparam Array x Input array.
@@ -231,9 +257,9 @@ end
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @int[opt=0] ddof Delta degrees of freedom.
 -- @treturn Array NaN-safe standard deviation.
-function M.nanstd(x, axis, keepdims, ddof)
+M.nanstd = _wrap({ "x", "axis", "keepdims", "ddof" }, function(x, axis, keepdims, ddof)
   return native.nanstd(x, axis, keepdims or false, ddof or 0)
-end
+end)
 
 --- Variance, ignoring NaN values.
 -- @tparam Array x Input array.
@@ -241,8 +267,8 @@ end
 -- @bool[opt=false] keepdims If true, reduced axes are kept with size 1.
 -- @int[opt=0] ddof Delta degrees of freedom.
 -- @treturn Array NaN-safe variance.
-function M.nanvar(x, axis, keepdims, ddof)
+M.nanvar = _wrap({ "x", "axis", "keepdims", "ddof" }, function(x, axis, keepdims, ddof)
   return native.nanvar(x, axis, keepdims or false, ddof or 0)
-end
+end)
 
 return M

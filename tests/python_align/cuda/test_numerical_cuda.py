@@ -33,6 +33,24 @@ except Exception:
 GPU = ins.GPUPlace(0)
 CPU = ins.CPUPlace()
 
+# Optional SciPy — needed for signal tests
+try:
+    import scipy.signal as sp_signal
+    from scipy.signal.windows import (
+        hann as scipy_hann,
+        hamming as scipy_hamming,
+        kaiser as scipy_kaiser,
+        blackman as scipy_blackman,
+        boxcar as scipy_boxcar,
+        bartlett as scipy_bartlett,
+        tukey as scipy_tukey,
+        triang as scipy_triang,
+    )
+
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
+
 
 # ============================================================================
 # Helpers
@@ -465,6 +483,911 @@ class TestSignalAlignmentGPU:
         except ImportError:
             expected = np.array([4, 13, 23, 15], dtype=np.float64)
             assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+
+# ============================================================================
+# Extended elementwise alignment (GPU)
+# ============================================================================
+
+
+class TestElementwiseExtendedGPU:
+    """Extended elementwise comparison ops on GPU vs NumPy."""
+
+    @pytest.fixture
+    def random_arrays(self):
+        rng = np.random.RandomState(123)
+        a = rng.randn(4, 5).astype(np.float64)
+        b = rng.randn(4, 5).astype(np.float64)
+        return a, b
+
+    def test_greater(self, random_arrays):
+        a_np, b_np = random_arrays
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.greater(a, b)), np.greater(a_np, b_np))
+
+    def test_less(self, random_arrays):
+        a_np, b_np = random_arrays
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.less(a, b)), np.less(a_np, b_np))
+
+    def test_greater_equal(self, random_arrays):
+        a_np, b_np = random_arrays
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.greater_equal(a, b)), np.greater_equal(a_np, b_np))
+
+    def test_less_equal(self, random_arrays):
+        a_np, b_np = random_arrays
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.less_equal(a, b)), np.less_equal(a_np, b_np))
+
+    def test_not_equal(self, random_arrays):
+        a_np, b_np = random_arrays
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.not_equal(a, b)), np.not_equal(a_np, b_np))
+
+    def test_equal_same(self):
+        a_np = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64)
+        a = to_gpu(a_np)
+        assert_allclose(to_numpy(ins.equal(a, a)), np.equal(a_np, a_np))
+
+    def test_logical_xor(self):
+        a_np = np.array([True, True, False, False])
+        b_np = np.array([True, False, True, False])
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.logical_xor(a, b)), np.logical_xor(a_np, b_np))
+
+    def test_mod(self):
+        a_np = np.array([10.0, 7.5, -3.0, 11.0], dtype=np.float64)
+        b_np = np.array([3.0, 2.0, 2.0, 5.0], dtype=np.float64)
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.mod(a, b)), np.mod(a_np, b_np), rtol=1e-6)
+
+    def test_bitwise_and(self):
+        a_np = np.array([0b1100, 0b1010], dtype=np.int32)
+        b_np = np.array([0b1010, 0b1100], dtype=np.int32)
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.bitwise_and(a, b)), np.bitwise_and(a_np, b_np))
+
+    def test_bitwise_or(self):
+        a_np = np.array([0b1100, 0b1010], dtype=np.int32)
+        b_np = np.array([0b1010, 0b1100], dtype=np.int32)
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.bitwise_or(a, b)), np.bitwise_or(a_np, b_np))
+
+    def test_bitwise_xor(self):
+        a_np = np.array([0b1100, 0b1010], dtype=np.int32)
+        b_np = np.array([0b1010, 0b1100], dtype=np.int32)
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        assert_allclose(to_numpy(ins.bitwise_xor(a, b)), np.bitwise_xor(a_np, b_np))
+
+
+# ============================================================================
+# Extended unary alignment (GPU)
+# ============================================================================
+
+
+class TestUnaryExtendedGPU:
+    """Extended unary ops on GPU vs NumPy."""
+
+    def test_negative(self):
+        x_np = np.array([1.5, -2.3, 0.0, 4.7], dtype=np.float64)
+        assert_allclose(to_numpy(ins.negative(to_gpu(x_np))), np.negative(x_np), rtol=1e-6)
+
+    def test_reciprocal(self):
+        x_np = np.array([1.0, 2.0, 4.0, 0.5], dtype=np.float64)
+        assert_allclose(to_numpy(ins.reciprocal(to_gpu(x_np))), np.reciprocal(x_np), rtol=1e-6)
+
+    def test_asin(self):
+        x_np = np.array([-1.0, -0.5, 0.0, 0.5, 1.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.asin(to_gpu(x_np))), np.arcsin(x_np), rtol=1e-6)
+
+    def test_acos(self):
+        x_np = np.array([-1.0, -0.5, 0.0, 0.5, 1.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.acos(to_gpu(x_np))), np.arccos(x_np), rtol=1e-6)
+
+    def test_atan(self):
+        x_np = np.array([-10.0, -1.0, 0.0, 1.0, 10.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.atan(to_gpu(x_np))), np.arctan(x_np), rtol=1e-6)
+
+    def test_sinh(self):
+        x_np = np.array([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.sinh(to_gpu(x_np))), np.sinh(x_np), rtol=1e-6)
+
+    def test_cosh(self):
+        x_np = np.array([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.cosh(to_gpu(x_np))), np.cosh(x_np), rtol=1e-6)
+
+    def test_tanh(self):
+        x_np = np.array([-2.0, -0.5, 0.0, 0.5, 2.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.tanh(to_gpu(x_np))), np.tanh(x_np), rtol=1e-6)
+
+    def test_asinh(self):
+        x_np = np.array([-5.0, -1.0, 0.0, 1.0, 5.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.asinh(to_gpu(x_np))), np.arcsinh(x_np), rtol=1e-6)
+
+    def test_acosh(self):
+        x_np = np.array([1.0, 1.5, 2.0, 5.0, 10.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.acosh(to_gpu(x_np))), np.arccosh(x_np), rtol=1e-6)
+
+    def test_atanh(self):
+        x_np = np.array([-0.9, -0.5, 0.0, 0.5, 0.9], dtype=np.float64)
+        assert_allclose(to_numpy(ins.atanh(to_gpu(x_np))), np.arctanh(x_np), rtol=1e-6)
+
+    def test_trunc(self):
+        x_np = np.array([1.7, -2.3, 0.5, 3.0, -0.1], dtype=np.float64)
+        assert_allclose(to_numpy(ins.trunc(to_gpu(x_np))), np.trunc(x_np), rtol=1e-6)
+
+    def test_isnan(self):
+        x_np = np.array([1.0, np.nan, 3.0, np.nan], dtype=np.float64)
+        assert_allclose(to_numpy(ins.isnan(to_gpu(x_np))), np.isnan(x_np))
+
+    def test_isinf(self):
+        x_np = np.array([1.0, np.inf, 3.0, -np.inf], dtype=np.float64)
+        assert_allclose(to_numpy(ins.isinf(to_gpu(x_np))), np.isinf(x_np))
+
+    def test_isfinite(self):
+        x_np = np.array([1.0, np.nan, np.inf, -np.inf, 3.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.isfinite(to_gpu(x_np))), np.isfinite(x_np))
+
+    def test_logical_not(self):
+        a_np = np.array([True, False, True, False])
+        assert_allclose(to_numpy(ins.logical_not(to_gpu(a_np))), np.logical_not(a_np))
+
+    def test_square(self):
+        x_np = np.array([-3.0, -1.0, 0.0, 2.0, 4.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.square(to_gpu(x_np))), np.square(x_np), rtol=1e-6)
+
+    def test_log2(self):
+        x_np = np.array([1.0, 2.0, 4.0, 8.0, 16.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.log2(to_gpu(x_np))), np.log2(x_np), rtol=1e-6)
+
+    def test_log10(self):
+        x_np = np.array([1.0, 10.0, 100.0, 1000.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.log10(to_gpu(x_np))), np.log10(x_np), rtol=1e-6)
+
+
+# ============================================================================
+# Extended reduction alignment (GPU)
+# ============================================================================
+
+
+class TestReductionExtendedGPU:
+    """Extended reduction ops on GPU vs NumPy."""
+
+    @pytest.fixture
+    def data_1d(self):
+        return np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=np.float64)
+
+    def test_cumprod(self, data_1d):
+        assert_allclose(to_numpy(ins.cumprod(to_gpu(data_1d), 0)), np.cumprod(data_1d), rtol=1e-4)
+
+    def test_cummax(self, data_1d):
+        result = to_numpy(ins.cummax(to_gpu(data_1d), 0))
+        expected = np.maximum.accumulate(data_1d)
+        assert_allclose(result, expected, rtol=1e-6)
+
+    def test_cummin(self, data_1d):
+        result = to_numpy(ins.cummin(to_gpu(data_1d), 0))
+        expected = np.minimum.accumulate(data_1d)
+        assert_allclose(result, expected, rtol=1e-6)
+
+    def test_median_odd(self):
+        x_np = np.array([3, 1, 4, 1, 5], dtype=np.float64)
+        assert_allclose(to_numpy(ins.median(to_gpu(x_np))), np.median(x_np), rtol=1e-6)
+
+    def test_median_even(self):
+        x_np = np.array([3, 1, 4, 1, 5, 9], dtype=np.float64)
+        assert_allclose(to_numpy(ins.median(to_gpu(x_np))), np.median(x_np), rtol=1e-6)
+
+    def test_quantile(self, data_1d):
+        result = to_numpy(ins.quantile(to_gpu(data_1d), 0.5))
+        assert_allclose(result, np.quantile(data_1d, 0.5), rtol=1e-4)
+
+    def test_quantile_75(self, data_1d):
+        result = to_numpy(ins.quantile(to_gpu(data_1d), 0.75))
+        assert_allclose(result, np.quantile(data_1d, 0.75), rtol=1e-4)
+
+    def test_count_nonzero(self):
+        x_np = np.array([0, 1, 0, 3, 0, 5], dtype=np.float64)
+        result = to_numpy(ins.count_nonzero(to_gpu(x_np)))
+        assert_allclose(result, np.count_nonzero(x_np))
+
+    def test_nansum(self):
+        x_np = np.array([1.0, np.nan, 3.0, np.nan, 5.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.nansum(to_gpu(x_np))), np.nansum(x_np), rtol=1e-6)
+
+    def test_nanmean(self):
+        x_np = np.array([1.0, np.nan, 3.0, np.nan, 5.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.nanmean(to_gpu(x_np))), np.nanmean(x_np), rtol=1e-6)
+
+    def test_nanstd(self):
+        x_np = np.array([1.0, np.nan, 3.0, np.nan, 5.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.nanstd(to_gpu(x_np))), np.nanstd(x_np), rtol=1e-4)
+
+    def test_nanvar(self):
+        x_np = np.array([1.0, np.nan, 3.0, np.nan, 5.0], dtype=np.float64)
+        assert_allclose(to_numpy(ins.nanvar(to_gpu(x_np))), np.nanvar(x_np), rtol=1e-4)
+
+    def test_any(self):
+        x_np = np.array([False, False, True, False])
+        assert_allclose(to_numpy(ins.any(to_gpu(x_np))), np.any(x_np))
+
+    def test_all(self):
+        x_np = np.array([True, True, True, False])
+        assert_allclose(to_numpy(ins.all(to_gpu(x_np))), np.all(x_np))
+
+    def test_sem(self, data_1d):
+        expected = np.std(data_1d) / np.sqrt(len(data_1d))
+        assert_allclose(to_numpy(ins.sem(to_gpu(data_1d))), expected, rtol=1e-4)
+
+
+# ============================================================================
+# Extended linalg alignment (GPU)
+# ============================================================================
+
+
+class TestLinalgExtendedGPU:
+    """Extended linalg ops on GPU vs NumPy."""
+
+    @pytest.fixture
+    def spd_matrix_3x3(self):
+        """Symmetric positive-definite 3x3 matrix."""
+        return np.array([[4, 2, 1], [2, 5, 3], [1, 3, 6]], dtype=np.float64)
+
+    @pytest.fixture
+    def nonsingular_3x3(self):
+        return np.array([[2, 1, 0], [1, 3, 1], [0, 1, 2]], dtype=np.float64)
+
+    @pytest.fixture
+    def matrix_3x3(self):
+        return np.array([[2, 1, 0], [1, 3, 1], [0, 1, 2]], dtype=np.float64)
+
+    def test_solve(self, nonsingular_3x3):
+        A_np = nonsingular_3x3
+        b_np = np.array([1, 2, 3], dtype=np.float64)
+        A, b = to_gpu(A_np), to_gpu(b_np)
+        x = ins.solve(A, b)
+        expected = np.linalg.solve(A_np, b_np)
+        assert_allclose(to_numpy(x), expected, atol=1e-6)
+
+    def test_svd(self, matrix_3x3):
+        A = to_gpu(matrix_3x3)
+        U, S, Vt = ins.svd(A)
+        _, S_np, _ = np.linalg.svd(matrix_3x3)
+        assert_allclose(to_numpy(S), S_np, rtol=1e-6)
+
+    def test_eigh(self, spd_matrix_3x3):
+        A = to_gpu(spd_matrix_3x3)
+        w, v = ins.eigh(A)
+        w_np, _ = np.linalg.eigh(spd_matrix_3x3)
+        assert_allclose(to_numpy(w), w_np, rtol=1e-6)
+
+    def test_cholesky(self, spd_matrix_3x3):
+        A = to_gpu(spd_matrix_3x3)
+        L = ins.cholesky(A)
+        expected = np.linalg.cholesky(spd_matrix_3x3)
+        assert_allclose(to_numpy(L), expected, atol=1e-6)
+
+    def test_qr(self, matrix_3x3):
+        A = to_gpu(matrix_3x3)
+        Q, R = ins.qr(A)
+        # Check reconstruction
+        assert_allclose(to_numpy(Q) @ to_numpy(R), matrix_3x3, atol=1e-6)
+
+    def test_lu(self, matrix_3x3):
+        A = to_gpu(matrix_3x3)
+        P, L, U = ins.lu(A)
+        recon = to_numpy(L) @ to_numpy(U)
+        assert_allclose(to_numpy(P) @ matrix_3x3, recon, atol=1e-6)
+
+    def test_lstsq(self):
+        A_np = np.array([[1, 1], [1, 2], [1, 3], [1, 4]], dtype=np.float64)
+        b_np = np.array([2.1, 3.9, 6.2, 7.8], dtype=np.float64)
+        A, b = to_gpu(A_np), to_gpu(b_np)
+        result = ins.lstsq(A, b)
+        x_np, _, _, _ = np.linalg.lstsq(A_np, b_np, rcond=None)
+        if isinstance(result, (list, tuple)):
+            x_ins = result[0]
+        else:
+            x_ins = result
+        assert_allclose(to_numpy(x_ins), x_np, atol=1e-6)
+
+    def test_cond(self, matrix_3x3):
+        A = to_gpu(matrix_3x3)
+        result = ins.cond(A)
+        expected = np.linalg.cond(matrix_3x3)
+        assert_allclose(to_numpy(result), expected, rtol=1e-4)
+
+    def test_matrix_rank(self, matrix_3x3):
+        A = to_gpu(matrix_3x3)
+        result = ins.matrix_rank(A)
+        expected = np.linalg.matrix_rank(matrix_3x3)
+        assert_allclose(to_numpy(result), expected)
+
+    def test_pinv(self, matrix_3x3):
+        A = to_gpu(matrix_3x3)
+        result = ins.pinv(A)
+        expected = np.linalg.pinv(matrix_3x3)
+        assert_allclose(to_numpy(result), expected, atol=1e-6)
+
+    def test_slogdet(self, matrix_3x3):
+        A = to_gpu(matrix_3x3)
+        sign, logabsdet = ins.slogdet(A)
+        sign_np, logabsdet_np = np.linalg.slogdet(matrix_3x3)
+        assert_allclose(to_numpy(sign), sign_np)
+        assert_allclose(to_numpy(logabsdet), logabsdet_np, rtol=1e-6)
+
+    def test_matrix_power(self, matrix_3x3):
+        A = to_gpu(matrix_3x3)
+        result = ins.matrix_power(A, 3)
+        expected = np.linalg.matrix_power(matrix_3x3, 3)
+        assert_allclose(to_numpy(result), expected, atol=1e-6)
+
+    def test_eigvalsh(self, spd_matrix_3x3):
+        A = to_gpu(spd_matrix_3x3)
+        w = ins.eigvalsh(A)
+        w_np = np.linalg.eigvalsh(spd_matrix_3x3)
+        assert_allclose(to_numpy(w), w_np, rtol=1e-6)
+
+    def test_svdvals(self, matrix_3x3):
+        A = to_gpu(matrix_3x3)
+        s = ins.svdvals(A)
+        _, s_np, _ = np.linalg.svd(matrix_3x3)
+        assert_allclose(to_numpy(s), s_np, rtol=1e-6)
+
+    def test_cov_1d(self):
+        x_np = np.array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.cov(x)
+        expected = np.cov(x_np)
+        assert_allclose(to_numpy(result), expected, rtol=1e-6)
+
+    def test_inner(self):
+        a_np = np.array([1, 2, 3], dtype=np.float64)
+        b_np = np.array([4, 5, 6], dtype=np.float64)
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        result = ins.inner(a, b)
+        expected = np.inner(a_np, b_np)
+        assert_allclose(to_numpy(result), expected, rtol=1e-6)
+
+
+# ============================================================================
+# Extended FFT alignment (GPU)
+# ============================================================================
+
+
+class TestFFTExtendedGPU:
+    """Extended FFT ops on GPU vs NumPy FFT."""
+
+    def test_fft2(self):
+        x_np = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.fft2(x)
+        assert_allclose(to_numpy(result), np.fft.fft2(x_np), atol=1e-6)
+
+    def test_ifft2(self):
+        x_np = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.complex128)
+        x = to_gpu(x_np)
+        result = ins.ifft2(x)
+        assert_allclose(to_numpy(result), np.fft.ifft2(x_np), atol=1e-6)
+
+    def test_fftn(self):
+        x_np = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+        x = to_gpu(x_np)
+        result = ins.fftn(x)
+        assert_allclose(to_numpy(result), np.fft.fftn(x_np), atol=1e-6)
+
+    def test_ifftn(self):
+        x_np = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+        x = to_gpu(x_np)
+        result = ins.ifftn(x)
+        assert_allclose(to_numpy(result), np.fft.ifftn(x_np), atol=1e-6)
+
+    def test_rfft_irfft_roundtrip(self):
+        x_np = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.float64)
+        x = to_gpu(x_np)
+        freq = ins.rfft(x)
+        result = ins.irfft(freq, 8)
+        assert_allclose(to_numpy(result), x_np, atol=1e-6)
+
+
+# ============================================================================
+# Cast alignment (GPU)
+# ============================================================================
+
+
+class TestCastAlignmentGPU:
+    """Insight cast on GPU vs NumPy dtype conversion."""
+
+    def test_float32_to_float64(self):
+        x_np = np.array([1.5, 2.5, 3.5], dtype=np.float32)
+        x = to_gpu(x_np)
+        result = ins.cast(x, ins.float64)
+        assert_allclose(to_numpy(result), x_np.astype(np.float64))
+
+    def test_float64_to_float32(self):
+        x_np = np.array([1.5, 2.5, 3.5], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.cast(x, ins.float32)
+        assert_allclose(to_numpy(result), x_np.astype(np.float32))
+
+    def test_float64_to_int32(self):
+        x_np = np.array([1.9, 2.1, -3.7, 0.0], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.cast(x, ins.int32)
+        expected = x_np.astype(np.int32)
+        assert_allclose(to_numpy(result), expected)
+
+    def test_float64_to_int64(self):
+        x_np = np.array([1.9, 2.1, -3.7, 0.0], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.cast(x, ins.int64)
+        expected = x_np.astype(np.int64)
+        assert_allclose(to_numpy(result), expected)
+
+    def test_float64_to_bool(self):
+        x_np = np.array([0.0, 1.0, -1.0, 0.0, 3.14], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.cast(x, ins.bool)
+        expected = x_np.astype(bool)
+        assert_allclose(to_numpy(result), expected)
+
+    def test_int32_to_float64(self):
+        x_np = np.array([1, 2, 3, 4, 5], dtype=np.int32)
+        x = to_gpu(x_np)
+        result = ins.cast(x, ins.float64)
+        assert_allclose(to_numpy(result), x_np.astype(np.float64))
+
+    def test_bool_to_float64(self):
+        x_np = np.array([True, False, True, False], dtype=bool)
+        x = to_gpu(x_np)
+        result = ins.cast(x, ins.float64)
+        assert_allclose(to_numpy(result), x_np.astype(np.float64))
+
+
+# ============================================================================
+# Complex alignment (GPU)
+# ============================================================================
+
+
+class TestComplexAlignmentGPU:
+    """Insight complex ops on GPU vs NumPy."""
+
+    def test_to_complex(self):
+        real_np = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        imag_np = np.array([4.0, 5.0, 6.0], dtype=np.float64)
+        real, imag = to_gpu(real_np), to_gpu(imag_np)
+        result = ins.to_complex(real, imag)
+        expected = real_np + 1j * imag_np
+        assert_allclose(to_numpy(result), expected)
+
+    def test_as_complex(self):
+        x_np = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.as_complex(x)
+        expected = x_np.astype(np.complex128)
+        assert_allclose(to_numpy(result), expected)
+
+    def test_real(self):
+        x_np = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
+        x = to_gpu(x_np)
+        result = ins.real(x)
+        assert_allclose(to_numpy(result), np.real(x_np))
+
+    def test_imag(self):
+        x_np = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
+        x = to_gpu(x_np)
+        result = ins.imag(x)
+        assert_allclose(to_numpy(result), np.imag(x_np))
+
+    def test_as_real(self):
+        x_np = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
+        x = to_gpu(x_np)
+        result = ins.as_real(x)
+        expected = np.array([1, 2, 3, 4, 5, 6], dtype=np.float64)
+        assert_allclose(to_numpy(result), expected)
+
+    def test_is_complex(self):
+        x_real = to_gpu(np.array([1.0], dtype=np.float64))
+        x_cplx = to_gpu(np.array([1 + 2j], dtype=np.complex128))
+        assert ins.is_complex(x_cplx) == True  # noqa: E712
+        assert ins.is_complex(x_real) == False  # noqa: E712
+
+    def test_conj(self):
+        """Test conjugate if available."""
+        try:
+            from insight._insight import conj
+        except ImportError:
+            pytest.skip("conj not available in Python bindings")
+        x_np = np.array([1 + 2j, 3 - 4j], dtype=np.complex128)
+        x = to_gpu(x_np)
+        result = conj(x)
+        assert_allclose(to_numpy(result), np.conj(x_np))
+
+    def test_angle(self):
+        """Test angle (phase) if available."""
+        try:
+            from insight._insight import angle
+        except ImportError:
+            pytest.skip("angle not available in Python bindings")
+        x_np = np.array([1 + 0j, 0 + 1j, -1 + 0j, 1 + 1j], dtype=np.complex128)
+        x = to_gpu(x_np)
+        result = angle(x)
+        assert_allclose(to_numpy(result), np.angle(x_np), rtol=1e-6)
+
+
+# ============================================================================
+# Signal windows alignment (GPU)
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_SCIPY, reason="SciPy not available")
+class TestSignalWindowsGPU:
+    """Insight signal windows on GPU vs SciPy."""
+
+    def test_hann(self):
+        result = ins.signal.hann(64)
+        expected = scipy_hann(64)
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+    def test_hamming(self):
+        result = ins.signal.hamming(64)
+        expected = scipy_hamming(64)
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+    def test_kaiser(self):
+        result = ins.signal.kaiser(64, 5.0)
+        expected = scipy_kaiser(64, 5.0)
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+    def test_blackman(self):
+        result = ins.signal.blackman(64)
+        expected = scipy_blackman(64)
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+    def test_boxcar(self):
+        result = ins.signal.boxcar(32)
+        expected = scipy_boxcar(32)
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+    def test_bartlett(self):
+        result = ins.signal.bartlett(64)
+        expected = scipy_bartlett(64)
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+    def test_tukey(self):
+        result = ins.signal.tukey(64, 0.5)
+        expected = scipy_tukey(64, 0.5)
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+    def test_triang(self):
+        result = ins.signal.triang(63)
+        expected = scipy_triang(63)
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+
+# ============================================================================
+# Signal waveforms alignment (GPU)
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_SCIPY, reason="SciPy not available")
+class TestSignalWaveformsGPU:
+    """Insight signal waveforms on GPU vs SciPy."""
+
+    def test_sawtooth(self):
+        t_np = np.linspace(0, 2 * np.pi, 100, dtype=np.float64)
+        t = to_gpu(t_np)
+        result = ins.sawtooth(t)
+        expected = sp_signal.sawtooth(t_np)
+        assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+    def test_square_wf(self):
+        t_np = np.linspace(0, 2 * np.pi, 100, dtype=np.float64)
+        t = to_gpu(t_np)
+        result = ins.square_wf(t)
+        expected = sp_signal.square(t_np)
+        assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+    def test_gausspulse(self):
+        t_np = np.linspace(-0.01, 0.01, 200, dtype=np.float64)
+        t = to_gpu(t_np)
+        result = ins.gausspulse(t, fc=1000)
+        expected = sp_signal.gausspulse(t_np, fc=1000)
+        assert_allclose(to_numpy(result), expected, rtol=1e-4)
+
+    def test_chirp_linear(self):
+        t_np = np.linspace(0, 10, 1000, dtype=np.float64)
+        t = to_gpu(t_np)
+        result = ins.chirp(t, f0=1, t1=10, f1=10, method="linear")
+        expected = sp_signal.chirp(t_np, f0=1, t1=10, f1=10, method="linear")
+        assert_allclose(to_numpy(result), expected, atol=1e-6)
+
+    def test_unit_impulse(self):
+        result = ins.unit_impulse(10)
+        expected = sp_signal.unit_impulse(10)
+        assert_allclose(result.numpy(), expected)
+
+
+# ============================================================================
+# Signal wavelets alignment (GPU)
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_SCIPY, reason="SciPy not available")
+class TestSignalWaveletsGPU:
+    """Insight signal wavelets on GPU vs SciPy."""
+
+    def test_ricker(self):
+        result = ins.ricker(100, 4.0)
+        expected = sp_signal.ricker(100, 4.0)
+        assert_allclose(result.numpy(), expected, rtol=1e-6)
+
+    def test_morlet(self):
+        result = ins.morlet(50, w=5.0, s=1.0, complete=True)
+        expected = sp_signal.morlet(50, w=5.0, s=1.0, complete=True)
+        assert_allclose(result.numpy(), expected, atol=1e-8)
+
+
+# ============================================================================
+# Signal filter design alignment (GPU)
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_SCIPY, reason="SciPy not available")
+class TestSignalFilterDesignGPU:
+    """Insight filter design on GPU vs SciPy."""
+
+    def test_firwin_lowpass(self):
+        result = ins.firwin(15, 0.3, window="hamming", pass_zero="lowpass")
+        expected = sp_signal.firwin(15, 0.3, window="hamming", pass_zero="lowpass")
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+    def test_firwin2(self):
+        freq = [0, 0.5, 1.0]
+        gain = [1, 0.5, 0]
+        result = ins.firwin2(15, freq, gain)
+        expected = sp_signal.firwin2(15, freq, gain)
+        assert_allclose(result.numpy(), expected, atol=1e-10)
+
+    def test_kaiser_beta(self):
+        result = ins.kaiser_beta(50)
+        expected = sp_signal.kaiser_beta(50)
+        assert_allclose(result.numpy(), expected, rtol=1e-6)
+
+
+# ============================================================================
+# Signal convolution alignment (GPU)
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_SCIPY, reason="SciPy not available")
+class TestSignalConvolutionGPU:
+    """Insight signal convolution on GPU vs SciPy."""
+
+    def test_fftconvolve_full(self):
+        a_np = np.array([1, 2, 3], dtype=np.float64)
+        b_np = np.array([4, 5], dtype=np.float64)
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        result = ins.fftconvolve(a, b)
+        expected = sp_signal.fftconvolve(a_np, b_np)
+        assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+    def test_fftconvolve_same(self):
+        a_np = np.array([1, 2, 3, 4, 5], dtype=np.float64)
+        b_np = np.array([1, 1, 1], dtype=np.float64)
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        result = ins.fftconvolve(a, b, mode="same")
+        expected = sp_signal.fftconvolve(a_np, b_np, mode="same")
+        assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+    def test_correlate(self):
+        a_np = np.array([1, 2, 3], dtype=np.float64)
+        b_np = np.array([4, 5, 6], dtype=np.float64)
+        a, b = to_gpu(a_np), to_gpu(b_np)
+        result = ins.correlate(a, b)
+        expected = sp_signal.correlate(a_np, b_np)
+        assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+
+# ============================================================================
+# Signal filtering alignment (GPU)
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_SCIPY, reason="SciPy not available")
+class TestSignalFilteringGPU:
+    """Insight signal filtering on GPU vs SciPy."""
+
+    def test_hilbert(self):
+        x_np = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.hilbert(x)
+        expected = sp_signal.hilbert(x_np)
+        assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+    def test_detrend_linear(self):
+        x_np = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.detrend(x, type="linear")
+        expected = sp_signal.detrend(x_np, type="linear")
+        assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+    def test_detrend_constant(self):
+        x_np = np.array([10, 11, 12, 13, 14], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.detrend(x, type="constant")
+        expected = sp_signal.detrend(x_np, type="constant")
+        assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+    def test_lfilter(self):
+        b_np = np.array([1.0, 1.0], dtype=np.float64)
+        a_np = np.array([1.0, -0.5], dtype=np.float64)
+        x_np = np.array([1, 0, 0, 0, 0, 0, 0, 0], dtype=np.float64)
+        b, a, x = to_gpu(b_np), to_gpu(a_np), to_gpu(x_np)
+        result = ins.lfilter(b, a, x)
+        expected = sp_signal.lfilter(b_np, a_np, x_np)
+        assert_allclose(to_numpy(result), expected, atol=1e-8)
+
+    def test_filtfilt(self):
+        b_np = np.array([1.0, 1.0], dtype=np.float64)
+        a_np = np.array([1.0, -0.5], dtype=np.float64)
+        x_np = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.float64)
+        b, a, x = to_gpu(b_np), to_gpu(a_np), to_gpu(x_np)
+        result = ins.filtfilt(b, a, x)
+        expected = sp_signal.filtfilt(b_np, a_np, x_np)
+        assert_allclose(to_numpy(result), expected, atol=1e-6)
+
+    def test_resample(self):
+        x_np = np.sin(2 * np.pi * 5 * np.linspace(0, 1, 100, dtype=np.float64))
+        x = to_gpu(x_np)
+        result = ins.resample(x, 50)
+        expected = sp_signal.resample(x_np, 50)
+        assert_allclose(to_numpy(result), expected, rtol=1e-4)
+
+    def test_decimate(self):
+        x_np = np.sin(2 * np.pi * 5 * np.linspace(0, 1, 100, dtype=np.float64))
+        x = to_gpu(x_np)
+        result = ins.decimate(x, 5)
+        expected = sp_signal.decimate(x_np, 5)
+        assert_allclose(to_numpy(result), expected, rtol=1e-2)
+
+
+# ============================================================================
+# Signal spectral analysis alignment (GPU)
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_SCIPY, reason="SciPy not available")
+class TestSignalSpectralGPU:
+    """Insight signal spectral analysis on GPU vs SciPy."""
+
+    def test_welch(self):
+        rng = np.random.RandomState(42)
+        x_np = rng.randn(1024).astype(np.float64)
+        x = to_gpu(x_np)
+        result = ins.welch(x, fs=1000.0, nperseg=256)
+        f_expected, Pxx_expected = sp_signal.welch(x_np, fs=1000.0, nperseg=256)
+        assert_allclose(result.f.numpy(), f_expected, rtol=1e-6)
+        assert_allclose(result.Pxx.numpy(), Pxx_expected, rtol=1e-4)
+
+    def test_periodogram(self):
+        rng = np.random.RandomState(42)
+        x_np = rng.randn(512).astype(np.float64)
+        x = to_gpu(x_np)
+        result = ins.periodogram(x, fs=1000.0)
+        f_expected, Pxx_expected = sp_signal.periodogram(x_np, fs=1000.0)
+        assert_allclose(result.f.numpy(), f_expected, rtol=1e-6)
+        assert_allclose(result.Pxx.numpy(), Pxx_expected, rtol=1e-4)
+
+    def test_csd(self):
+        rng = np.random.RandomState(42)
+        x_np = rng.randn(1024).astype(np.float64)
+        y_np = rng.randn(1024).astype(np.float64)
+        x, y = to_gpu(x_np), to_gpu(y_np)
+        result = ins.csd(x, y, fs=1000.0, nperseg=256)
+        f_expected, Pxy_expected = sp_signal.csd(x_np, y_np, fs=1000.0, nperseg=256)
+        assert_allclose(result.f.numpy(), f_expected, rtol=1e-6)
+        assert_allclose(result.Pxx.numpy(), Pxy_expected, rtol=1e-3)
+
+    def test_coherence(self):
+        rng = np.random.RandomState(42)
+        x_np = rng.randn(1024).astype(np.float64)
+        y_np = rng.randn(1024).astype(np.float64)
+        x, y = to_gpu(x_np), to_gpu(y_np)
+        result = ins.coherence(x, y, fs=1000.0, nperseg=256)
+        f_expected, Cxy_expected = sp_signal.coherence(x_np, y_np, fs=1000.0, nperseg=256)
+        assert_allclose(result.f.numpy(), f_expected, rtol=1e-6)
+        assert_allclose(result.Pxx.numpy(), Cxy_expected, rtol=1e-3)
+
+    def test_spectrogram(self):
+        rng = np.random.RandomState(42)
+        x_np = rng.randn(1024).astype(np.float64)
+        x = to_gpu(x_np)
+        result = ins.spectrogram(x, fs=1000.0, nperseg=256)
+        f_exp, t_exp, Sxx_exp = sp_signal.spectrogram(x_np, fs=1000.0, nperseg=256)
+        assert_allclose(result.f.numpy(), f_exp, rtol=1e-6)
+        assert_allclose(result.Sxx.numpy(), Sxx_exp, rtol=1e-3)
+
+    def test_stft(self):
+        rng = np.random.RandomState(42)
+        x_np = rng.randn(1024).astype(np.float64)
+        x = to_gpu(x_np)
+        result = ins.stft(x, fs=1000.0, nperseg=256)
+        f_exp, t_exp, Zxx_exp = sp_signal.stft(x_np, fs=1000.0, nperseg=256)
+        assert_allclose(result.f.numpy(), f_exp, rtol=1e-6)
+        assert_allclose(result.Sxx.numpy(), Zxx_exp, rtol=1e-3)
+
+
+# ============================================================================
+# B-spline alignment (GPU)
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_SCIPY, reason="SciPy not available")
+class TestSignalBSplinesGPU:
+    """Insight B-spline functions on GPU vs SciPy."""
+
+    def test_cubic(self):
+        x_np = np.array([-2, -1, 0, 1, 2], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.cubic(x)
+        from scipy.signal import cubic as scipy_cubic
+
+        expected = scipy_cubic(x_np)
+        assert_allclose(to_numpy(result), expected, atol=1e-10)
+
+    def test_quadratic(self):
+        x_np = np.array([-2, -1, 0, 1, 2], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.quadratic(x)
+        from scipy.signal import quadratic as scipy_quadratic
+
+        expected = scipy_quadratic(x_np)
+        assert_allclose(to_numpy(result), expected, atol=1e-10)
+
+
+# ============================================================================
+# Acoustics alignment (GPU)
+# ============================================================================
+
+
+@pytest.mark.skipif(not HAS_SCIPY, reason="SciPy not available")
+class TestSignalAcousticsGPU:
+    """Insight acoustic functions on GPU vs SciPy."""
+
+    def test_hz2mel(self):
+        x_np = np.array([0, 100, 1000, 10000], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.hz2mel(x)
+        expected = sp_signal.hz2mel(x_np)
+        assert_allclose(to_numpy(result), expected, rtol=1e-6)
+
+    def test_mel2hz(self):
+        mel_np = np.array([0, 100, 500, 1000], dtype=np.float64)
+        mel = to_gpu(mel_np)
+        result = ins.mel2hz(mel)
+        expected = sp_signal.mel2hz(mel_np)
+        assert_allclose(to_numpy(result), expected, rtol=1e-6)
+
+    def test_hz2bark(self):
+        x_np = np.array([0, 100, 1000, 10000], dtype=np.float64)
+        x = to_gpu(x_np)
+        result = ins.hz2bark(x)
+        expected = sp_signal.hz2bark(x_np)
+        assert_allclose(to_numpy(result), expected, rtol=1e-6)
+
+    def test_bark2hz(self):
+        bark_np = np.array([0, 1, 5, 10, 20], dtype=np.float64)
+        bark = to_gpu(bark_np)
+        result = ins.bark2hz(bark)
+        expected = sp_signal.bark2hz(bark_np)
+        assert_allclose(to_numpy(result), expected, rtol=1e-6)
+
+    def test_mel_frequencies(self):
+        result = ins.mel_frequencies(num_mel=16, fmin=0.0, fmax=8000.0)
+        expected = sp_signal.mel_frequencies(num_mel=16, fmin=0.0, fmax=8000.0)
+        assert_allclose(result.numpy(), expected, rtol=1e-6)
 
 
 if __name__ == "__main__":

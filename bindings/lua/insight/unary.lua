@@ -8,250 +8,276 @@
 local native = require("_insight")
 local M = {}
 
+local function _wrap(names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+          has_names = true
+          break
+        end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(names) do
+          pos[i] = t[name]
+          if pos[i] == nil then
+            pos[i] = t[i]
+          end
+        end
+        return fn(table.unpack(pos, 1, #names))
+      end
+    end
+    return fn(...)
+  end
+end
+
 --- Element-wise absolute value.
 -- @tparam Array x Input array.
 -- @treturn Array Absolute values.
-function M.abs(x)
+M.abs = _wrap({ "x" }, function(x)
   return native.abs(x)
-end
+end)
 
 --- Element-wise negation.
 -- @tparam Array x Input array.
 -- @treturn Array Negated values.
-function M.negative(x)
+M.negative = _wrap({ "x" }, function(x)
   return native.negative(x)
-end
+end)
 
 --- Element-wise square.
 -- @tparam Array x Input array.
 -- @treturn Array Squared values.
-function M.square(x)
+M.square = _wrap({ "x" }, function(x)
   return native.square(x)
-end
+end)
 
 --- Element-wise square root.
 -- @tparam Array x Input array.
 -- @treturn Array Square root values.
-function M.sqrt(x)
+M.sqrt = _wrap({ "x" }, function(x)
   return native.sqrt(x)
-end
+end)
 
 --- Element-wise exponential (e^x).
 -- @tparam Array x Input array.
 -- @treturn Array Exponential values.
-function M.exp(x)
+M.exp = _wrap({ "x" }, function(x)
   return native.exp(x)
-end
+end)
 
 --- Element-wise natural logarithm.
 -- @tparam Array x Input array.
 -- @treturn Array Natural log values.
-function M.log(x)
+M.log = _wrap({ "x" }, function(x)
   return native.log(x)
-end
+end)
 
 --- Element-wise base-2 logarithm.
 -- @tparam Array x Input array.
 -- @treturn Array Base-2 log values.
-function M.log2(x)
+M.log2 = _wrap({ "x" }, function(x)
   return native.log2(x)
-end
+end)
 
 --- Element-wise base-10 logarithm.
 -- @tparam Array x Input array.
 -- @treturn Array Base-10 log values.
-function M.log10(x)
+M.log10 = _wrap({ "x" }, function(x)
   return native.log10(x)
-end
+end)
 
 --- Element-wise sine.
 -- @tparam Array x Input array (radians).
 -- @treturn Array Sine values.
-function M.sin(x)
+M.sin = _wrap({ "x" }, function(x)
   return native.sin(x)
-end
+end)
 
 --- Element-wise cosine.
 -- @tparam Array x Input array (radians).
 -- @treturn Array Cosine values.
-function M.cos(x)
+M.cos = _wrap({ "x" }, function(x)
   return native.cos(x)
-end
+end)
 
 --- Element-wise tangent.
 -- @tparam Array x Input array (radians).
 -- @treturn Array Tangent values.
-function M.tan(x)
+M.tan = _wrap({ "x" }, function(x)
   return native.tan(x)
-end
+end)
 
 --- Element-wise inverse sine (arcsine).
 -- @tparam Array x Input array.
 -- @treturn Array Arcsine values in radians.
-function M.asin(x)
+M.asin = _wrap({ "x" }, function(x)
   return native.asin(x)
-end
+end)
 
 --- Element-wise inverse cosine (arccosine).
 -- @tparam Array x Input array.
 -- @treturn Array Arccosine values in radians.
-function M.acos(x)
+M.acos = _wrap({ "x" }, function(x)
   return native.acos(x)
-end
+end)
 
 --- Element-wise inverse tangent (arctangent).
 -- @tparam Array x Input array.
 -- @treturn Array Arctangent values in radians.
-function M.atan(x)
+M.atan = _wrap({ "x" }, function(x)
   return native.atan(x)
-end
+end)
 
 --- Element-wise hyperbolic sine.
 -- @tparam Array x Input array.
 -- @treturn Array Hyperbolic sine values.
-function M.sinh(x)
+M.sinh = _wrap({ "x" }, function(x)
   return native.sinh(x)
-end
+end)
 
 --- Element-wise hyperbolic cosine.
 -- @tparam Array x Input array.
 -- @treturn Array Hyperbolic cosine values.
-function M.cosh(x)
+M.cosh = _wrap({ "x" }, function(x)
   return native.cosh(x)
-end
+end)
 
 --- Element-wise hyperbolic tangent.
 -- @tparam Array x Input array.
 -- @treturn Array Hyperbolic tangent values.
-function M.tanh(x)
+M.tanh = _wrap({ "x" }, function(x)
   return native.tanh(x)
-end
+end)
 
 --- Element-wise floor (round down to nearest integer).
 -- @tparam Array x Input array.
 -- @treturn Array Floored values.
-function M.floor(x)
+M.floor = _wrap({ "x" }, function(x)
   return native.floor(x)
-end
+end)
 
 --- Element-wise ceil (round up to nearest integer).
 -- @tparam Array x Input array.
 -- @treturn Array Ceiled values.
-function M.ceil(x)
+M.ceil = _wrap({ "x" }, function(x)
   return native.ceil(x)
-end
+end)
 
 --- Element-wise round to nearest integer.
 -- @tparam Array x Input array.
 -- @treturn Array Rounded values.
-function M.round(x)
+M.round = _wrap({ "x" }, function(x)
   return native.round(x)
-end
+end)
 
 --- Element-wise sign function (-1, 0, or 1).
 -- @tparam Array x Input array.
 -- @treturn Array Sign values.
-function M.sign(x)
+M.sign = _wrap({ "x" }, function(x)
   return native.sign(x)
-end
+end)
 
 --- Element-wise NaN check.
 -- @tparam Array x Input array.
 -- @treturn Array Boolean array, true where element is NaN.
-function M.isnan(x)
+M.isnan = _wrap({ "x" }, function(x)
   return native.isnan(x)
-end
+end)
 
 --- Element-wise infinity check.
 -- @tparam Array x Input array.
 -- @treturn Array Boolean array, true where element is infinite.
-function M.isinf(x)
+M.isinf = _wrap({ "x" }, function(x)
   return native.isinf(x)
-end
+end)
 
 --- Element-wise finite check.
 -- @tparam Array x Input array.
 -- @treturn Array Boolean array, true where element is finite.
-function M.isfinite(x)
+M.isfinite = _wrap({ "x" }, function(x)
   return native.isfinite(x)
-end
+end)
 
 --- Element-wise base-2 exponential (2^x).
 -- @tparam Array x Input array.
 -- @treturn Array Base-2 exponential values.
-function M.exp2(x)
+M.exp2 = _wrap({ "x" }, function(x)
   return native.exp2(x)
-end
+end)
 
 --- Element-wise exponential minus 1 (e^x - 1).
 -- @tparam Array x Input array.
 -- @treturn Array expm1 values.
-function M.expm1(x)
+M.expm1 = _wrap({ "x" }, function(x)
   return native.expm1(x)
-end
+end)
 
 --- Element-wise natural logarithm of 1 + x.
 -- @tparam Array x Input array.
 -- @treturn Array log1p values.
-function M.log1p(x)
+M.log1p = _wrap({ "x" }, function(x)
   return native.log1p(x)
-end
+end)
 
 --- Element-wise cube root.
 -- @tparam Array x Input array.
 -- @treturn Array Cube root values.
-function M.cbrt(x)
+M.cbrt = _wrap({ "x" }, function(x)
   return native.cbrt(x)
-end
+end)
 
 --- Element-wise reciprocal (1/x).
 -- @tparam Array x Input array.
 -- @treturn Array Reciprocal values.
-function M.reciprocal(x)
+M.reciprocal = _wrap({ "x" }, function(x)
   return native.reciprocal(x)
-end
+end)
 
 --- Element-wise inverse hyperbolic sine.
 -- @tparam Array x Input array.
 -- @treturn Array Inverse hyperbolic sine values.
-function M.asinh(x)
+M.asinh = _wrap({ "x" }, function(x)
   return native.asinh(x)
-end
+end)
 
 --- Element-wise inverse hyperbolic cosine.
 -- @tparam Array x Input array.
 -- @treturn Array Inverse hyperbolic cosine values.
-function M.acosh(x)
+M.acosh = _wrap({ "x" }, function(x)
   return native.acosh(x)
-end
+end)
 
 --- Element-wise inverse hyperbolic tangent.
 -- @tparam Array x Input array.
 -- @treturn Array Inverse hyperbolic tangent values.
-function M.atanh(x)
+M.atanh = _wrap({ "x" }, function(x)
   return native.atanh(x)
-end
+end)
 
 --- Element-wise truncation toward zero.
 -- @tparam Array x Input array.
 -- @treturn Array Truncated values.
-function M.trunc(x)
+M.trunc = _wrap({ "x" }, function(x)
   return native.trunc(x)
-end
+end)
 
 --- Convert angles from degrees to radians.
 -- @tparam Array x Input array in degrees.
 -- @treturn Array Angles in radians.
-function M.deg2rad(x)
+M.deg2rad = _wrap({ "x" }, function(x)
   return native.deg2rad(x)
-end
+end)
 
 --- Convert angles from radians to degrees.
 -- @tparam Array x Input array in radians.
 -- @treturn Array Angles in degrees.
-function M.rad2deg(x)
+M.rad2deg = _wrap({ "x" }, function(x)
   return native.rad2deg(x)
-end
+end)
 
 --- Element-wise conditional selection.
 -- Selects elements from x where cond is true, else from y.
@@ -259,8 +285,8 @@ end
 -- @tparam Array x Values selected where cond is true.
 -- @tparam Array y Values selected where cond is false.
 -- @treturn Array Selected values.
-function M.where(cond, x, y)
+M.where = _wrap({ "cond", "x", "y" }, function(cond, x, y)
   return native.where(cond, x, y)
-end
+end)
 
 return M

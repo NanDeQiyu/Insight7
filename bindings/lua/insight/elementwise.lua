@@ -8,147 +8,175 @@
 local native = require("_insight")
 local M = {}
 
+-- Dual-mode wrapper: supports both positional and named-table arguments.
+-- func(a, b)  or  func{a=x, b=y}  or  func{x, y}
+local function _wrap(names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+          has_names = true
+          break
+        end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(names) do
+          pos[i] = t[name]
+          if pos[i] == nil then
+            pos[i] = t[i]
+          end
+        end
+        return fn(table.unpack(pos, 1, #names))
+      end
+    end
+    return fn(...)
+  end
+end
+
 --- Element-wise addition.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Element-wise sum.
-function M.add(a, b)
+M.add = _wrap({ "a", "b" }, function(a, b)
   return native.add(a, b)
-end
+end)
 
 --- Element-wise subtraction.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Element-wise difference.
-function M.sub(a, b)
+M.sub = _wrap({ "a", "b" }, function(a, b)
   return native.sub(a, b)
-end
+end)
 
 --- Element-wise multiplication.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Element-wise product.
-function M.mul(a, b)
+M.mul = _wrap({ "a", "b" }, function(a, b)
   return native.mul(a, b)
-end
+end)
 
 --- Element-wise division.
 -- @tparam Array a First input array (numerator).
 -- @tparam Array b Second input array (denominator).
 -- @treturn Array Element-wise quotient.
-function M.div(a, b)
+M.div = _wrap({ "a", "b" }, function(a, b)
   return native.div(a, b)
-end
+end)
 
 --- Element-wise exponentiation.
 -- @tparam Array a Base array.
 -- @tparam Array b Exponent array.
 -- @treturn Array Element-wise power.
-function M.pow(a, b)
+M.pow = _wrap({ "a", "b" }, function(a, b)
   return native.pow(a, b)
-end
+end)
 
 --- Element-wise modulus.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array (divisor).
 -- @treturn Array Element-wise remainder.
-function M.mod(a, b)
+M.mod = _wrap({ "a", "b" }, function(a, b)
   return native.mod(a, b)
-end
+end)
 
 --- Element-wise maximum of two arrays.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Element-wise maximum.
-function M.maximum(a, b)
+M.maximum = _wrap({ "a", "b" }, function(a, b)
   return native.maximum(a, b)
-end
+end)
 
 --- Element-wise minimum of two arrays.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Element-wise minimum.
-function M.minimum(a, b)
+M.minimum = _wrap({ "a", "b" }, function(a, b)
   return native.minimum(a, b)
-end
+end)
 
 --- Element-wise equality comparison.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Boolean array of element-wise equality.
-function M.equal(a, b)
+M.equal = _wrap({ "a", "b" }, function(a, b)
   return native.equal(a, b)
-end
+end)
 
 --- Element-wise inequality comparison.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Boolean array of element-wise inequality.
-function M.not_equal(a, b)
+M.not_equal = _wrap({ "a", "b" }, function(a, b)
   return native.not_equal(a, b)
-end
+end)
 
 --- Element-wise greater-than comparison.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Boolean array where a > b.
-function M.greater(a, b)
+M.greater = _wrap({ "a", "b" }, function(a, b)
   return native.greater(a, b)
-end
+end)
 
 --- Element-wise less-than comparison.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Boolean array where a < b.
-function M.less(a, b)
+M.less = _wrap({ "a", "b" }, function(a, b)
   return native.less(a, b)
-end
+end)
 
 --- Element-wise greater-or-equal comparison.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Boolean array where a >= b.
-function M.greater_equal(a, b)
+M.greater_equal = _wrap({ "a", "b" }, function(a, b)
   return native.greater_equal(a, b)
-end
+end)
 
 --- Element-wise less-or-equal comparison.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Boolean array where a <= b.
-function M.less_equal(a, b)
+M.less_equal = _wrap({ "a", "b" }, function(a, b)
   return native.less_equal(a, b)
-end
+end)
 
 --- Element-wise logical AND.
 -- @tparam Array a First boolean input array.
 -- @tparam Array b Second boolean input array.
 -- @treturn Array Boolean array of element-wise AND.
-function M.logical_and(a, b)
+M.logical_and = _wrap({ "a", "b" }, function(a, b)
   return native.logical_and(a, b)
-end
+end)
 
 --- Element-wise logical OR.
 -- @tparam Array a First boolean input array.
 -- @tparam Array b Second boolean input array.
 -- @treturn Array Boolean array of element-wise OR.
-function M.logical_or(a, b)
+M.logical_or = _wrap({ "a", "b" }, function(a, b)
   return native.logical_or(a, b)
-end
+end)
 
 --- Element-wise logical XOR.
 -- @tparam Array a First boolean input array.
 -- @tparam Array b Second boolean input array.
 -- @treturn Array Boolean array of element-wise XOR.
-function M.logical_xor(a, b)
+M.logical_xor = _wrap({ "a", "b" }, function(a, b)
   return native.logical_xor(a, b)
-end
+end)
 
 --- Element-wise logical NOT.
 -- @tparam Array x Input boolean array.
 -- @treturn Array Boolean array of element-wise NOT.
-function M.logical_not(x)
+M.logical_not = _wrap({ "x" }, function(x)
   return native.logical_not(x)
-end
+end)
 
 return M

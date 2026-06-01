@@ -8,20 +8,46 @@ local sig = native.signal
 
 local M = {}
 
+local function _wrap(names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then
+          has_names = true
+          break
+        end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(names) do
+          pos[i] = t[name]
+          if pos[i] == nil then
+            pos[i] = t[i]
+          end
+        end
+        return fn(table.unpack(pos, 1, #names))
+      end
+    end
+    return fn(...)
+  end
+end
+
 --- Compute the Kaiser beta parameter for a given attenuation.
 -- @number attenuation Stopband attenuation in dB.
 -- @number Kaiser beta parameter.
-function M.kaiser_beta(attenuation)
+M.kaiser_beta = _wrap({ "attenuation" }, function(attenuation)
   return sig.kaiser_beta(attenuation)
-end
+end)
 
 --- Compute the Kaiser window attenuation for given parameters.
 -- @int n Number of taps.
 -- @number width Transition width (normalized).
 -- @number Attenuation in dB.
-function M.kaiser_atten(n, width)
+M.kaiser_atten = _wrap({ "n", "width" }, function(n, width)
   return sig.kaiser_atten(n, width)
-end
+end)
 
 --- Design a FIR filter using the window method.
 -- @int numtaps Number of filter taps.
@@ -29,24 +55,24 @@ end
 -- @string[opt="lowpass"] type Filter type: 'lowpass', 'highpass', 'bandpass', 'bandstop'.
 -- @bool[opt=false] pass_zero If true, the DC gain is nonzero at frequency 0.
 -- @treturn Array FIR filter coefficients.
-function M.firwin(numtaps, cutoff, type, pass_zero)
+M.firwin = _wrap({ "numtaps", "cutoff", "type", "pass_zero" }, function(numtaps, cutoff, type, pass_zero)
   return sig.firwin(numtaps, cutoff, type or "lowpass", pass_zero or false)
-end
+end)
 
 --- Design a FIR filter using frequency sampling.
 -- @int numtaps Number of filter taps.
 -- @tparam table freq Frequency breakpoints (normalized, 0 to 1).
 -- @tparam table gain Desired gain at each frequency breakpoint.
 -- @treturn Array FIR filter coefficients.
-function M.firwin2(numtaps, freq, gain)
+M.firwin2 = _wrap({ "numtaps", "freq", "gain" }, function(numtaps, freq, gain)
   return sig.firwin2(numtaps, freq, gain)
-end
+end)
 
 --- Sort complex numbers by real part, then imaginary part.
 -- @tparam Array x Complex input array.
 -- @treturn Array Sorted complex array.
-function M.cmplx_sort(x)
+M.cmplx_sort = _wrap({ "x" }, function(x)
   return sig.cmplx_sort(x)
-end
+end)
 
 return M

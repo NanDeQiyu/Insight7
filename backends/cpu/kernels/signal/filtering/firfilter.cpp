@@ -1,3 +1,7 @@
+// NOTE: This kernel is currently not called from the frontend.
+// The frontend uses composite ops for this operation.
+// This kernel is preserved for future backend dispatch optimization.
+//
 // backends/cpu/kernels/signal/filtering/firfilter.cpp
 // CPU kernel for FIR filter — applies convolution per batch row
 #include "../../../registry/cpu_registry.h"
