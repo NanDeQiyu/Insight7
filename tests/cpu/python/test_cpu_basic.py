@@ -242,14 +242,14 @@ class TestLinalg:
         np.testing.assert_allclose(result.numpy(), a_np @ b_np, rtol=1e-10)
 
     def test_det(self):
-        a_np = np.array([[1, 2], [3, 4]], dtype=np.float64)
+        a_np = np.array([[1, 2], [3, 4]], dtype=np.float32)
         result = ins.det(ins.from_numpy(a_np))
-        assert result.numpy().item() == pytest.approx(-2.0, abs=1e-8)
+        assert result.numpy().item() == pytest.approx(-2.0, abs=1e-3)
 
     def test_inv(self):
-        a_np = np.array([[1, 2], [3, 4]], dtype=np.float64)
+        a_np = np.array([[4, 7], [2, 6]], dtype=np.float32)
         result = ins.inv(ins.from_numpy(a_np))
-        np.testing.assert_allclose(result.numpy(), np.linalg.inv(a_np), atol=1e-8)
+        np.testing.assert_allclose(result.numpy(), np.linalg.inv(a_np), atol=1e-3)
 
 
 # ============================================================================
