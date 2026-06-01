@@ -18,7 +18,8 @@ protected:
     std::filesystem::create_directories("/tmp/insight_io_test");
   }
   static void TearDownTestSuite() {
-    std::filesystem::remove_all("/tmp/insight_io_test");
+    std::error_code ec;
+    std::filesystem::remove_all("/tmp/insight_io_test", ec);
   }
   void SetUp() override { tmp_dir = "/tmp/insight_io_test"; }
 

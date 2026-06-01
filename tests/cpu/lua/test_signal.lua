@@ -14,8 +14,14 @@ describe("Signal CPU Tests", function()
   -- ========================================================================
 
   it("unwrap_basic", function()
-    local a = ins.from_table({ 0.0, 1.5707963267948966, 3.141592653589793,
-                               4.71238898038469, 6.283185307179586, 9.42477796076938 })
+    local a = ins.from_table({
+      0.0,
+      1.5707963267948966,
+      3.141592653589793,
+      4.71238898038469,
+      6.283185307179586,
+      9.42477796076938,
+    })
     local u = ins.unwrap(a)
     assert.is_not_nil(u)
     assert.are.equal(6, u.numel)
@@ -29,16 +35,20 @@ describe("Signal CPU Tests", function()
   end)
 
   it("unwrap_2d_axis1", function()
-    local a = ins.from_table({ { 0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469 },
-                                { 0.1, 1.5707963267948966, 3.2, 3.3 } })
+    local a = ins.from_table({
+      { 0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469 },
+      { 0.1, 1.5707963267948966, 3.2, 3.3 },
+    })
     local u = ins.unwrap(a, 1)
     assert.is_not_nil(u)
     assert.are.equal(8, u.numel)
   end)
 
   it("unwrap_2d_axis0", function()
-    local a = ins.from_table({ { 0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469 },
-                                { 0.1, 1.5707963267948966, 3.2, 3.3 } })
+    local a = ins.from_table({
+      { 0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469 },
+      { 0.1, 1.5707963267948966, 3.2, 3.3 },
+    })
     local u = ins.unwrap(a, 0)
     assert.is_not_nil(u)
     assert.are.equal(8, u.numel)

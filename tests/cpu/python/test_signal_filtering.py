@@ -85,7 +85,7 @@ class TestLfilter:
             assert abs(d[i]) < 1e-10
 
     def test_lfilter_fir_moving_avg(self):
-        b = ins.from_numpy(np.array([1/3, 1/3, 1/3], dtype=np.float64))
+        b = ins.from_numpy(np.array([1 / 3, 1 / 3, 1 / 3], dtype=np.float64))
         a = ins.from_numpy(np.array([1.0], dtype=np.float64))
         x = ins.from_numpy(np.array([1, 2, 3, 4, 5], dtype=np.float64))
         y = ins.signal.lfilter(b, a, x)

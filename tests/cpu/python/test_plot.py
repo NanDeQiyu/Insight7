@@ -29,8 +29,7 @@ except ImportError:
 try:
     _plt = ins.plot
 except (AttributeError, ImportError):
-    pytest.skip("ins.plot not available (INSIGHT_USE_MATPLOT not enabled)",
-                allow_module_level=True)
+    pytest.skip("ins.plot not available (INSIGHT_USE_MATPLOT not enabled)", allow_module_level=True)
 
 
 class TestPlotCPU:

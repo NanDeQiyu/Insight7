@@ -91,7 +91,9 @@ describe("Audio CUDA Tests", function()
 
   it("write read large gpu", function()
     local t = {}
-    for i = 1, 1000 do t[i] = i * 0.1 end
+    for i = 1, 1000 do
+      t[i] = i * 0.1
+    end
     local a = ins.from_table(t):to(ins.GPUPlace(0))
     local path = "/tmp/insight_lua_audio_gpu_large.bin"
     ins.write_bin(path, a)

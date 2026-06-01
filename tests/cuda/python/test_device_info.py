@@ -1,4 +1,5 @@
 """Device information CUDA binding tests."""
+
 import sys
 import os
 import pytest
@@ -62,7 +63,6 @@ class TestDeviceInfoCUDA:
     def test_cuda_version_format(self):
         ver = ins.cuda_version()
         major = ver // 1000
-        minor = (ver % 1000) // 10
         assert major >= 11  # CUDA 11+
 
     def test_driver_version_format(self):

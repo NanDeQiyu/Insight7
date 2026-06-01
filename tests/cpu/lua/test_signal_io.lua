@@ -46,7 +46,9 @@ describe("Signal IO CPU Tests", function()
 
   it("write_read_bin_large", function()
     local t = {}
-    for i = 1, 1024 do t[i] = math.sin(i) end
+    for i = 1, 1024 do
+      t[i] = math.sin(i)
+    end
     local data = ins.from_table(t)
     tmpfile = os.tmpname() .. ".bin"
     ins.signal.write_bin(data, tmpfile)

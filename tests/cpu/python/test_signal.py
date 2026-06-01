@@ -43,8 +43,7 @@ class TestUnwrap:
         assert abs(u.numpy()[0] - math.pi) < 1e-6
 
     def test_unwrap_2d_axis1(self):
-        data = [0.0, math.pi / 2, math.pi, 3 * math.pi / 2,
-                0.1, math.pi / 2, 3.2, 3.3]
+        data = [0.0, math.pi / 2, math.pi, 3 * math.pi / 2, 0.1, math.pi / 2, 3.2, 3.3]
         a = ins.from_numpy(np.array(data, dtype=np.float64).reshape(2, 4))
         u = ins.unwrap(a, axis=1)
         assert u.numel() == 8

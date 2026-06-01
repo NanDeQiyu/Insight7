@@ -6,7 +6,9 @@ Run with:
     python -m pytest tests/cpu/python/test_dtype.py -v
 """
 
-import sys, os, pytest
+import sys
+import os
+import pytest
 
 _root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 sys.path.insert(0, os.path.join(_root, "bindings", "python"))

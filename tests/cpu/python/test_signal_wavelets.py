@@ -1,4 +1,5 @@
 """Signal wavelets CPU binding tests."""
+
 import sys
 import os
 import pytest

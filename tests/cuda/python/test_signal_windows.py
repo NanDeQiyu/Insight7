@@ -49,7 +49,7 @@ class TestTriang:
         # scipy.signal.windows.triang(5) = [1/3, 2/3, 1, 2/3, 1/3]
         w = ins.signal.triang(5)
         assert w.numel() == 5
-        np.testing.assert_allclose(w.numpy(), [1/3, 2/3, 1, 2/3, 1/3], atol=1e-10)
+        np.testing.assert_allclose(w.numpy(), [1 / 3, 2 / 3, 1, 2 / 3, 1 / 3], atol=1e-10)
 
     def test_triang_even(self):
         # scipy.signal.windows.triang(4) = [0.25, 0.75, 0.75, 0.25]

@@ -133,16 +133,46 @@ The wildcard imports ensure backward compatibility — `ins.add(a, b)` still wor
 local native = require("_insight")
 local M = {}
 
+-- Dual-mode wrapper: supports both positional and named-table arguments.
+-- func(a, b)  or  func{a=x, b=y}  or  func{x, y}
+local function _wrap(names, fn)
+  return function(...)
+    if select("#", ...) == 1 and type(select(1, ...)) == "table" then
+      local t = select(1, ...)
+      local has_names = false
+      for k, _ in pairs(t) do
+        if type(k) ~= "number" then has_names = true; break end
+      end
+      if has_names then
+        local pos = {}
+        for i, name in ipairs(names) do
+          pos[i] = t[name]
+          if pos[i] == nil then pos[i] = t[i] end
+        end
+        return fn(table.unpack(pos, 1, #names))
+      end
+    end
+    return fn(...)
+  end
+end
+
 --- Element-wise addition.
 -- @tparam Array a First input array.
 -- @tparam Array b Second input array.
 -- @treturn Array Element-wise sum.
-function M.add(a, b)
+M.add = _wrap({"a", "b"}, function(a, b)
     return native.add(a, b)
-end
+end)
 
 return M
 ```
+
+**All Lua wrapper functions should use `_wrap`** to support three calling conventions:
+- `func(a, b)` — positional
+- `func{a, b=b1}` — mixed positional + named
+- `func{a=a1, b=b1}` — fully named table
+
+The `init.lua` should also export `args()` and `wrap()` helpers for user code.
 
 ### init.lua update
 

@@ -6,7 +6,9 @@ Run with:
     python -m pytest tests/cuda/python/test_reduction.py -v
 """
 
-import sys, os, pytest
+import sys
+import os
+import pytest
 
 _root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 sys.path.insert(0, os.path.join(_root, "bindings", "python"))
@@ -110,12 +112,12 @@ class TestReductionCUDA:
     def test_any(self):
         a = to_gpu(np.array([True, False, True], dtype=np.bool_))
         result = ins.any(a)
-        assert result.numpy().item() == True
+        assert result.numpy().item()
 
     def test_all(self):
         a = to_gpu(np.array([True, False, True], dtype=np.bool_))
         result = ins.all(a)
-        assert result.numpy().item() == False
+        assert not result.numpy().item()
 
     def test_var(self):
         a_np = np.array([1, 2, 3, 4, 5], dtype=np.float64)

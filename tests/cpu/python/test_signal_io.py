@@ -1,4 +1,5 @@
 """Signal io CPU binding tests."""
+
 import sys
 import os
 import tempfile

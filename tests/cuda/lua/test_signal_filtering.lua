@@ -149,7 +149,9 @@ describe("Signal Filtering CUDA Tests", function()
   it("freq_shift_zero", function()
     local N = 64
     local data = {}
-    for i = 1, N do data[i] = 1.0 end
+    for i = 1, N do
+      data[i] = 1.0
+    end
     local x = ins.from_table(data)
     local y = ins.signal.freq_shift(x, 0.0, 1.0)
     assert.is_not_nil(y)
@@ -159,7 +161,9 @@ describe("Signal Filtering CUDA Tests", function()
   it("freq_shift_positive", function()
     local N = 16
     local data = {}
-    for i = 1, N do data[i] = 1.0 end
+    for i = 1, N do
+      data[i] = 1.0
+    end
     local x = ins.from_table(data)
     local y = ins.signal.freq_shift(x, 0.25, 1.0)
     assert.is_not_nil(y)

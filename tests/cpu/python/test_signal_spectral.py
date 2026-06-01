@@ -1,4 +1,5 @@
 """Signal spectral CPU binding tests."""
+
 import sys
 import os
 import pytest

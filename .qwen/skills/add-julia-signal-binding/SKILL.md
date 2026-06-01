@@ -163,3 +163,113 @@ void insight_jl_vectorstrength(const Array *events, double period,
 5. **C API duplicates**: Check for existing wrappers before adding new ones (e.g., `insight_jl_cosine_win` already existed)
 6. **Function signature must match C++**: If C++ function has `const std::string &window` parameter, the C API wrapper must include `const char *window` and Julia must pass `Cstring`
 7. **`Ref{Ptr{Cvoid}}` for output pointers**: Always initialize with `C_NULL`, dereference with `ref[]`
+
+## Binding C++ Classes (KalmanFilter Pattern)
+
+For stateful C++ classes that Julia can't bind directly via ccall, create opaque pointer wrappers:
+
+### C ABI Layer (insight_julia_capi.cpp)
+
+```cpp
+// Constructor — return opaque void*
+void *insight_jl_kalman_filter_new(int32_t dim_x, int32_t dim_z, int32_t dim_u,
+                                   int32_t points, int32_t dtype) {
+  DType dt = static_cast<DType>(dtype);
+  auto *kf = new signal::KalmanFilter(dim_x, dim_z, dim_u, points, dt);
+  return static_cast<void *>(kf);
+}
+
+// Destructor
+void insight_jl_kalman_filter_free(void *kf) {
+  delete static_cast<signal::KalmanFilter *>(kf);
+}
+
+// Methods
+void insight_jl_kalman_filter_predict(void *kf) {
+  static_cast<signal::KalmanFilter *>(kf)->predict();
+}
+void insight_jl_kalman_filter_update(void *kf, const Array *z) {
+  static_cast<signal::KalmanFilter *>(kf)->update(*z);
+}
+
+// Getters — return new heap-allocated Array (shared ref)
+Array *insight_jl_kf_get_x(void *kf) {
+  return new Array(static_cast<signal::KalmanFilter *>(kf)->x);
+}
+
+// Setters — accept const Array*
+void insight_jl_kf_set_x(void *kf, const Array *v) {
+  static_cast<signal::KalmanFilter *>(kf)->x = *v;
+}
+
+// Read-only integer properties
+int32_t insight_jl_kf_get_dim_x(void *kf) {
+  return static_cast<signal::KalmanFilter *>(kf)->dim_x;
+}
+```
+
+### Julia Wrapper (modules/signal/estimation.jl)
+
+```julia
+mutable struct KalmanFilter
+    ptr::Ptr{Cvoid}
+    function KalmanFilter(ptr::Ptr{Cvoid})
+        kf = new(ptr)
+        finalizer(kf) do k
+            if k.ptr != C_NULL
+                ccall((:insight_jl_kalman_filter_free, LIB_INSIGHT),
+                      Cvoid, (Ptr{Cvoid},), k.ptr)
+                k.ptr = C_NULL
+            end
+        end
+        return kf
+    end
+end
+
+# Keyword constructor
+function KalmanFilter(dim_x::Int, dim_z::Int; dim_u::Int=0, points::Int=1,
+                      dtype=DType(float64))::KalmanFilter
+    dt_val = dtype isa DType ? Int32(dtype.val) : Int32(dtype)
+    ptr = ccall((:insight_jl_kalman_filter_new, LIB_INSIGHT), Ptr{Cvoid},
+                (Int32, Int32, Int32, Int32, Int32),
+                Int32(dim_x), Int32(dim_z), Int32(dim_u), Int32(points), dt_val)
+    return KalmanFilter(ptr)
+end
+
+# Property accessors via getproperty/setproperty! overloads
+function Base.getproperty(kf::KalmanFilter, sym::Symbol)
+    if sym === :x
+        ptr = ccall((:insight_jl_kf_get_x, LIB_INSIGHT), Ptr{Cvoid},
+                    (Ptr{Cvoid},), kf.ptr)
+        a = InsightArray(ptr); finalizer(_free, a); return a
+    elseif sym === :dim_x
+        return Int(ccall((:insight_jl_kf_get_dim_x, LIB_INSIGHT), Int32,
+                         (Ptr{Cvoid},), kf.ptr))
+    elseif sym === :ptr
+        return getfield(kf, :ptr)
+    else
+        error("KalmanFilter has no property :$sym")
+    end
+end
+
+function Base.setproperty!(kf::KalmanFilter, sym::Symbol, v)
+    arr = v isa InsightArray ? v : error("expected InsightArray")
+    if sym === :x
+        ccall((:insight_jl_kf_set_x, LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Ptr{Cvoid}), kf.ptr, arr.ptr)
+    else
+        error("cannot set :$sym on KalmanFilter")
+    end
+    return v
+end
+```
+
+### Key Rules for Class Binding
+
+- **Constructor**: Returns `void*` via `new T(...)`, Julia wraps in mutable struct with finalizer
+- **Destructor**: Takes `void*`, calls `delete static_cast<T*>(ptr)`
+- **Getters**: Return `new Array(member)` (heap copy, Julia frees via `_free`)
+- **Setters**: Accept `const Array*`, assign `kf->member = *v`
+- **Methods**: Cast `void*` to `T*`, call method
+- **Read-only ints**: Return `int32_t` directly
+- **Re-export**: Add `const KalmanFilter = Insight.KalmanFilter` to `module signal`

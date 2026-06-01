@@ -1,4 +1,5 @@
 """Random number generation CUDA binding tests."""
+
 import sys
 import os
 import pytest

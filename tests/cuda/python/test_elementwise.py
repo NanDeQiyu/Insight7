@@ -6,7 +6,9 @@ Run with:
     python -m pytest tests/cuda/python/test_elementwise.py -v
 """
 
-import sys, os, pytest
+import sys
+import os
+import pytest
 
 _root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 sys.path.insert(0, os.path.join(_root, "bindings", "python"))
@@ -70,7 +72,7 @@ class TestElementwiseCUDA:
         a_np = np.array([2.0, 3.0, 4.0], dtype=np.float64)
         b_np = np.array([3.0, 2.0, 0.5], dtype=np.float64)
         result = ins.pow(to_gpu(a_np), to_gpu(b_np))
-        np.testing.assert_allclose(to_numpy(result), a_np ** b_np, rtol=1e-6)
+        np.testing.assert_allclose(to_numpy(result), a_np**b_np, rtol=1e-6)
 
     def test_mod(self):
         a_np = np.array([10.0, 7.0, 5.0], dtype=np.float64)

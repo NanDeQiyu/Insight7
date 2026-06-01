@@ -296,7 +296,7 @@ SpectrogramResult spectrogram(const Array &x, double fs,
     Array col_idx =
         full({freq_len}, static_cast<int64_t>(seg), DType::I64, cpu);
     // Use scatter to write column
-    Sxx_2d = scatter(Sxx_2d, 1, col_idx, reshape(col, {freq_len, 1}));
+    Sxx_2d = scatter(Sxx_2d, 1, col_idx, col);
   }
 
   // Scale PSD using composite ops

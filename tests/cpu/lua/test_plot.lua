@@ -23,14 +23,20 @@ describe("Plot CPU Tests", function()
   end
 
   it("plot: line plot without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     local y = ins.from_table({ 1.0, 3.0, 2.0, 4.0 })
     ins.plot.plot(y)
     ins.plot.clf()
   end)
 
   it("scatter: scatter plot without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     local x = ins.from_table({ 1.0, 2.0, 3.0 })
     local y = ins.from_table({ 4.0, 5.0, 6.0 })
     ins.plot.scatter(x, y)
@@ -38,28 +44,40 @@ describe("Plot CPU Tests", function()
   end)
 
   it("bar: bar chart without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     local y = ins.from_table({ 3.0, 1.0, 4.0, 1.0, 5.0 })
     ins.plot.bar(y)
     ins.plot.clf()
   end)
 
   it("hist: histogram without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     local data = ins.from_table({ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 })
     ins.plot.hist(data, 4)
     ins.plot.clf()
   end)
 
   it("imshow: image display without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     local data = ins.from_table({ { 1.0, 2.0, 3.0 }, { 4.0, 5.0, 6.0 } })
     ins.plot.imshow(data)
     ins.plot.clf()
   end)
 
   it("contour: contour plot without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     local x = ins.from_table({ { 0.0, 1.0 }, { 0.0, 1.0 } })
     local y = ins.from_table({ { 0.0, 0.0 }, { 1.0, 1.0 } })
     local z = ins.from_table({ { 0.0, 1.0 }, { 1.0, 2.0 } })
@@ -68,31 +86,46 @@ describe("Plot CPU Tests", function()
   end)
 
   it("subplot: subplot layout without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     ins.plot.subplot(2, 1, 1)
     ins.plot.clf()
   end)
 
   it("title: set title without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     ins.plot.title("Test Title")
     ins.plot.clf()
   end)
 
   it("xlabel: set x-axis label without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     ins.plot.xlabel("X Axis")
     ins.plot.clf()
   end)
 
   it("ylabel: set y-axis label without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     ins.plot.ylabel("Y Axis")
     ins.plot.clf()
   end)
 
   it("legend: set legend without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     local y = ins.from_table({ 1.0, 2.0, 3.0 })
     ins.plot.plot(y)
     ins.plot.legend({ "data" })
@@ -100,7 +133,10 @@ describe("Plot CPU Tests", function()
   end)
 
   it("savefig: save figure to file without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     local y = ins.from_table({ 1.0, 2.0, 3.0 })
     ins.plot.plot(y)
     local tmpfile = "/tmp/insight_plot_test_lua.png"
@@ -108,13 +144,18 @@ describe("Plot CPU Tests", function()
     -- Check file was created
     local f = io.open(tmpfile, "r")
     assert.is_not_nil(f)
-    if f then f:close() end
+    if f then
+      f:close()
+    end
     os.remove(tmpfile)
     ins.plot.clf()
   end)
 
   it("close: clear figure without crashing", function()
-    if not has_plot() then pending("ins.plot not available") return end
+    if not has_plot() then
+      pending("ins.plot not available")
+      return
+    end
     ins.plot.figure(1)
     ins.plot.clf()
   end)

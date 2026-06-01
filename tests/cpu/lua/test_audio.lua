@@ -94,7 +94,9 @@ describe("Audio CPU Tests", function()
 
   it("write read large signal", function()
     local t = {}
-    for i = 1, 1000 do t[i] = i * 0.1 end
+    for i = 1, 1000 do
+      t[i] = i * 0.1
+    end
     local a = ins.from_table(t)
     local path = "/tmp/insight_lua_audio_large.bin"
     ins.write_bin(path, a)
@@ -111,7 +113,7 @@ describe("Audio CPU Tests", function()
     local f = io.open(path, "r")
     local size = f:seek("end")
     f:close()
-    assert.are.equal(40, size)  -- 5 doubles * 8 bytes
+    assert.are.equal(40, size) -- 5 doubles * 8 bytes
     os.remove(path)
   end)
 

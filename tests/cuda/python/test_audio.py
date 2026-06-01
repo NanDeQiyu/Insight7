@@ -3,6 +3,7 @@
 Tests signal I/O functions (read_bin/write_bin roundtrip) with GPU data.
 Note: Audio WAV read/write is C++ only and tested in test_audio.cpp.
 """
+
 import sys
 import os
 import tempfile
@@ -45,6 +46,7 @@ class TestAudioCUDA:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_write_read_bin_gpu_data(self):

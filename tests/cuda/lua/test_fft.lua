@@ -86,7 +86,9 @@ describe("FFT CUDA Tests", function()
 
   it("fft longer signal", function()
     local t = {}
-    for i = 1, 64 do t[i] = math.sin(2 * math.pi * i / 64) end
+    for i = 1, 64 do
+      t[i] = math.sin(2 * math.pi * i / 64)
+    end
     local x = ins.from_table(t):to(ins.GPUPlace(0))
     local y = ins.fft(x)
     assert.is_not_nil(y)
@@ -95,7 +97,9 @@ describe("FFT CUDA Tests", function()
 
   it("fft ones", function()
     local t = {}
-    for i = 1, 8 do t[i] = 1.0 end
+    for i = 1, 8 do
+      t[i] = 1.0
+    end
     local x = ins.from_table(t):to(ins.GPUPlace(0))
     local y = ins.fft(x)
     assert.is_not_nil(y)
@@ -104,7 +108,9 @@ describe("FFT CUDA Tests", function()
 
   it("fft non power of two", function()
     local t = {}
-    for i = 1, 10 do t[i] = i * 1.0 end
+    for i = 1, 10 do
+      t[i] = i * 1.0
+    end
     local x = ins.from_table(t):to(ins.GPUPlace(0))
     local y = ins.fft(x)
     assert.is_not_nil(y)

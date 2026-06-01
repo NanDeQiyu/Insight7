@@ -1,4 +1,5 @@
 """Type casting CUDA binding tests."""
+
 import sys
 import os
 import pytest
@@ -38,12 +39,16 @@ class TestCastCUDA:
     def test_cast_float64_to_float32(self):
         a = to_gpu(np.array([1.5, 2.5, 3.5], dtype=np.float64))
         b = ins.cast(a, ins.float32)
-        np.testing.assert_allclose(to_numpy(b), np.array([1.5, 2.5, 3.5], dtype=np.float32), rtol=1e-5)
+        np.testing.assert_allclose(
+            to_numpy(b), np.array([1.5, 2.5, 3.5], dtype=np.float32), rtol=1e-5
+        )
 
     def test_cast_float32_to_float64(self):
         a = to_gpu(np.array([1.5, 2.5, 3.5], dtype=np.float32))
         b = ins.cast(a, ins.float64)
-        np.testing.assert_allclose(to_numpy(b), np.array([1.5, 2.5, 3.5], dtype=np.float64), rtol=1e-10)
+        np.testing.assert_allclose(
+            to_numpy(b), np.array([1.5, 2.5, 3.5], dtype=np.float64), rtol=1e-10
+        )
 
     def test_cast_float64_to_int32(self):
         a = to_gpu(np.array([1.9, 2.5, 3.1], dtype=np.float64))
@@ -94,7 +99,9 @@ class TestCastCUDA:
     def test_cast_uint8_to_float32(self):
         a = to_gpu(np.array([0, 128, 255], dtype=np.uint8))
         b = ins.cast(a, ins.float32)
-        np.testing.assert_allclose(to_numpy(b), np.array([0, 128, 255], dtype=np.float32), rtol=1e-5)
+        np.testing.assert_allclose(
+            to_numpy(b), np.array([0, 128, 255], dtype=np.float32), rtol=1e-5
+        )
 
     def test_cast_2d_array(self):
         a = to_gpu(np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float64))

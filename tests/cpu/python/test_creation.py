@@ -6,7 +6,9 @@ Run with:
     python -m pytest tests/cpu/python/test_creation.py -v
 """
 
-import sys, os, pytest
+import sys
+import os
+import pytest
 
 _root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 sys.path.insert(0, os.path.join(_root, "bindings", "python"))
@@ -65,8 +67,7 @@ class TestCreationCPU:
     def test_linspace(self):
         a = ins.linspace(0.0, 1.0, 11, ins.float64)
         assert a.numel() == 11
-        np.testing.assert_allclose(a.numpy(), np.linspace(0, 1, 11, dtype=np.float64),
-                                   rtol=1e-6)
+        np.testing.assert_allclose(a.numpy(), np.linspace(0, 1, 11, dtype=np.float64), rtol=1e-6)
 
     def test_from_numpy(self):
         data = np.array([1.5, 2.5, 3.5], dtype=np.float64)

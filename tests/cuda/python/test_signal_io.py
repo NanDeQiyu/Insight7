@@ -1,4 +1,5 @@
 """Signal io CUDA binding tests."""
+
 import sys
 import os
 import tempfile

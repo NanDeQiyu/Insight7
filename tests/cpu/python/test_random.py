@@ -1,4 +1,5 @@
 """Random number generation CPU binding tests."""
+
 import sys
 import os
 import pytest

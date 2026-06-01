@@ -68,7 +68,9 @@ describe("Signal Radar CUDA Tests", function()
 
   it("ca_cfar", function()
     local t = {}
-    for i = 1, 100 do t[i] = 0.0 end
+    for i = 1, 100 do
+      t[i] = 0.0
+    end
     t[30] = 10.0
     t[70] = 10.0
     local data = ins.from_table(t):to(ins.GPUPlace(0))
@@ -95,7 +97,9 @@ describe("Signal Radar CUDA Tests", function()
 
   it("ambgfun", function()
     local t = {}
-    for i = 1, 64 do t[i] = math.sin(2 * math.pi * i / 64) end
+    for i = 1, 64 do
+      t[i] = math.sin(2 * math.pi * i / 64)
+    end
     local x = ins.from_table(t):to(ins.GPUPlace(0))
     local result = ins.signal.ambgfun(x, 32, 32)
     assert.is_not_nil(result)
