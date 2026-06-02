@@ -118,10 +118,7 @@ local function run_gpu_linalg()
   end
 end
 
-local ok = pcall(ins.init, { "cpu", "cuda" })
-if not ok then
-  ins.init({ "cpu" })
-end
+ins.init({ "cpu" })
 
 print("Insight7 Linear Algebra Demo (Lua)")
 

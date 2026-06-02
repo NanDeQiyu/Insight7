@@ -30,7 +30,7 @@ local function run_fft_cpu()
   local x = ins.from_table(sig):to(ins.float32)
   local first8 = {}
   for i = 1, 8 do
-    first8[i] = string.format("%.3f", x[i])
+    first8[i] = string.format("%.3f", ins.item(x, i - 1))
   end
   print("Input signal (first 8): " .. table.concat(first8, " ") .. " ...")
 
@@ -41,14 +41,14 @@ local function run_fft_cpu()
   local x_recon = ins.irfft(X, n)
   local recon8 = {}
   for i = 1, 8 do
-    recon8[i] = string.format("%.3f", x_recon[i])
+    recon8[i] = string.format("%.3f", ins.item(x_recon, i - 1))
   end
   print("Reconstructed signal (first 8): " .. table.concat(recon8, " ") .. " ...")
 
   -- Check reconstruction error
   local max_err = 0
   for i = 0, n - 1 do
-    local err = math.abs(x[i + 1] - x_recon[i + 1])
+    local err = math.abs(ins.item(x, i) - ins.item(x_recon, i))
     if err > max_err then
       max_err = err
     end
@@ -66,7 +66,7 @@ local function run_fft_cpu()
   local x64_recon = ins.irfft(X64, n)
   local max_err64 = 0
   for i = 0, n - 1 do
-    local err = math.abs(sig64[i + 1] - x64_recon[i + 1])
+    local err = math.abs(sig64[i + 1] - ins.item(x64_recon, i))
     if err > max_err64 then
       max_err64 = err
     end
@@ -97,13 +97,13 @@ local function run_fft_gpu()
 
   local recon8 = {}
   for i = 1, 8 do
-    recon8[i] = string.format("%.3f", x_recon[i])
+    recon8[i] = string.format("%.3f", ins.item(x_recon, i - 1))
   end
   print("GPU RFFT->IRFFT roundtrip (first 8): " .. table.concat(recon8, " ") .. " ...")
 
   local max_err = 0
   for i = 0, n - 1 do
-    local err = math.abs(sig[i + 1] - x_recon[i + 1])
+    local err = math.abs(sig[i + 1] - ins.item(x_recon, i))
     if err > max_err then
       max_err = err
     end
@@ -122,7 +122,7 @@ local function run_fft_gpu()
   local x64_recon = ins.irfft(X64, n):to(ins.CPUPlace())
   local max_err64 = 0
   for i = 0, n - 1 do
-    local err = math.abs(sig64[i + 1] - x64_recon[i + 1])
+    local err = math.abs(sig64[i + 1] - ins.item(x64_recon, i))
     if err > max_err64 then
       max_err64 = err
     end
@@ -130,10 +130,7 @@ local function run_fft_gpu()
   print(string.format("GPU F64 FFT roundtrip max error: %e", max_err64))
 end
 
-local ok = pcall(ins.init, { "cpu", "cuda" })
-if not ok then
-  ins.init({ "cpu" })
-end
+ins.init({ "cpu" })
 
 print("Insight7 FFT Demo (Lua)")
 

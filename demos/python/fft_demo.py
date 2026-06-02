@@ -96,7 +96,7 @@ def run_fft_gpu():
 
 
 def main():
-    ins.init(["cpu", "cuda"])
+    ins.init(["cpu"])
 
     print("Insight7 FFT Demo (Python)")
 

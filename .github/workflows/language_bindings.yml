@@ -71,7 +71,7 @@ jobs:
         run: |
           export PYTHONPATH=bindings/python
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          python3 -m pytest tests/bindings/test_python_binding.py tests/bindings/test_numerical_correctness.py -v
+          python3 -m pytest tests/cpu/python/ -v --tb=short
 
   lua:
     name: Lua Binding (LuaJIT)
@@ -118,8 +118,9 @@ jobs:
       - name: Test Lua binding
         run: |
           export LUA_CPATH="build/bindings/lua/?.so;;"
+          export LUA_PATH="bindings/lua/?/init.lua;bindings/lua/?.lua;;"
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          busted tests/bindings/test_lua_binding.lua
+          cd tests/cpu/lua && busted test_cpu_basic.lua && cd ../../..
 
   lua53:
     name: Lua Binding (Lua 5.3)
@@ -167,8 +168,9 @@ jobs:
       - name: Test Lua 5.3 binding
         run: |
           export LUA_CPATH="build/bindings/lua/?.so;;"
+          export LUA_PATH="bindings/lua/?/init.lua;bindings/lua/?.lua;;"
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          busted --lua=lua5.3 tests/bindings/test_lua_binding.lua
+          cd tests/cpu/lua && busted --lua=lua5.3 test_cpu_basic.lua && cd ../../..
 
   julia:
     name: Julia Binding
@@ -216,5 +218,6 @@ jobs:
       - name: Test Julia binding
         run: |
           cp bindings/julia/Insight.jl build/bindings/julia/Insight.jl
+          cp -r bindings/julia/modules build/bindings/julia/modules
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          julia tests/bindings/test_binding.jl
+          julia tests/cpu/julia/test_cpu_basic.jl

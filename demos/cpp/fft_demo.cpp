@@ -138,11 +138,7 @@ static void run_fft_gpu() {
 }
 
 int main() {
-  try {
-    ins::init({"cpu", "cuda"});
-  } catch (...) {
-    ins::init({"cpu"});
-  }
+  ins::init({"cpu"});
 
   printf("Insight7 FFT Demo\n");
   printf("FFTW3: %s\n", is_compiled_with_fftw3() ? "yes" : "no");

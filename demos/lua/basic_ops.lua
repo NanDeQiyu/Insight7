@@ -72,9 +72,9 @@ separator("Reductions")
 
 local data = ins.from_table({ 1, 2, 3, 4, 5 })
 print("data:  " .. tostring(data))
-print("sum:   " .. tostring(ins.sum(data)))
-print("mean:  " .. tostring(ins.mean(data)))
-print("max:   " .. tostring(ins.max(data)))
-print("min:   " .. tostring(ins.min(data)))
+print("sum:   " .. tostring(ins.item(ins.sum(data), 0)))
+print("mean:  " .. tostring(ins.item(ins.mean(data), 0)))
+print("max:   " .. tostring(ins.item(ins.max(data), 0)))
+print("min:   " .. tostring(ins.item(ins.min(data), 0)))
 
 print("\nDone!")
