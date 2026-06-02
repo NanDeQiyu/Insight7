@@ -16,9 +16,11 @@ on:
     paths:
       - 'demos/**'
       - 'bindings/**'
+      - 'backends/**'
       - 'include/**'
       - 'src/**'
       - 'CMakeLists.txt'
+      - '.github/workflows/demo_tests.yml'
   workflow_dispatch:
 
 jobs:

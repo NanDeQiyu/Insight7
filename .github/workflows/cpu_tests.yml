@@ -16,11 +16,12 @@ on:
   pull_request:
     branches: [ main, master ]
     paths:
-      - 'backends/cpu/**'
+      - 'backends/**'
       - 'include/**'
       - 'src/**'
       - 'tests/cpu/**'
       - 'CMakeLists.txt'
+      - '.github/workflows/cpu_tests.yml'
   workflow_dispatch:
 
 jobs:

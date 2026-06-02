@@ -18,7 +18,11 @@ on:
       - 'bindings/**'
       - 'include/**'
       - 'src/**'
+      - 'backends/**'
+      - 'third_party/pybind11/**'
+      - 'third_party/sol2/**'
       - 'CMakeLists.txt'
+      - '.github/workflows/language_bindings.yml'
   workflow_dispatch:
 
 jobs:
