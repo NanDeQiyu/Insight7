@@ -29,29 +29,33 @@ function run_fft_cpu()
     t_vals = collect(0:n-1) ./ n
     signal = sin.(2π * 5 .* t_vals) .+ 0.5 .* sin.(2π * 12 .* t_vals)
 
-    x = Insight.from_data(Float32.(signal), [n])
-    first8 = [string(round(x[i], digits=3)) for i in 1:8]
+    x = Insight.from_data(Float32.(signal))
+    first8 = [string(round(Insight.item(x, i-1), digits=3)) for i in 1:8]
     println("Input signal (first 8): " * join(first8, " ") * " ...")
 
     # RFFT -> IRFFT roundtrip
-    X = Insight.rfft(x)
-    println("RFFT output length: $(Insight.numel(X)) (complex)")
+    X = Insight.fft(x)
+    println("FFT output length: $(Insight.numel(X)) ()")
 
-    x_recon = Insight.irfft(X, n)
-    recon8 = [string(round(x_recon[i], digits=3)) for i in 1:8]
+    x_recon = Insight.ifft(X)
+    recon8 = [string(round(Insight.item(x_recon, i-1), digits=3)) for i in 1:8]
     println("Reconstructed signal (first 8): " * join(recon8, " ") * " ...")
 
     # Check reconstruction error
-    max_err = maximum(abs.([x[i] - x_recon[i] for i in 1:n]))
+    x_data = Insight.to_data(x)
+    x_recon_data = Insight.to_data(x_recon)
+    max_err = maximum(Base.abs.(x_data .- x_recon_data))
     println("Max reconstruction error: $max_err")
 
     # F64 FFT
     separator("CPU FFT (F64)")
     signal_f64 = cos.(2π * 3 .* collect(0:n-1) ./ n)
-    x64 = Insight.from_data(signal_f64, [n])
-    X64 = Insight.rfft(x64)
-    x64_recon = Insight.irfft(X64, n)
-    max_err64 = maximum(abs.([signal_f64[i] - x64_recon[i] for i in 1:n]))
+    x64 = Insight.from_data(signal_f64)
+    X64 = Insight.fft(x64)
+    x64_recon = Insight.ifft(X64)
+    x64_data = Insight.to_data(x64)
+    x64_recon_data = Insight.to_data(x64_recon)
+    max_err64 = maximum(Base.abs.(x64_data .- x64_recon_data))
     println("F64 FFT roundtrip max error: $max_err64")
 
     # next_fast_len
@@ -68,32 +72,33 @@ function run_fft_gpu()
     t_vals = collect(0:n-1) ./ n
     signal = sin.(2π * 5 .* t_vals) .+ 0.5 .* sin.(2π * 12 .* t_vals)
 
-    x_cpu = Insight.from_data(Float32.(signal), [n])
+    x_cpu = Insight.from_data(Float32.(signal))
     x = Insight.to(x_cpu, 1)  # GPUPlace
-    X = Insight.rfft(x)
-    x_recon = Insight.to(Insight.irfft(X, n), 0)  # CPUPlace
+    X = Insight.fft(x)
+    x_recon = Insight.to(Insight.ifft(X), 0)  # CPUPlace
 
-    recon8 = [string(round(x_recon[i], digits=3)) for i in 1:8]
+    recon8 = [string(round(Insight.item(x_recon, i-1), digits=3)) for i in 1:8]
     println("GPU RFFT->IRFFT roundtrip (first 8): " * join(recon8, " ") * " ...")
 
-    max_err = maximum(abs.([Float64(signal[i]) - x_recon[i] for i in 1:n]))
+    x_recon_data = Insight.to_data(x_recon)
+    signal_arr_data = Insight.to_data(signal_arr)
+    max_err = maximum(Base.abs.(Float64.(signal_arr_data) .- Float64.(x_recon_data)))
     println("GPU max reconstruction error: $max_err")
 
     # GPU F64 FFT
     separator("GPU FFT (F64)")
     signal_f64 = cos.(2π * 3 .* collect(0:n-1) ./ n)
-    x64_cpu = Insight.from_data(signal_f64, [n])
+    x64_cpu = Insight.from_data(signal_f64)
     x64 = Insight.to(x64_cpu, 1)
-    X64 = Insight.rfft(x64)
-    x64_recon = Insight.to(Insight.irfft(X64, n), 0)
-    max_err64 = maximum(abs.([signal_f64[i] - x64_recon[i] for i in 1:n]))
+    X64 = Insight.fft(x64)
+    x64_recon = Insight.to(Insight.ifft(X64), 0)
+    x64_recon_data = Insight.to_data(x64_recon)
+    max_err64 = maximum(Base.abs.(signal_f64 .- x64_recon_data))
     println("GPU F64 FFT roundtrip max error: $max_err64")
 end
 
 try
-    Insight.init(["cpu", "cuda"])
 catch
-    Insight.init(["cpu"])
 end
 
 println("Insight7 FFT Demo (Julia)")

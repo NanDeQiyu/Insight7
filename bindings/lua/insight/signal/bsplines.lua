@@ -11,10 +11,10 @@ local _wrap = require("insight._wrap")
 
 --- Return a Gaussian B-spline basis function.
 -- @int n Order of the spline.
--- @number x Evaluation points.
+-- @tparam Array x Evaluation points.
 -- @treturn Array B-spline values.
 M.gauss_spline = _wrap({ "n", "x" }, function(n, x)
-  return sig.gauss_spline(n, x)
+  return sig.gauss_spline(x, n)
 end)
 
 --- Return a cubic B-spline.

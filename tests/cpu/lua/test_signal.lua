@@ -71,13 +71,13 @@ describe("Signal CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(6, y.numel)
     -- sinc(0) = 1
-    assert.near(1.0, y:item(0), 1e-5)
+    assert.near(1.0, y:get(0), 1e-5)
     -- sinc(1) = 0
-    assert.near(0.0, y:item(1), 1e-5)
+    assert.near(0.0, y:get(1), 1e-5)
     -- sinc(2) = 0
-    assert.near(0.0, y:item(2), 1e-5)
+    assert.near(0.0, y:get(2), 1e-5)
     -- sinc(0.5) = 2/pi ≈ 0.6366
-    assert.near(0.6366198, y:item(5), 1e-5)
+    assert.near(0.6366198, y:get(5), 1e-5)
   end)
 
   it("sinc_size1", function()
@@ -85,7 +85,7 @@ describe("Signal CPU Tests", function()
     local y = ins.sinc(a)
     assert.is_not_nil(y)
     assert.are.equal(1, y.numel)
-    assert.near(1.0, y:item(0), 1e-5)
+    assert.near(1.0, y:get(0), 1e-5)
   end)
 
   -- ========================================================================
@@ -99,10 +99,10 @@ describe("Signal CPU Tests", function()
     assert.is_not_nil(c)
     assert.are.equal(4, c.numel)
     -- [1, 3, 5, 3]
-    assert.near(1.0, c:item(0), 1e-5)
-    assert.near(3.0, c:item(1), 1e-5)
-    assert.near(5.0, c:item(2), 1e-5)
-    assert.near(3.0, c:item(3), 1e-5)
+    assert.near(1.0, c:get(0), 1e-5)
+    assert.near(3.0, c:get(1), 1e-5)
+    assert.near(5.0, c:get(2), 1e-5)
+    assert.near(3.0, c:get(3), 1e-5)
   end)
 
   it("convolve_same", function()

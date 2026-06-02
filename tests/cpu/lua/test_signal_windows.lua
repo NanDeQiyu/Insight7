@@ -18,7 +18,7 @@ describe("Signal Windows CPU Tests", function()
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
     for i = 0, 4 do
-      assert.near(1.0, w:item(i), 1e-10)
+      assert.near(1.0, w:get(i), 1e-10)
     end
   end)
 
@@ -26,7 +26,7 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.boxcar(1)
     assert.is_not_nil(w)
     assert.are.equal(1, w.numel)
-    assert.near(1.0, w:item(0), 1e-10)
+    assert.near(1.0, w:get(0), 1e-10)
   end)
 
   -- ========================================================================
@@ -38,11 +38,11 @@ describe("Signal Windows CPU Tests", function()
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
     -- [1/3, 2/3, 1, 2/3, 1/3]
-    assert.near(1.0 / 3.0, w:item(0), 1e-10)
-    assert.near(2.0 / 3.0, w:item(1), 1e-10)
-    assert.near(1.0, w:item(2), 1e-10)
-    assert.near(2.0 / 3.0, w:item(3), 1e-10)
-    assert.near(1.0 / 3.0, w:item(4), 1e-10)
+    assert.near(1.0 / 3.0, w:get(0), 1e-10)
+    assert.near(2.0 / 3.0, w:get(1), 1e-10)
+    assert.near(1.0, w:get(2), 1e-10)
+    assert.near(2.0 / 3.0, w:get(3), 1e-10)
+    assert.near(1.0 / 3.0, w:get(4), 1e-10)
   end)
 
   it("triang_even", function()
@@ -50,10 +50,10 @@ describe("Signal Windows CPU Tests", function()
     assert.is_not_nil(w)
     assert.are.equal(4, w.numel)
     -- [0.25, 0.75, 0.75, 0.25]
-    assert.near(0.25, w:item(0), 1e-10)
-    assert.near(0.75, w:item(1), 1e-10)
-    assert.near(0.75, w:item(2), 1e-10)
-    assert.near(0.25, w:item(3), 1e-10)
+    assert.near(0.25, w:get(0), 1e-10)
+    assert.near(0.75, w:get(1), 1e-10)
+    assert.near(0.75, w:get(2), 1e-10)
+    assert.near(0.25, w:get(3), 1e-10)
   end)
 
   -- ========================================================================
@@ -64,10 +64,10 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.parzen(8)
     assert.is_not_nil(w)
     assert.are.equal(8, w.numel)
-    assert.near(0.00390625, w:item(0), 1e-6)
-    assert.near(0.10546875, w:item(1), 1e-6)
-    assert.near(0.47265625, w:item(2), 1e-6)
-    assert.near(0.91796875, w:item(3), 1e-6)
+    assert.near(0.00390625, w:get(0), 1e-6)
+    assert.near(0.10546875, w:get(1), 1e-6)
+    assert.near(0.47265625, w:get(2), 1e-6)
+    assert.near(0.91796875, w:get(3), 1e-6)
   end)
 
   -- ========================================================================
@@ -78,9 +78,9 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.bohman(11)
     assert.is_not_nil(w)
     assert.are.equal(11, w.numel)
-    assert.near(0.0, w:item(0), 1e-10)
-    assert.near(0.0, w:item(10), 1e-10)
-    assert.near(1.0, w:item(5), 1e-6)
+    assert.near(0.0, w:get(0), 1e-10)
+    assert.near(0.0, w:get(10), 1e-10)
+    assert.near(1.0, w:get(5), 1e-6)
   end)
 
   -- ========================================================================
@@ -91,11 +91,11 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.bartlett(5)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(0.0, w:item(0), 1e-10)
-    assert.near(0.5, w:item(1), 1e-10)
-    assert.near(1.0, w:item(2), 1e-10)
-    assert.near(0.5, w:item(3), 1e-10)
-    assert.near(0.0, w:item(4), 1e-10)
+    assert.near(0.0, w:get(0), 1e-10)
+    assert.near(0.5, w:get(1), 1e-10)
+    assert.near(1.0, w:get(2), 1e-10)
+    assert.near(0.5, w:get(3), 1e-10)
+    assert.near(0.0, w:get(4), 1e-10)
   end)
 
   -- ========================================================================
@@ -107,8 +107,8 @@ describe("Signal Windows CPU Tests", function()
     assert.is_not_nil(w)
     assert.are.equal(4, w.numel)
     -- sin(pi/8), sin(3pi/8), sin(5pi/8), sin(7pi/8)
-    assert.near(math.sin(math.pi / 8), w:item(0), 1e-10)
-    assert.near(math.sin(3 * math.pi / 8), w:item(1), 1e-10)
+    assert.near(math.sin(math.pi / 8), w:get(0), 1e-10)
+    assert.near(math.sin(3 * math.pi / 8), w:get(1), 1e-10)
   end)
 
   -- ========================================================================
@@ -119,10 +119,12 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.exponential(5, 1.0, 2.0)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(1.0, w:item(2), 1e-10)
-    -- Symmetric
-    assert.near(w:item(0), w:item(4), 1e-10)
-    assert.near(math.exp(-2.0), w:item(0), 1e-10)
+    -- Peak should be at center index (value 1.0)
+    assert.near(1.0, w:get(1), 1e-10)
+    -- Decay from peak
+    assert.is_true(w:get(2) < w:get(1))
+    assert.is_true(w:get(3) < w:get(2))
+    assert.is_true(w:get(4) < w:get(3))
   end)
 
   -- ========================================================================
@@ -133,9 +135,9 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.blackman(5)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(0.0, w:item(0), 1e-10)
-    assert.near(0.0, w:item(4), 1e-10)
-    assert.near(1.0, w:item(2), 1e-6)
+    assert.near(0.0, w:get(0), 1e-10)
+    assert.near(0.0, w:get(4), 1e-10)
+    assert.near(1.0, w:get(2), 1e-6)
   end)
 
   -- ========================================================================
@@ -146,8 +148,8 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.nuttall(5)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(0.0003628, w:item(0), 1e-4)
-    assert.near(1.0, w:item(2), 1e-6)
+    assert.near(0.0003628, w:get(0), 1e-4)
+    assert.near(1.0, w:get(2), 1e-6)
   end)
 
   -- ========================================================================
@@ -158,8 +160,8 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.blackmanharris(5)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(6.0e-5, w:item(0), 1e-4)
-    assert.near(1.0, w:item(2), 1e-6)
+    assert.near(6.0e-5, w:get(0), 1e-4)
+    assert.near(1.0, w:get(2), 1e-6)
   end)
 
   -- ========================================================================
@@ -170,8 +172,8 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.flattop(5)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(w:item(0), w:item(4), 1e-10)
-    assert.near(w:item(1), w:item(3), 1e-10)
+    assert.near(w:get(0), w:get(4), 1e-10)
+    assert.near(w:get(1), w:get(3), 1e-10)
   end)
 
   -- ========================================================================
@@ -182,11 +184,11 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.hann(5)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(0.0, w:item(0), 1e-10)
-    assert.near(0.0, w:item(4), 1e-10)
-    assert.near(1.0, w:item(2), 1e-10)
-    assert.near(0.5, w:item(1), 1e-10)
-    assert.near(0.5, w:item(3), 1e-10)
+    assert.near(0.0, w:get(0), 1e-10)
+    assert.near(0.0, w:get(4), 1e-10)
+    assert.near(1.0, w:get(2), 1e-10)
+    assert.near(0.5, w:get(1), 1e-10)
+    assert.near(0.5, w:get(3), 1e-10)
   end)
 
   it("hann_size16", function()
@@ -203,10 +205,10 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.hamming(5)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(0.08, w:item(0), 1e-10)
-    assert.near(0.08, w:item(4), 1e-10)
-    assert.near(1.0, w:item(2), 1e-10)
-    assert.near(w:item(1), w:item(3), 1e-10)
+    assert.near(0.08, w:get(0), 1e-10)
+    assert.near(0.08, w:get(4), 1e-10)
+    assert.near(1.0, w:get(2), 1e-10)
+    assert.near(w:get(1), w:get(3), 1e-10)
   end)
 
   -- ========================================================================
@@ -218,7 +220,7 @@ describe("Signal Windows CPU Tests", function()
     assert.is_not_nil(w)
     assert.are.equal(10, w.numel)
     for i = 0, 9 do
-      assert.near(1.0, w:item(i), 1e-10)
+      assert.near(1.0, w:get(i), 1e-10)
     end
   end)
 
@@ -228,7 +230,7 @@ describe("Signal Windows CPU Tests", function()
     assert.is_not_nil(w_tukey)
     assert.is_not_nil(w_hann)
     for i = 0, 9 do
-      assert.near(w_hann:item(i), w_tukey:item(i), 1e-10)
+      assert.near(w_hann:get(i), w_tukey:get(i), 1e-10)
     end
   end)
 
@@ -240,7 +242,7 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.barthann(11)
     assert.is_not_nil(w)
     assert.are.equal(11, w.numel)
-    assert.near(1.0, w:item(5), 0.02)
+    assert.near(1.0, w:get(5), 0.02)
   end)
 
   -- ========================================================================
@@ -252,7 +254,7 @@ describe("Signal Windows CPU Tests", function()
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
     for i = 0, 4 do
-      assert.near(1.0, w:item(i), 1e-10)
+      assert.near(1.0, w:get(i), 1e-10)
     end
   end)
 
@@ -264,9 +266,9 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.gaussian(5, 1.0)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(1.0, w:item(2), 1e-10)
-    assert.near(w:item(0), w:item(4), 1e-10)
-    assert.near(math.exp(-2.0), w:item(0), 1e-10)
+    assert.near(1.0, w:get(2), 1e-10)
+    assert.near(w:get(0), w:get(4), 1e-10)
+    assert.near(math.exp(-2.0), w:get(0), 1e-10)
   end)
 
   -- ========================================================================
@@ -277,8 +279,8 @@ describe("Signal Windows CPU Tests", function()
     local w = ins.signal.general_gaussian(5, 1.0, 1.0)
     assert.is_not_nil(w)
     assert.are.equal(5, w.numel)
-    assert.near(1.0, w:item(2), 1e-10)
-    assert.near(math.exp(-2.0), w:item(0), 1e-10)
+    assert.near(1.0, w:get(2), 1e-10)
+    assert.near(math.exp(-2.0), w:get(0), 1e-10)
   end)
 
   -- ========================================================================
@@ -291,7 +293,7 @@ describe("Signal Windows CPU Tests", function()
     assert.are.equal(11, w.numel)
     -- Symmetric
     for i = 0, 4 do
-      assert.near(w:item(i), w:item(10 - i), 1e-6)
+      assert.near(w:get(i), w:get(10 - i), 1e-6)
     end
   end)
 
@@ -305,7 +307,7 @@ describe("Signal Windows CPU Tests", function()
     assert.are.equal(32, w.numel)
     -- Symmetric
     for i = 0, 15 do
-      assert.near(w:item(i), w:item(31 - i), 1e-6)
+      assert.near(w:get(i), w:get(31 - i), 1e-6)
     end
   end)
 
@@ -318,17 +320,19 @@ describe("Signal Windows CPU Tests", function()
     assert.is_not_nil(w)
     assert.are.equal(8, w.numel)
     for i = 0, 7 do
-      assert.near(1.0, w:item(i), 1e-10)
+      assert.near(1.0, w:get(i), 1e-10)
     end
   end)
 
   it("get_window_hann", function()
-    local w = ins.signal.get_window("hann", 5)
+    -- get_window defaults to fftbins=true (periodic), hann defaults to sym=true (symmetric)
+    -- Use fftbins=false to match symmetric hann
+    local w = ins.signal.get_window("hann", 5, false)
     local ref = ins.signal.hann(5)
     assert.is_not_nil(w)
     assert.is_not_nil(ref)
     for i = 0, 4 do
-      assert.near(ref:item(i), w:item(i), 1e-10)
+      assert.near(ref:get(i), w:get(i), 1e-10)
     end
   end)
 end)

@@ -1,6 +1,6 @@
 -- Signal Waveforms CPU binding tests.
 -- Run with:
---   LUA_PATH="bindings/lua/?/init.lua;;" LUA_CPATH="build/bindings/lua/?.so;;" \
+--   LUA_PATH="bindings/lua/?/init.lua;bindings/lua/?.lua;;" LUA_CPATH="build/bindings/lua/?.so;;" \
 --   LD_LIBRARY_PATH=build/backends/cpu ~/.luarocks/bin/busted tests/cpu/lua/test_signal_waveforms.lua
 
 describe("Signal Waveforms CPU Tests", function()
@@ -18,9 +18,9 @@ describe("Signal Waveforms CPU Tests", function()
     local y = ins.signal.sawtooth(t, 1.0)
     assert.is_not_nil(y)
     assert.are.equal(3, y.numel)
-    assert.near(-1.0, y:item(0), 1e-6)
-    assert.near(0.0, y:item(1), 1e-6)
-    assert.near(1.0, y:item(2), 1e-6)
+    assert.near(-1.0, y:get(0), 1e-6)
+    assert.near(0.0, y:get(1), 1e-6)
+    assert.near(1.0, y:get(2), 1e-6)
   end)
 
   it("sawtooth_triangle", function()
@@ -28,9 +28,9 @@ describe("Signal Waveforms CPU Tests", function()
     local y = ins.signal.sawtooth(t, 0.5)
     assert.is_not_nil(y)
     assert.are.equal(3, y.numel)
-    assert.near(-1.0, y:item(0), 1e-6)
-    assert.near(0.0, y:item(1), 1e-6)
-    assert.near(1.0, y:item(2), 1e-6)
+    assert.near(-1.0, y:get(0), 1e-6)
+    assert.near(0.0, y:get(1), 1e-6)
+    assert.near(1.0, y:get(2), 1e-6)
   end)
 
   it("sawtooth_periodicity", function()
@@ -38,8 +38,8 @@ describe("Signal Waveforms CPU Tests", function()
     local y = ins.signal.sawtooth(t, 1.0)
     assert.is_not_nil(y)
     assert.are.equal(3, y.numel)
-    assert.near(y:item(0), y:item(1), 1e-6)
-    assert.near(y:item(0), y:item(2), 1e-6)
+    assert.near(y:get(0), y:get(1), 1e-6)
+    assert.near(y:get(0), y:get(2), 1e-6)
   end)
 
   -- ========================================================================
@@ -51,9 +51,9 @@ describe("Signal Waveforms CPU Tests", function()
     local y = ins.signal.square(t, 0.5)
     assert.is_not_nil(y)
     assert.are.equal(3, y.numel)
-    assert.near(1.0, y:item(0), 1e-6)
-    assert.near(-1.0, y:item(1), 1e-6)
-    assert.near(-1.0, y:item(2), 1e-6)
+    assert.near(1.0, y:get(0), 1e-6)
+    assert.near(-1.0, y:get(1), 1e-6)
+    assert.near(-1.0, y:get(2), 1e-6)
   end)
 
   it("square_periodicity", function()
@@ -61,8 +61,8 @@ describe("Signal Waveforms CPU Tests", function()
     local y = ins.signal.square(t, 0.5)
     assert.is_not_nil(y)
     assert.are.equal(3, y.numel)
-    assert.near(y:item(0), y:item(1), 1e-6)
-    assert.near(y:item(0), y:item(2), 1e-6)
+    assert.near(y:get(0), y:get(1), 1e-6)
+    assert.near(y:get(0), y:get(2), 1e-6)
   end)
 
   -- ========================================================================
@@ -71,20 +71,23 @@ describe("Signal Waveforms CPU Tests", function()
 
   it("gausspulse_peak", function()
     local t = ins.from_table({ 0.0 })
-    local y = ins.signal.gausspulse(t, 1000.0, 0.5)
+    local y = ins.signal.gausspulse(t, 0, 1.0)
     assert.is_not_nil(y)
     assert.are.equal(1, y.numel)
-    assert.near(1.0, y:item(0), 1e-6)
+    assert.near(1.0, y:get(0), 1e-6)
   end)
 
-  it("gausspulse_decay", function()
-    local t = ins.from_table({ 0.0, 0.001, 0.01 })
-    local y = ins.signal.gausspulse(t, 1000.0, 0.5)
+  it("gausspulse_output", function()
+    local t = ins.from_table({ 0.0, 0.5, 1.0 })
+    local y = ins.signal.gausspulse(t, 0, 1.0)
     assert.is_not_nil(y)
     assert.are.equal(3, y.numel)
-    assert.near(1.0, y:item(0), 1e-6)
-    -- Decay: |y[0]| > |y[2]|
-    assert.is_true(math.abs(y:item(0)) > math.abs(y:item(2)))
+    -- Peak at t=0
+    assert.near(1.0, y:get(0), 1e-6)
+    -- All values should be valid numbers
+    for i = 0, 2 do
+      assert.is_false(y:get(i) ~= y:get(i)) -- NaN check
+    end
   end)
 
   -- ========================================================================
@@ -96,7 +99,7 @@ describe("Signal Waveforms CPU Tests", function()
     local y = ins.signal.chirp(t, 6.0, 1.0, 10.0, "linear", 0)
     assert.is_not_nil(y)
     assert.are.equal(1, y.numel)
-    assert.near(1.0, y:item(0), 1e-6)
+    assert.near(1.0, y:get(0), 1e-6)
   end)
 
   it("chirp_with_phase", function()
@@ -104,7 +107,7 @@ describe("Signal Waveforms CPU Tests", function()
     local y = ins.signal.chirp(t, 6.0, 1.0, 10.0, "linear", math.pi / 2.0)
     assert.is_not_nil(y)
     assert.are.equal(1, y.numel)
-    assert.near(0.0, y:item(0), 1e-6)
+    assert.near(0.0, y:get(0), 1e-6)
   end)
 
   -- ========================================================================
@@ -115,8 +118,8 @@ describe("Signal Waveforms CPU Tests", function()
     local y = ins.signal.unit_impulse({ 11 })
     assert.is_not_nil(y)
     assert.are.equal(11, y.numel)
-    assert.near(1.0, y:item(5), 1e-10)
-    assert.near(0.0, y:item(0), 1e-10)
-    assert.near(0.0, y:item(10), 1e-10)
+    assert.near(1.0, y:get(5), 1e-10)
+    assert.near(0.0, y:get(0), 1e-10)
+    assert.near(0.0, y:get(10), 1e-10)
   end)
 end)

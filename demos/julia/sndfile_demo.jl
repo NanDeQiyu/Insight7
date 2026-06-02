@@ -13,7 +13,6 @@ function separator(title)
     println("=" ^ 60)
 end
 
-Insight.init(["cpu"])
 
 # Parameters
 sample_rate = 44100

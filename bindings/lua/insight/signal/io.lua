@@ -21,7 +21,7 @@ end)
 -- @tparam Array x Input array.
 -- @string filepath Path to the output binary file.
 M.write_bin = _wrap({ "x", "filepath" }, function(x, filepath)
-  return sig.write_bin(x, filepath)
+  return sig.write_bin(filepath, x)
 end)
 
 --- Unpack binary data from raw bytes.
@@ -52,7 +52,7 @@ end)
 -- @string metafile Path to the SigMF .json metadata file.
 -- @tparam table metadata SigMF metadata as a Lua table.
 M.write_sigmf = _wrap({ "x", "metafile", "metadata" }, function(x, metafile, metadata)
-  return sig.write_sigmf(x, metafile, metadata)
+  return sig.write_sigmf(metafile, x)
 end)
 
 return M

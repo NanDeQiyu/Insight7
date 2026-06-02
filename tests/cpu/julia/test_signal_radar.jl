@@ -1,11 +1,9 @@
-# Signal radar CPU binding tests
+# Signal Radar CPU binding tests.
 # Run with:
 #   LD_LIBRARY_PATH=build/backends/cpu julia tests/cpu/julia/test_signal_radar.jl
-# SKIPPED: pulse_compression requires 2D input and C++ exceptions cause abort.
-println("SKIP: test_signal_radar (C++ exceptions cause Julia to abort)")
-println("\n" * "="^40)
-println("Results: 0 passed, 0 failed")
-exit(0)
+
+push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "..", "bindings", "julia"))
+push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "..", "build", "bindings", "julia"))
 
 using Insight
 
@@ -33,7 +31,6 @@ try
     tpl_data = [sin(2 * pi * i / n) for i in 1:n]
     sig_data = vcat(tpl_data, fill(0.0, n))
     tpl = Insight.from_data(tpl_data, Insight.float64)
-    # Reshape sig to 2D [2, n] as required
     sig = Insight.from_data(sig_data, Insight.float64)
     sig = Insight.reshape(sig, Int64[2, n])
     result = Insight.pulse_compression(sig, tpl)
@@ -58,10 +55,12 @@ end
 
 # pulse_doppler
 try
-    data_rows = [sin(2 * pi * r * c / 512) for r in 1:16, c in 1:32]
-    data_flat = vec(data_rows')
-    data_arr = Insight.from_data(collect(data_flat), Insight.float64)
-    data_2d = Insight.reshape(data_arr, Int64[32, 16])
+    # 16 pulses x 32 samples per pulse
+    data_2d = Insight.zeros(Int64[16, 32], Insight.float64)
+    # Create data with some sinusoidal content
+    data_flat = [sin(2 * pi * r * c / 512) for r in 1:16, c in 1:32]
+    data_arr = Insight.from_data(vec(collect(data_flat)), Insight.float64)
+    data_2d = Insight.reshape(data_arr, Int64[16, 32])
     result = Insight.pulse_doppler(data_2d)
     check("pulse_doppler", Insight.numel(result) > 0)
 catch e
@@ -85,12 +84,12 @@ catch e
     println("SKIP: cfar_alpha_pfa ($e)")
 end
 
-# mvdr
+# mvdr — expects x shape [sensors, samples] with sensors <= samples
 try
+    # 4 sensors, 32 samples
     x_data = [sin(2 * pi * r * c / 128) for r in 1:4, c in 1:32]
-    x_flat = vec(x_data')
-    x_arr = Insight.from_data(collect(x_flat), Insight.float64)
-    x_2d = Insight.reshape(x_arr, Int64[32, 4])
+    x_arr = Insight.from_data(vec(collect(x_data)), Insight.float64)
+    x_2d = Insight.reshape(x_arr, Int64[4, 32])
     sv = Insight.from_data([1.0, 1.0, 1.0, 1.0], Insight.float64)
     result = Insight.mvdr(x_2d, sv)
     check("mvdr", Insight.numel(result) > 0)
@@ -100,10 +99,10 @@ end
 
 # mvdr with different steering
 try
+    # 4 sensors, 32 samples
     x_data = [sin(2 * pi * r * c / 128) for r in 1:4, c in 1:32]
-    x_flat = vec(x_data')
-    x_arr = Insight.from_data(collect(x_flat), Insight.float64)
-    x_2d = Insight.reshape(x_arr, Int64[32, 4])
+    x_arr = Insight.from_data(vec(collect(x_data)), Insight.float64)
+    x_2d = Insight.reshape(x_arr, Int64[4, 32])
     sv2 = Insight.from_data([1.0, 0.5, 0.5, 1.0], Insight.float64)
     result2 = Insight.mvdr(x_2d, sv2)
     check("mvdr_steering", Insight.numel(result2) > 0)

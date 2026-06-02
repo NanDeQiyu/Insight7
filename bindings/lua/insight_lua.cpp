@@ -1201,9 +1201,7 @@ extern "C" int luaopen__insight(lua_State *L) {
 
     // --- Estimation (KalmanFilter) ---
     sol::usertype<signal::KalmanFilter> kf_type =
-        sig.new_usertype<signal::KalmanFilter>(
-            "KalmanFilter", sol::constructors<signal::KalmanFilter(
-                                int, int, int, int, DType)>());
+        sig.new_usertype<signal::KalmanFilter>("KalmanFilter");
     kf_type["x"] = &signal::KalmanFilter::x;
     kf_type["P"] = &signal::KalmanFilter::P;
     kf_type["z"] = &signal::KalmanFilter::z;
@@ -1216,6 +1214,14 @@ extern "C" int luaopen__insight(lua_State *L) {
     kf_type["points"] = &signal::KalmanFilter::points;
     kf_type["predict"] = &signal::KalmanFilter::predict;
     kf_type["update"] = &signal::KalmanFilter::update;
+    // Factory function for constructing KalmanFilter with optional args
+    sig["KalmanFilter_new"] = [](int dim_x, int dim_z, sol::optional<int> dim_u,
+                                 sol::optional<int> points,
+                                 sol::optional<DType> dtype) {
+      return signal::KalmanFilter(dim_x, dim_z, dim_u.value_or(0),
+                                  points.value_or(1),
+                                  dtype.value_or(DType::F64));
+    };
 
     // Top-level aliases
     sig["convolve"] = &convolve;

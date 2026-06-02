@@ -38,7 +38,7 @@ def main() -> None:
         + 0.1 * np.sin(2 * math.pi * 3141 * t)
     )
     signal = ins.from_numpy(signal_data.astype(np.float32))
-    print(f"    Signal: [{signal.numel}] elements")
+    print(f"    Signal: [{signal.numel()}] elements")
     print()
 
     # Step 2: Write signal to binary file
@@ -49,14 +49,14 @@ def main() -> None:
     print(f"    Written: {tmp}original.bin")
 
     read_back = ins.signal.read_bin(tmp + "original.bin")
-    print(f"    Roundtrip read: {read_back.numel} elements")
+    print(f"    Roundtrip read: {read_back.numel()} elements")
     print()
 
     # Step 3: FFT analysis
     separator("[3] FFT analysis")
 
     spectrum = ins.rfft(signal)
-    freq_bins = spectrum.numel
+    freq_bins = spectrum.numel()
     print(f"    FFT bins: {freq_bins}")
     print(f"    Nyquist: {sample_rate // 2} Hz")
     print(f"    Bin resolution: {sample_rate / (2 * freq_bins):.2f} Hz")
@@ -90,14 +90,14 @@ def main() -> None:
 
     filtered_spectrum = ins.to_complex(filtered_real, filtered_imag)
     filtered = ins.irfft(filtered_spectrum, frames)
-    print(f"    Filtered signal: [{filtered.numel}] elements")
+    print(f"    Filtered signal: [{filtered.numel()}] elements")
 
     # Step 5: Energy comparison
     print()
     separator("[5] Signal statistics")
 
-    energy_orig = float(ins.sum(ins.mul(signal, signal)).item())
-    energy_filt = float(ins.sum(ins.mul(filtered, filtered)).item())
+    energy_orig = float(ins.sum(ins.mul(signal, signal)).numpy().item())
+    energy_filt = float(ins.sum(ins.mul(filtered, filtered)).numpy().item())
 
     print(f"    Energy (original): {energy_orig:.4f}")
     print(f"    Energy (filtered): {energy_filt:.4f}")

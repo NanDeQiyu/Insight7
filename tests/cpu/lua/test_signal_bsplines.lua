@@ -1,6 +1,6 @@
 -- Signal B-Splines CPU binding tests.
 -- Run with:
---   LUA_PATH="bindings/lua/?/init.lua;;" LUA_CPATH="build/bindings/lua/?.so;;" \
+--   LUA_PATH="bindings/lua/?/init.lua;bindings/lua/?.lua;;" LUA_CPATH="build/bindings/lua/?.so;;" \
 --   LD_LIBRARY_PATH=build/backends/cpu ~/.luarocks/bin/busted tests/cpu/lua/test_signal_bsplines.lua
 
 describe("Signal B-Splines CPU Tests", function()
@@ -29,11 +29,11 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.gauss_spline(2, x)
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
-    assert.near(y:item(0), y:item(4), 1e-10)
-    assert.near(y:item(1), y:item(3), 1e-10)
+    assert.near(y:get(0), y:get(4), 1e-10)
+    assert.near(y:get(1), y:get(3), 1e-10)
     -- Peak at center
-    assert.is_true(y:item(2) > y:item(0))
-    assert.is_true(y:item(2) > y:item(1))
+    assert.is_true(y:get(2) > y:get(0))
+    assert.is_true(y:get(2) > y:get(1))
   end)
 
   it("gauss_spline_decay", function()
@@ -42,7 +42,7 @@ describe("Signal B-Splines CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
     for i = 1, 4 do
-      assert.is_true(y:item(i) < y:item(i - 1))
+      assert.is_true(y:get(i) < y:get(i - 1))
     end
   end)
 
@@ -63,8 +63,8 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.cubic(x)
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
-    assert.near(y:item(0), y:item(4), 1e-10)
-    assert.near(y:item(1), y:item(3), 1e-10)
+    assert.near(y:get(0), y:get(4), 1e-10)
+    assert.near(y:get(1), y:get(3), 1e-10)
   end)
 
   it("cubic_zero_outside", function()
@@ -73,7 +73,7 @@ describe("Signal B-Splines CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(4, y.numel)
     for i = 0, 3 do
-      assert.near(0.0, y:item(i), 1e-10)
+      assert.near(0.0, y:get(i), 1e-10)
     end
   end)
 
@@ -112,8 +112,8 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.quadratic(x)
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
-    assert.near(y:item(0), y:item(4), 1e-10)
-    assert.near(y:item(1), y:item(3), 1e-10)
+    assert.near(y:get(0), y:get(4), 1e-10)
+    assert.near(y:get(1), y:get(3), 1e-10)
   end)
 
   it("quadratic_zero_outside", function()
@@ -122,7 +122,7 @@ describe("Signal B-Splines CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(4, y.numel)
     for i = 0, 3 do
-      assert.near(0.0, y:item(i), 1e-10)
+      assert.near(0.0, y:get(i), 1e-10)
     end
   end)
 end)

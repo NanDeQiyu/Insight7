@@ -25,8 +25,8 @@ function run_cpu_linalg()
     separator("CPU Linear Algebra")
 
     # MatMul F64
-    A = Insight.from_data([1.0, 2.0, 3.0, 4.0], [2, 2])
-    B = Insight.from_data([5.0, 6.0, 7.0, 8.0], [2, 2])
+    A = Insight.from_data(reshape([1.0, 2.0, 3.0, 4.0], 2, 2))
+    B = Insight.from_data(reshape([5.0, 6.0, 7.0, 8.0], 2, 2))
     C = Insight.matmul(A, B)
     println("MatMul F64:")
     println(C)
@@ -59,7 +59,7 @@ function run_cpu_linalg()
 
     # SVD
     try
-        D = Insight.from_data([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], [3, 3])
+        D = Insight.from_data(reshape([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], 3, 3))
         U, S, VT = Insight.svd(D, false)
         println("SVD singular values: $S")
     catch
@@ -68,8 +68,8 @@ function run_cpu_linalg()
 
     # Solve linear system
     try
-        A3 = Insight.from_data([3.0, 2.0, -1.0, 2.0, -2.0, 4.0, -1.0, 0.5, -1.0], [3, 3])
-        b = Insight.from_data([1.0, -2.0, 0.0], [3])
+        A3 = Insight.from_data(reshape([3.0, 2.0, -1.0, 2.0, -2.0, 4.0, -1.0, 0.5, -1.0], 3, 3))
+        b = Insight.from_data([1.0, -2.0, 0.0])
         x = Insight.solve(A3, b)
         println("Ax=b solution: $x")
     catch
@@ -80,8 +80,8 @@ end
 function run_gpu_linalg()
     separator("GPU Linear Algebra")
 
-    A = Insight.from_data([1.0, 2.0, 3.0, 4.0], [2, 2])
-    B = Insight.from_data([5.0, 6.0, 7.0, 8.0], [2, 2])
+    A = Insight.from_data(reshape([1.0, 2.0, 3.0, 4.0], 2, 2))
+    B = Insight.from_data(reshape([5.0, 6.0, 7.0, 8.0], 2, 2))
     A_gpu = Insight.to(A, 1)  # GPUPlace(0)
     B_gpu = Insight.to(B, 1)
     C = Insight.matmul(A_gpu, B_gpu)
@@ -108,7 +108,7 @@ function run_gpu_linalg()
         println("GPU inv: skipped (requires OpenBLAS)")
     end
 
-    D = Insight.from_data([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], [3, 3])
+    D = Insight.from_data(reshape([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], 3, 3))
     D_gpu = Insight.cast(D, Insight.float32)
     D_gpu = Insight.to(D_gpu, 1)
     try
@@ -120,9 +120,7 @@ function run_gpu_linalg()
 end
 
 try
-    Insight.init(["cpu", "cuda"])
 catch
-    Insight.init(["cpu"])
 end
 
 println("Insight7 Linear Algebra Demo (Julia)")

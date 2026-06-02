@@ -38,19 +38,19 @@ separator("Multi-Dtype Arithmetic")
 f32_a = Insight.cast(Insight.from_data([1.0, 2.0, 3.0]), Insight.float32)
 f32_b = Insight.cast(Insight.from_data([4.0, 5.0, 6.0]), Insight.float32)
 f32_c = f32_a + f32_b
-println("F32: [1,2,3] + [4,5,6] = [$(f32_c[1]),$(f32_c[2]),$(f32_c[3])]")
+println("F32: [1,2,3] + [4,5,6] = [$(Insight.item(f32_c, 0)),$(Insight.item(f32_c, 1)),$(Insight.item(f32_c, 2))]")
 
 # F64
 f64_a = Insight.from_data([1.0, 2.0, 3.0], Insight.float64)
 f64_b = Insight.from_data([0.5, 0.5, 0.5], Insight.float64)
 f64_c = f64_a * f64_b
-println("F64: [1,2,3] * [0.5,0.5,0.5] = [$(f64_c[1]),$(f64_c[2]),$(f64_c[3])]")
+println("F64: [1,2,3] * [0.5,0.5,0.5] = [$(Insight.item(f64_c, 0)),$(Insight.item(f64_c, 1)),$(Insight.item(f64_c, 2))]")
 
 # I32
 i32_a = Insight.cast(Insight.from_data([10.0, 20.0, 30.0]), Insight.int32)
 i32_b = Insight.cast(Insight.from_data([3.0, 3.0, 3.0]), Insight.int32)
 i32_c = i32_a / i32_b
-println("I32: [10,20,30] / [3,3,3] = [$(i32_c[1]),$(i32_c[2]),$(i32_c[3])]")
+println("I32: [10,20,30] / [3,3,3] = [$(Insight.item(i32_c, 0)),$(Insight.item(i32_c, 1)),$(Insight.item(i32_c, 2))]")
 
 # --- Broadcasting ---
 separator("Broadcasting")
