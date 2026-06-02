@@ -41,7 +41,7 @@ check("full", Insight.numel(a) == 6)
 a = Insight.eye(3)
 check("eye", Insight.numel(a) == 9)
 
-a = Insight.arange(10, Insight.float32)
+a = Insight.arange(0.0, 10.0, 1.0, Insight.float32)
 check("arange", Insight.numel(a) == 10)
 
 a = Insight.linspace(0.0, 1.0, 5, Insight.float64)
@@ -150,7 +150,7 @@ check("logical_and", Insight.numel(c) == 3)
 # ============================================================================
 println("=== Manipulation ===")
 
-a = Insight.arange(6, Insight.float64)
+a = Insight.arange(0.0, 6.0, 1.0, Insight.float64)
 b = Insight.reshape(a, [2, 3])
 check("reshape", Insight.numel(b) == 6)
 

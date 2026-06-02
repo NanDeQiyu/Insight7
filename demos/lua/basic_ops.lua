@@ -35,23 +35,19 @@ separator("Multi-Dtype Arithmetic")
 local f32_a = ins.from_table({ 1, 2, 3 }):to(ins.float32)
 local f32_b = ins.from_table({ 4, 5, 6 }):to(ins.float32)
 local f32_c = f32_a + f32_b
-print(string.format("F32: [1,2,3] + [4,5,6] = [%g,%g,%g]", ins.item(f32_c, 0), ins.item(f32_c, 1), ins.item(f32_c, 2)))
+print(string.format("F32: [1,2,3] + [4,5,6] = [%g,%g,%g]", f32_c:item(0), f32_c:item(1), f32_c:item(2)))
 
 -- F64
 local f64_a = ins.from_table({ 1, 2, 3 })
 local f64_b = ins.from_table({ 0.5, 0.5, 0.5 })
 local f64_c = f64_a * f64_b
-print(
-  string.format("F64: [1,2,3] * [0.5,0.5,0.5] = [%g,%g,%g]", ins.item(f64_c, 0), ins.item(f64_c, 1), ins.item(f64_c, 2))
-)
+print(string.format("F64: [1,2,3] * [0.5,0.5,0.5] = [%g,%g,%g]", f64_c:item(0), f64_c:item(1), f64_c:item(2)))
 
 -- I32
 local i32_a = ins.from_table({ 10, 20, 30 }):to(ins.int32)
 local i32_b = ins.from_table({ 3, 3, 3 }):to(ins.int32)
 local i32_c = i32_a / i32_b
-print(
-  string.format("I32: [10,20,30] / [3,3,3] = [%d,%d,%d]", ins.item(i32_c, 0), ins.item(i32_c, 1), ins.item(i32_c, 2))
-)
+print(string.format("I32: [10,20,30] / [3,3,3] = [%d,%d,%d]", i32_c:item(0), i32_c:item(1), i32_c:item(2)))
 
 -- --- Broadcasting ---
 separator("Broadcasting")
@@ -76,9 +72,9 @@ separator("Reductions")
 
 local data = ins.from_table({ 1, 2, 3, 4, 5 })
 print("data:  " .. tostring(data))
-print("sum:   " .. tostring(ins.item(ins.sum(data), 0)))
-print("mean:  " .. tostring(ins.item(ins.mean(data), 0)))
-print("max:   " .. tostring(ins.item(ins.max(data), 0)))
-print("min:   " .. tostring(ins.item(ins.min(data), 0)))
+print("sum:   " .. tostring(ins.sum(data):item(0)))
+print("mean:  " .. tostring(ins.mean(data):item(0)))
+print("max:   " .. tostring(ins.max(data):item(0)))
+print("min:   " .. tostring(ins.min(data):item(0)))
 
 print("\nDone!")

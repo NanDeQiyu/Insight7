@@ -12,7 +12,7 @@ Types:
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from insight._insight import Array, Shape  # noqa: F401
 from insight._insight import (
@@ -34,6 +34,13 @@ from insight._insight import (
     indices as _native_indices,
     ix_ as _native_ix_,
 )
+
+
+def _to_shape(s: Union[list, tuple, Shape]) -> Shape:
+    """Convert a list/tuple to Shape if needed."""
+    if isinstance(s, Shape):
+        return s
+    return Shape(s)
 
 
 def take(
@@ -336,7 +343,7 @@ def indices(shape: "Shape", sparse: bool = False) -> "Array":
         Array of shape ``(ndim, *shape)`` where the first dimension
         indexes the coordinate axis.
     """
-    return _native_indices(shape, sparse)
+    return _native_indices(_to_shape(shape), sparse)
 
 
 def ix_(arrays: List["Array"]) -> List["Array"]:

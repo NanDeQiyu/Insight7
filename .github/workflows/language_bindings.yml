@@ -120,7 +120,7 @@ jobs:
           export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
           export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
-          cd tests/cpu/lua && busted test_cpu_basic.lua
+          cd tests/cpu/lua && busted .
 
   lua53:
     name: Lua Binding (Lua 5.3)
@@ -170,7 +170,7 @@ jobs:
           export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
           export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
-          cd tests/cpu/lua && busted --lua=lua5.3 test_cpu_basic.lua
+          cd tests/cpu/lua && busted --lua=lua5.3 .
 
   julia:
     name: Julia Binding
@@ -220,4 +220,4 @@ jobs:
           cp bindings/julia/Insight.jl build/bindings/julia/Insight.jl
           cp -r bindings/julia/modules build/bindings/julia/modules
           export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$GITHUB_WORKSPACE/build/bindings/julia:$LD_LIBRARY_PATH
-          julia tests/cpu/julia/test_cpu_basic.jl
+          for f in tests/cpu/julia/test_*.jl; do julia "$f" || exit 1; done

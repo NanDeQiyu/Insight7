@@ -14,8 +14,6 @@ function separator(title)
     println("="^40)
 end
 
-Insight.init(["cpu"])
-
 println("Insight7 Basic Operations Demo (Julia)")
 
 # --- Array creation ---
@@ -24,7 +22,7 @@ separator("Array Creation")
 a = Insight.ones([3, 4], Insight.float32)
 println("ones(3,4) shape=($(Insight.shape(a))) dtype=$(Insight.dtype(a))")
 
-b = Insight.arange(12, Insight.float64)
+b = Insight.arange(0.0, 12.0, 1.0, Insight.float64)
 b = Insight.reshape(b, [3, 4])
 println("arange(0,12).reshape(3,4):")
 println(b)
