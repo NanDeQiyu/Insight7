@@ -146,9 +146,9 @@ jobs:
 
       - name: Run Lua demos
         run: |
-          export LUA_CPATH="build/bindings/lua/?.so;;"
-          export LUA_PATH="bindings/lua/?/init.lua;bindings/lua/?.lua;;"
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
+          export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
+          export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
           luajit demos/lua/basic_ops.lua
           luajit demos/lua/linalg_demo.lua
           luajit demos/lua/fft_demo.lua
@@ -195,7 +195,7 @@ jobs:
         run: |
           cp bindings/julia/Insight.jl build/bindings/julia/Insight.jl
           cp -r bindings/julia/modules build/bindings/julia/modules
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$GITHUB_WORKSPACE/build/bindings/julia:$LD_LIBRARY_PATH
           julia demos/julia/basic_ops.jl
           julia demos/julia/linalg_demo.jl
           julia demos/julia/fft_demo.jl

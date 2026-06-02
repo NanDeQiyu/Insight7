@@ -34,11 +34,9 @@ local function run_cpu_linalg()
   print(tostring(C32))
 
   -- Determinant
-  local ok_det, det_val = pcall(function()
-    return ins.det(A)[1]
-  end)
+  local ok_det, det_arr = pcall(ins.det, A)
   if ok_det then
-    print(string.format("det([[1,2],[3,4]]) = %g", det_val))
+    print(string.format("det([[1,2],[3,4]]) = %g", ins.item(det_arr, 0)))
   else
     print("det: skipped (requires OpenBLAS)")
   end

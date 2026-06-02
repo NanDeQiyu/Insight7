@@ -43,6 +43,10 @@ Group errors across jobs. Common patterns in Insight7:
 | `TearDownTestSuite: filesystem error: cannot remove: Directory not empty` | `std::filesystem::remove_all` throws when dir already removed by parallel run | fix-ci-precommit |
 | `broadcast_to: cannot broadcast shape [N, 1] to [N]` in spectrogram/stft | `scatter` source must be 1D; `reshape(col, {freq_len, 1})` causes 2D→1D broadcast fail | debug-ci-failures |
 | Julia: `No such file or directory: build/bindings/julia/modules/signal/windows.jl` | CMakeLists.txt only copies Insight.jl, not modules/ subdirectory | debug-ci-failures |
+| Lua demo: `bad argument #2 to 'format' (number expected, got userdata)` | `string.format("%.3f", arr)` fails when arr is Insight Array userdata; use `ins.item(arr, 0)` to extract scalar | debug-ci-failures |
+| Demo CI shows WARN but passes | `|| echo "WARN: ..."` masks failures; remove to let demos fail loudly | debug-ci-failures |
+| `[insight] Failed to load library 'libinsight_cuda_backend.so'` in demos | Demos call `init({"cpu","cuda"})` which tries CUDA; change to `init({"cpu"})` for CPU-only CI | debug-ci-failures |
+| Language binding CI not triggered on PR | `pull_request.paths` missing `backends/**`; must match `push.paths` | fix-ci-workflow-path-triggers |
 
 ## Step 3: Fix in dependency order
 
