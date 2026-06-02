@@ -444,6 +444,9 @@ extern "C" int luaopen__insight(lua_State *L) {
   array_type[sol::meta_function::less_than_or_equal_to] =
       [](const Array &a, const Array &b) { return less_equal(a, b); };
 
+  // String representation metamethod (enables print(arr) and tostring(arr))
+  array_type[sol::meta_function::to_string] = &array_tostring;
+
   // ====================================================================
   // Creation
   // ====================================================================
@@ -771,6 +774,11 @@ extern "C" int luaopen__insight(lua_State *L) {
     return cond(x, p.value_or(2.0));
   };
   m["matrix_rank"] = [](const Array &x) { return matrix_rank(x); };
+  m["matrix_power"] = [](const Array &x, int n) { return matrix_power(x, n); };
+  m["slogdet"] = [](const Array &x) { return slogdet(x); };
+  m["eigvalsh"] = [](const Array &x, sol::optional<std::string> uplo) {
+    return eigvalsh(x, uplo.value_or("L"));
+  };
 
   // ====================================================================
   // FFT

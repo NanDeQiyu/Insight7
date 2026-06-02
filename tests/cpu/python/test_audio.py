@@ -33,7 +33,7 @@ class TestAudioCPU:
         data_np = np.array([1.0, 2.5, 3.7, -1.2, 0.0], dtype=np.float64)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_f64.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.float64)
         np.testing.assert_allclose(result.numpy(), data_np, rtol=1e-10)
 
@@ -41,7 +41,7 @@ class TestAudioCPU:
         data_np = np.array([1.0, 2.5, 3.7, -1.2], dtype=np.float32)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_f32.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.float32)
         np.testing.assert_allclose(result.numpy(), data_np, rtol=1e-5)
 
@@ -49,7 +49,7 @@ class TestAudioCPU:
         data_np = np.array([10, 20, 30, 40, 50], dtype=np.int32)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_i32.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.int32)
         np.testing.assert_array_equal(result.numpy(), data_np)
 
@@ -57,7 +57,7 @@ class TestAudioCPU:
         data_np = np.array([100, 200, 300, -100], dtype=np.int16)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_i16.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.int16)
         np.testing.assert_array_equal(result.numpy(), data_np)
 
@@ -66,7 +66,7 @@ class TestAudioCPU:
         data_np = np.random.randn(10000).astype(np.float64)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_large.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.float64)
         np.testing.assert_allclose(result.numpy(), data_np, rtol=1e-10)
 
@@ -74,7 +74,7 @@ class TestAudioCPU:
         data_np = np.zeros(100, dtype=np.float64)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_zeros.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.float64)
         np.testing.assert_allclose(result.numpy(), data_np)
 
@@ -82,7 +82,7 @@ class TestAudioCPU:
         data_np = np.ones(50, dtype=np.float64)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_ones.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.float64)
         np.testing.assert_allclose(result.numpy(), data_np)
 
@@ -90,7 +90,7 @@ class TestAudioCPU:
         data_np = np.array([-100.5, -200.3, -300.1], dtype=np.float64)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_neg.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.float64)
         np.testing.assert_allclose(result.numpy(), data_np, rtol=1e-10)
 
@@ -98,7 +98,7 @@ class TestAudioCPU:
         data_np = np.array([42.0], dtype=np.float64)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_single.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.float64)
         assert result.numpy().item() == pytest.approx(42.0)
 
@@ -106,7 +106,7 @@ class TestAudioCPU:
         data_np = np.array([1, 2, 3], dtype=np.float64)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_dtype.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, dtype=ins.float64)
         np.testing.assert_allclose(result.numpy(), data_np, rtol=1e-10)
 
@@ -114,7 +114,7 @@ class TestAudioCPU:
         data_np = np.array([0, 128, 255, 64], dtype=np.uint8)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_u8.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         result = ins.signal.read_bin(path, ins.uint8)
         np.testing.assert_array_equal(result.numpy(), data_np)
 
@@ -123,24 +123,27 @@ class TestAudioCPU:
             data_np = np.array([i * 1.0, i * 2.0], dtype=np.float64)
             arr = ins.from_numpy(data_np)
             path = os.path.join(self.tmpdir, f"test_{i}.bin")
-            ins.signal.write_bin(path, arr, append=False)
+            ins.signal.write_bin(path, arr)
             result = ins.signal.read_bin(path, ins.float64)
             np.testing.assert_allclose(result.numpy(), data_np, rtol=1e-10)
 
     def test_write_read_bin_overwrite(self):
         data1 = np.array([1, 2, 3], dtype=np.float64)
         data2 = np.array([4, 5, 6, 7], dtype=np.float64)
-        path = os.path.join(self.tmpdir, "test_overwrite.bin")
-        ins.signal.write_bin(path, ins.from_numpy(data1), append=False)
-        ins.signal.write_bin(path, ins.from_numpy(data2), append=False)
-        result = ins.signal.read_bin(path, ins.float64)
-        np.testing.assert_allclose(result.numpy(), data2, rtol=1e-10)
+        path1 = os.path.join(self.tmpdir, "test_overwrite1.bin")
+        path2 = os.path.join(self.tmpdir, "test_overwrite2.bin")
+        ins.signal.write_bin(path1, ins.from_numpy(data1))
+        ins.signal.write_bin(path2, ins.from_numpy(data2))
+        result1 = ins.signal.read_bin(path1, ins.float64)
+        result2 = ins.signal.read_bin(path2, ins.float64)
+        np.testing.assert_allclose(result1.numpy(), data1, rtol=1e-10)
+        np.testing.assert_allclose(result2.numpy(), data2, rtol=1e-10)
 
     def test_write_creates_file(self):
         data_np = np.array([1, 2, 3], dtype=np.float64)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_create.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         assert os.path.exists(path)
         assert os.path.getsize(path) > 0
 
@@ -148,7 +151,7 @@ class TestAudioCPU:
         data_np = np.array([1, 2, 3, 4, 5], dtype=np.float64)
         arr = ins.from_numpy(data_np)
         path = os.path.join(self.tmpdir, "test_size.bin")
-        ins.signal.write_bin(path, arr, append=False)
+        ins.signal.write_bin(path, arr)
         size = os.path.getsize(path)
         assert size == 5 * 8  # 5 doubles * 8 bytes each
 

@@ -51,9 +51,9 @@ describe("Signal Filtering CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
     -- Mean = 3.0, detrended = [-2, -1, 0, 1, 2]
-    assert.near(-2.0, ins.item(y, 0), 1e-10)
-    assert.near(0.0, ins.item(y, 2), 1e-10)
-    assert.near(2.0, ins.item(y, 4), 1e-10)
+    assert.near(-2.0, y:item(0), 1e-10)
+    assert.near(0.0, y:item(2), 1e-10)
+    assert.near(2.0, y:item(4), 1e-10)
   end)
 
   it("detrend_linear", function()
@@ -62,7 +62,7 @@ describe("Signal Filtering CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
     for i = 0, 4 do
-      assert.near(0.0, ins.item(y, i), 1e-10)
+      assert.near(0.0, y:item(i), 1e-10)
     end
   end)
 
@@ -72,7 +72,7 @@ describe("Signal Filtering CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
     for i = 0, 4 do
-      assert.near(0.0, ins.item(y, i), 0.2)
+      assert.near(0.0, y:item(i), 0.2)
     end
   end)
 
@@ -87,10 +87,10 @@ describe("Signal Filtering CPU Tests", function()
     local y = ins.signal.lfilter(b, a, x)
     assert.is_not_nil(y)
     assert.are.equal(6, y.numel)
-    assert.near(1.0, ins.item(y, 0), 1e-10)
-    assert.near(1.0, ins.item(y, 1), 1e-10)
+    assert.near(1.0, y:item(0), 1e-10)
+    assert.near(1.0, y:item(1), 1e-10)
     for i = 2, 5 do
-      assert.near(0.0, ins.item(y, i), 1e-10)
+      assert.near(0.0, y:item(i), 1e-10)
     end
   end)
 
@@ -100,10 +100,10 @@ describe("Signal Filtering CPU Tests", function()
     local x = ins.from_table({ 1.0, 2.0, 3.0, 4.0, 5.0 })
     local y = ins.signal.lfilter(b, a, x)
     assert.is_not_nil(y)
-    assert.near(1.0, ins.item(y, 1), 1e-10)
-    assert.near(2.0, ins.item(y, 2), 1e-10)
-    assert.near(3.0, ins.item(y, 3), 1e-10)
-    assert.near(4.0, ins.item(y, 4), 1e-10)
+    assert.near(1.0, y:item(1), 1e-10)
+    assert.near(2.0, y:item(2), 1e-10)
+    assert.near(3.0, y:item(3), 1e-10)
+    assert.near(4.0, y:item(4), 1e-10)
   end)
 
   it("lfilter_iir_impulse", function()
@@ -112,11 +112,11 @@ describe("Signal Filtering CPU Tests", function()
     local x = ins.from_table({ 1.0, 0.0, 0.0, 0.0, 0.0 })
     local y = ins.signal.lfilter(b, a, x)
     assert.is_not_nil(y)
-    assert.near(1.0, ins.item(y, 0), 1e-10)
-    assert.near(0.5, ins.item(y, 1), 1e-10)
-    assert.near(0.25, ins.item(y, 2), 1e-10)
-    assert.near(0.125, ins.item(y, 3), 1e-10)
-    assert.near(0.0625, ins.item(y, 4), 1e-10)
+    assert.near(1.0, y:item(0), 1e-10)
+    assert.near(0.5, y:item(1), 1e-10)
+    assert.near(0.25, y:item(2), 1e-10)
+    assert.near(0.125, y:item(3), 1e-10)
+    assert.near(0.0625, y:item(4), 1e-10)
   end)
 
   -- ========================================================================
@@ -198,7 +198,7 @@ describe("Signal Filtering CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
     for i = 0, 4 do
-      assert.near(i + 1.0, ins.item(y, i), 1e-6)
+      assert.near(i + 1.0, y:item(i), 1e-6)
     end
   end)
 
@@ -219,7 +219,7 @@ describe("Signal Filtering CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
     for i = 0, 4 do
-      assert.near(i + 1.0, ins.item(y, i), 1e-10)
+      assert.near(i + 1.0, y:item(i), 1e-10)
     end
   end)
 
@@ -241,11 +241,11 @@ describe("Signal Filtering CPU Tests", function()
     local y = ins.signal.firfilter(b, x)
     assert.is_not_nil(y)
     assert.are.equal(7, y.numel)
-    assert.near(1.0, ins.item(y, 0), 1e-10)
-    assert.near(2.0, ins.item(y, 1), 1e-10)
-    assert.near(1.0, ins.item(y, 2), 1e-10)
+    assert.near(1.0, y:item(0), 1e-10)
+    assert.near(2.0, y:item(1), 1e-10)
+    assert.near(1.0, y:item(2), 1e-10)
     for i = 3, 6 do
-      assert.near(0.0, ins.item(y, i), 1e-10)
+      assert.near(0.0, y:item(i), 1e-10)
     end
   end)
 end)

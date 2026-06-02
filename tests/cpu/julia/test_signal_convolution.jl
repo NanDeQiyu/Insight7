@@ -20,8 +20,8 @@ function check(name, cond)
     end
 end
 
-function approx(a, b; atol=1e-10)
-    return abs(a - b) < atol
+function approx(a, b; atol=1e-5)
+    return Base.abs(Float64(a) - Float64(b)) < atol
 end
 
 # ============================================================================

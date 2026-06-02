@@ -35,19 +35,19 @@ separator("Multi-Dtype Arithmetic")
 local f32_a = ins.from_table({ 1, 2, 3 }):to(ins.float32)
 local f32_b = ins.from_table({ 4, 5, 6 }):to(ins.float32)
 local f32_c = f32_a + f32_b
-print(string.format("F32: [1,2,3] + [4,5,6] = [%g,%g,%g]", f32_c:item(0), f32_c:item(1), f32_c:item(2)))
+print(string.format("F32: [1,2,3] + [4,5,6] = [%g,%g,%g]", f32_c:get(0), f32_c:get(1), f32_c:get(2)))
 
 -- F64
 local f64_a = ins.from_table({ 1, 2, 3 })
 local f64_b = ins.from_table({ 0.5, 0.5, 0.5 })
 local f64_c = f64_a * f64_b
-print(string.format("F64: [1,2,3] * [0.5,0.5,0.5] = [%g,%g,%g]", f64_c:item(0), f64_c:item(1), f64_c:item(2)))
+print(string.format("F64: [1,2,3] * [0.5,0.5,0.5] = [%g,%g,%g]", f64_c:get(0), f64_c:get(1), f64_c:get(2)))
 
 -- I32
 local i32_a = ins.from_table({ 10, 20, 30 }):to(ins.int32)
 local i32_b = ins.from_table({ 3, 3, 3 }):to(ins.int32)
 local i32_c = i32_a / i32_b
-print(string.format("I32: [10,20,30] / [3,3,3] = [%d,%d,%d]", i32_c:item(0), i32_c:item(1), i32_c:item(2)))
+print(string.format("I32: [10,20,30] / [3,3,3] = [%g,%g,%g]", i32_c:get(0), i32_c:get(1), i32_c:get(2)))
 
 -- --- Broadcasting ---
 separator("Broadcasting")

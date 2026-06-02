@@ -57,7 +57,7 @@ describe("Signal Filter Design CPU Tests", function()
     assert.are.equal(11, h.numel)
     -- Symmetric
     for i = 0, 4 do
-      assert.near(ins.item(h, i), ins.item(h, 10 - i), 1e-10)
+      assert.near(h:item(i), h:item(10 - i), 1e-10)
     end
   end)
 
@@ -87,7 +87,7 @@ describe("Signal Filter Design CPU Tests", function()
     assert.are.equal(11, h1.numel)
     assert.are.equal(11, h2.numel)
     -- Different filter types should give different results
-    assert.are_not.equal(ins.item(h1, 0), ins.item(h2, 0))
+    assert.are_not.equal(h1:item(0), h2:item(0))
   end)
 
   -- ========================================================================
@@ -117,10 +117,10 @@ describe("Signal Filter Design CPU Tests", function()
     assert.is_not_nil(sorted)
     assert.are.equal(4, sorted.numel)
     -- Sorted by absolute value: |-1|, |2|, |3|, |-4|
-    assert.near(-1.0, ins.item(sorted, 0), 1e-10)
-    assert.near(2.0, ins.item(sorted, 1), 1e-10)
-    assert.near(3.0, ins.item(sorted, 2), 1e-10)
-    assert.near(-4.0, ins.item(sorted, 3), 1e-10)
+    assert.near(-1.0, sorted:item(0), 1e-10)
+    assert.near(2.0, sorted:item(1), 1e-10)
+    assert.near(3.0, sorted:item(2), 1e-10)
+    assert.near(-4.0, sorted:item(3), 1e-10)
   end)
 
   it("cmplx_sort_single", function()
@@ -128,6 +128,6 @@ describe("Signal Filter Design CPU Tests", function()
     local sorted = ins.signal.cmplx_sort(a)
     assert.is_not_nil(sorted)
     assert.are.equal(1, sorted.numel)
-    assert.near(42.0, ins.item(sorted, 0), 1e-10)
+    assert.near(42.0, sorted:item(0), 1e-10)
   end)
 end)

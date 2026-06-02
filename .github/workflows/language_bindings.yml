@@ -120,7 +120,7 @@ jobs:
           export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
           export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
-          cd tests/cpu/lua && busted .
+          cd tests/cpu/lua && busted --pattern="test_.+%.lua" .
 
   lua53:
     name: Lua Binding (Lua 5.3)
@@ -170,7 +170,7 @@ jobs:
           export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
           export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
-          cd tests/cpu/lua && busted --lua=lua5.3 .
+          cd tests/cpu/lua && busted --lua=lua5.3 --pattern="test_.+%.lua" .
 
   julia:
     name: Julia Binding
@@ -220,4 +220,20 @@ jobs:
           cp bindings/julia/Insight.jl build/bindings/julia/Insight.jl
           cp -r bindings/julia/modules build/bindings/julia/modules
           export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$GITHUB_WORKSPACE/build/bindings/julia:$LD_LIBRARY_PATH
-          for f in tests/cpu/julia/test_*.jl; do julia "$f" || exit 1; done
+          total_pass=0; total_fail=0; fail_list=""
+          for f in tests/cpu/julia/test_*.jl; do
+            echo "=== Running $f ==="
+            if julia "$f"; then
+              total_pass=$((total_pass + 1))
+            else
+              total_fail=$((total_fail + 1))
+              fail_list="$fail_list $f"
+              echo "WARN: $f had errors"
+            fi
+          done
+          echo ""
+          echo "=== Julia test summary: $total_pass passed, $total_fail failed ==="
+          if [ -n "$fail_list" ]; then
+            echo "Failed tests:$fail_list"
+            exit 1
+          fi

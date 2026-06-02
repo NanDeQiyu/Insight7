@@ -41,7 +41,7 @@ check("dot", Insight.numel(d) == 1)
 
 # outer product
 o = Insight.outer(a1, b1)
-check("outer", Insight.numel(o) == 6)
+check("outer", Insight.numel(o) == 9)
 
 # norm
 v = Insight.from_data([3.0, 4.0])

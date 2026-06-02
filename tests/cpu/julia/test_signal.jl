@@ -21,7 +21,7 @@ function check(name, cond)
 end
 
 function approx(a, b; atol=1e-6)
-    return abs(a - b) < atol
+    return Base.abs(Float64(a) - Float64(b)) < atol
 end
 
 # ============================================================================
