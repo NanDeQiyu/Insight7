@@ -24,8 +24,13 @@ C_Status boxcar_kernel_cpu(void **inputs, void **outputs) {
     for (int64_t i = 0; i < M; ++i) {
       data[i] = 1.0;
     }
+  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    float *data = (float *)out->data;
+    for (int64_t i = 0; i < M; ++i) {
+      data[i] = 1.0f;
+    }
   } else {
-    cpu_set_last_error("boxcar: only F64 dtype supported");
+    cpu_set_last_error("boxcar: unsupported dtype");
     return C_FAILED;
   }
 
@@ -35,3 +40,4 @@ C_Status boxcar_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(boxcar, INSIGHT_DTYPE_F64, boxcar_kernel_cpu);
+REGISTER_CPU_KERNEL(boxcar, INSIGHT_DTYPE_F32, boxcar_kernel_cpu);

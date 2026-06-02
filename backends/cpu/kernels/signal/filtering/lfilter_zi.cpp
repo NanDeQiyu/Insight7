@@ -36,81 +36,152 @@ C_Status lfilter_zi_kernel_cpu(void **inputs, void **outputs) {
     return C_SUCCESS;
   }
 
-  const double *bp = (const double *)b_arr->data;
-  const double *ap = (const double *)a_arr->data;
-  double *zi = (double *)zi_arr->data;
+  if (zi_arr->dtype == INSIGHT_DTYPE_F64) {
+    const double *bp = (const double *)b_arr->data;
+    const double *ap = (const double *)a_arr->data;
+    double *zi = (double *)zi_arr->data;
 
-  if (!bp || !ap || !zi) {
-    cpu_set_last_error("lfilter_zi: null data pointer");
-    return C_FAILED;
-  }
-
-  // Build companion matrix A (m x m)
-  // A[i][0] = -a[i+1], A[i][i+1] = 1, rest = 0
-  // Build (I - A) in augmented form [I-A | B]
-  std::vector<double> aug(m * (m + 1), 0.0);
-  for (int64_t i = 0; i < m; ++i) {
-    double ai1 = (i + 1 < na) ? ap[i + 1] : 0.0;
-    // (I - A)[i][j]
-    for (int64_t j = 0; j < m; ++j) {
-      if (i == j)
-        aug[i * (m + 1) + j] = 1.0 + ai1; // 1 - (-a[i+1])
-      else if (j == 0)
-        aug[i * (m + 1) + j] = ai1; // -(-a[i+1]) for first column
-      else if (j == i + 1)
-        aug[i * (m + 1) + j] = -1.0; // -(1) for superdiagonal
-      // else 0
-    }
-    // RHS: b[i+1] - a[i+1] * b[0]
-    double bi1 = (i + 1 < nb) ? bp[i + 1] : 0.0;
-    aug[i * (m + 1) + m] = bi1 - ai1 * bp[0];
-  }
-
-  // Gauss-Jordan elimination with partial pivoting
-  for (int64_t col = 0; col < m; ++col) {
-    // Find pivot
-    int64_t pivot_row = col;
-    double max_val = std::abs(aug[col * (m + 1) + col]);
-    for (int64_t row = col + 1; row < m; ++row) {
-      double val = std::abs(aug[row * (m + 1) + col]);
-      if (val > max_val) {
-        max_val = val;
-        pivot_row = row;
-      }
-    }
-
-    if (max_val < 1e-15) {
-      cpu_set_last_error("lfilter_zi: singular matrix");
+    if (!bp || !ap || !zi) {
+      cpu_set_last_error("lfilter_zi: null data pointer");
       return C_FAILED;
     }
 
-    // Swap rows
-    if (pivot_row != col) {
+    // Build companion matrix A (m x m)
+    // A[i][0] = -a[i+1], A[i][i+1] = 1, rest = 0
+    // Build (I - A) in augmented form [I-A | B]
+    std::vector<double> aug(m * (m + 1), 0.0);
+    for (int64_t i = 0; i < m; ++i) {
+      double ai1 = (i + 1 < na) ? ap[i + 1] : 0.0;
+      // (I - A)[i][j]
+      for (int64_t j = 0; j < m; ++j) {
+        if (i == j)
+          aug[i * (m + 1) + j] = 1.0 + ai1; // 1 - (-a[i+1])
+        else if (j == 0)
+          aug[i * (m + 1) + j] = ai1; // -(-a[i+1]) for first column
+        else if (j == i + 1)
+          aug[i * (m + 1) + j] = -1.0; // -(1) for superdiagonal
+        // else 0
+      }
+      // RHS: b[i+1] - a[i+1] * b[0]
+      double bi1 = (i + 1 < nb) ? bp[i + 1] : 0.0;
+      aug[i * (m + 1) + m] = bi1 - ai1 * bp[0];
+    }
+
+    // Gauss-Jordan elimination with partial pivoting
+    for (int64_t col = 0; col < m; ++col) {
+      // Find pivot
+      int64_t pivot_row = col;
+      double max_val = std::abs(aug[col * (m + 1) + col]);
+      for (int64_t row = col + 1; row < m; ++row) {
+        double val = std::abs(aug[row * (m + 1) + col]);
+        if (val > max_val) {
+          max_val = val;
+          pivot_row = row;
+        }
+      }
+
+      if (max_val < 1e-15) {
+        cpu_set_last_error("lfilter_zi: singular matrix");
+        return C_FAILED;
+      }
+
+      // Swap rows
+      if (pivot_row != col) {
+        for (int64_t j = 0; j <= m; ++j) {
+          std::swap(aug[col * (m + 1) + j], aug[pivot_row * (m + 1) + j]);
+        }
+      }
+
+      // Scale pivot row
+      double pivot = aug[col * (m + 1) + col];
       for (int64_t j = 0; j <= m; ++j) {
-        std::swap(aug[col * (m + 1) + j], aug[pivot_row * (m + 1) + j]);
+        aug[col * (m + 1) + j] /= pivot;
+      }
+
+      // Eliminate column
+      for (int64_t row = 0; row < m; ++row) {
+        if (row == col)
+          continue;
+        double factor = aug[row * (m + 1) + col];
+        for (int64_t j = 0; j <= m; ++j) {
+          aug[row * (m + 1) + j] -= factor * aug[col * (m + 1) + j];
+        }
       }
     }
 
-    // Scale pivot row
-    double pivot = aug[col * (m + 1) + col];
-    for (int64_t j = 0; j <= m; ++j) {
-      aug[col * (m + 1) + j] /= pivot;
+    // Extract solution
+    for (int64_t i = 0; i < m; ++i) {
+      zi[i] = aug[i * (m + 1) + m];
+    }
+  } else if (zi_arr->dtype == INSIGHT_DTYPE_F32) {
+    const float *bp = (const float *)b_arr->data;
+    const float *ap = (const float *)a_arr->data;
+    float *zi = (float *)zi_arr->data;
+
+    if (!bp || !ap || !zi) {
+      cpu_set_last_error("lfilter_zi: null data pointer");
+      return C_FAILED;
     }
 
-    // Eliminate column
-    for (int64_t row = 0; row < m; ++row) {
-      if (row == col)
-        continue;
-      double factor = aug[row * (m + 1) + col];
+    std::vector<float> aug(m * (m + 1), 0.0f);
+    for (int64_t i = 0; i < m; ++i) {
+      float ai1 = (i + 1 < na) ? ap[i + 1] : 0.0f;
+      for (int64_t j = 0; j < m; ++j) {
+        if (i == j)
+          aug[i * (m + 1) + j] = 1.0f + ai1;
+        else if (j == 0)
+          aug[i * (m + 1) + j] = ai1;
+        else if (j == i + 1)
+          aug[i * (m + 1) + j] = -1.0f;
+      }
+      float bi1 = (i + 1 < nb) ? bp[i + 1] : 0.0f;
+      aug[i * (m + 1) + m] = bi1 - ai1 * bp[0];
+    }
+
+    // Gauss-Jordan elimination with partial pivoting
+    for (int64_t col = 0; col < m; ++col) {
+      int64_t pivot_row = col;
+      float max_val = std::abs(aug[col * (m + 1) + col]);
+      for (int64_t row = col + 1; row < m; ++row) {
+        float val = std::abs(aug[row * (m + 1) + col]);
+        if (val > max_val) {
+          max_val = val;
+          pivot_row = row;
+        }
+      }
+
+      if (max_val < 1e-7f) {
+        cpu_set_last_error("lfilter_zi: singular matrix");
+        return C_FAILED;
+      }
+
+      if (pivot_row != col) {
+        for (int64_t j = 0; j <= m; ++j) {
+          std::swap(aug[col * (m + 1) + j], aug[pivot_row * (m + 1) + j]);
+        }
+      }
+
+      float pivot = aug[col * (m + 1) + col];
       for (int64_t j = 0; j <= m; ++j) {
-        aug[row * (m + 1) + j] -= factor * aug[col * (m + 1) + j];
+        aug[col * (m + 1) + j] /= pivot;
+      }
+
+      for (int64_t row = 0; row < m; ++row) {
+        if (row == col)
+          continue;
+        float factor = aug[row * (m + 1) + col];
+        for (int64_t j = 0; j <= m; ++j) {
+          aug[row * (m + 1) + j] -= factor * aug[col * (m + 1) + j];
+        }
       }
     }
-  }
 
-  // Extract solution
-  for (int64_t i = 0; i < m; ++i) {
-    zi[i] = aug[i * (m + 1) + m];
+    for (int64_t i = 0; i < m; ++i) {
+      zi[i] = aug[i * (m + 1) + m];
+    }
+  } else {
+    cpu_set_last_error("lfilter_zi: unsupported dtype");
+    return C_FAILED;
   }
 
   return C_SUCCESS;
@@ -119,3 +190,4 @@ C_Status lfilter_zi_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(lfilter_zi, INSIGHT_DTYPE_F64, lfilter_zi_kernel_cpu);
+REGISTER_CPU_KERNEL(lfilter_zi, INSIGHT_DTYPE_F32, lfilter_zi_kernel_cpu);

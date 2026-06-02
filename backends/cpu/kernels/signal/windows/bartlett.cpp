@@ -36,8 +36,21 @@ C_Status bartlett_kernel_cpu(void **inputs, void **outputs) {
     for (int64_t i = 0; i < M; ++i) {
       data[i] = 1.0 - fabs(2.0 * i / denom - 1.0);
     }
+  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    float *data = (float *)out->data;
+    if (M == 1) {
+      data[0] = 1.0f;
+      return C_SUCCESS;
+    }
+    float denom = (float)(M - 1);
+#ifdef _OPENMP
+#pragma omp parallel for if (M > 1000)
+#endif
+    for (int64_t i = 0; i < M; ++i) {
+      data[i] = 1.0f - fabsf(2.0f * i / denom - 1.0f);
+    }
   } else {
-    cpu_set_last_error("bartlett: only F64 dtype supported");
+    cpu_set_last_error("bartlett: unsupported dtype");
     return C_FAILED;
   }
 
@@ -47,3 +60,4 @@ C_Status bartlett_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(bartlett, INSIGHT_DTYPE_F64, bartlett_kernel_cpu);
+REGISTER_CPU_KERNEL(bartlett, INSIGHT_DTYPE_F32, bartlett_kernel_cpu);

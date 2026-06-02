@@ -6,6 +6,8 @@
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
 #include <cmath>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 template <typename T>
@@ -33,6 +35,52 @@ __global__ void general_cosine_single_point(T *out, const T *a, int64_t K) {
   out[0] = val;
 }
 
+__global__ void general_cosine_kernel_fp16(uint16_t *out, const double *a,
+                                           int64_t M, int64_t K) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float angle = -(float)M_PI + 2.0f * (float)M_PI * (float)i / (float)(M - 1);
+  float val = 0.0f;
+  for (int64_t k = 0; k < K; ++k) {
+    val += (float)a[k] * cosf((float)k * angle);
+  }
+  out[i] = __float2half(val);
+}
+
+__global__ void general_cosine_single_point_fp16(uint16_t *out, const double *a,
+                                                 int64_t K) {
+  float val = 0.0f;
+  for (int64_t k = 0; k < K; ++k) {
+    float sign = (k % 2 == 0) ? 1.0f : -1.0f;
+    val += (float)a[k] * sign;
+  }
+  out[0] = __float2half(val);
+}
+
+__global__ void general_cosine_kernel_bf16(uint16_t *out, const double *a,
+                                           int64_t M, int64_t K) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float angle = -(float)M_PI + 2.0f * (float)M_PI * (float)i / (float)(M - 1);
+  float val = 0.0f;
+  for (int64_t k = 0; k < K; ++k) {
+    val += (float)a[k] * cosf((float)k * angle);
+  }
+  out[i] = __float2bfloat16(val);
+}
+
+__global__ void general_cosine_single_point_bf16(uint16_t *out, const double *a,
+                                                 int64_t K) {
+  float val = 0.0f;
+  for (int64_t k = 0; k < K; ++k) {
+    float sign = (k % 2 == 0) ? 1.0f : -1.0f;
+    val += (float)a[k] * sign;
+  }
+  out[0] = __float2bfloat16(val);
+}
+
 extern "C" {
 
 C_Status general_cosine_kernel_gpu(void **inputs, void **outputs) {
@@ -49,8 +97,7 @@ C_Status general_cosine_kernel_gpu(void **inputs, void **outputs) {
   if (M == 0)
     return C_SUCCESS;
 
-  switch (out->dtype) {
-  case INSIGHT_DTYPE_F64: {
+  if (out->dtype == INSIGHT_DTYPE_F64) {
     if (M == 1) {
       general_cosine_single_point<double>
           <<<1, 1>>>((double *)out->data, (const double *)coeffs_arr->data, K);
@@ -60,10 +107,38 @@ C_Status general_cosine_kernel_gpu(void **inputs, void **outputs) {
       general_cosine_kernel<double><<<blocks, threads>>>(
           (double *)out->data, (const double *)coeffs_arr->data, M, K);
     }
-    break;
-  }
-  default:
-    gpu_set_last_error("general_cosine: only F64 dtype supported");
+  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    if (M == 1) {
+      general_cosine_single_point<float>
+          <<<1, 1>>>((float *)out->data, (const float *)coeffs_arr->data, K);
+    } else {
+      dim3 blocks((int)((M + 255) / 256));
+      dim3 threads(256);
+      general_cosine_kernel<float><<<blocks, threads>>>(
+          (float *)out->data, (const float *)coeffs_arr->data, M, K);
+    }
+  } else if (out->dtype == INSIGHT_DTYPE_F16) {
+    if (M == 1) {
+      general_cosine_single_point_fp16<<<1, 1>>>(
+          (uint16_t *)out->data, (const double *)coeffs_arr->data, K);
+    } else {
+      dim3 blocks((int)((M + 255) / 256));
+      dim3 threads(256);
+      general_cosine_kernel_fp16<<<blocks, threads>>>(
+          (uint16_t *)out->data, (const double *)coeffs_arr->data, M, K);
+    }
+  } else if (out->dtype == INSIGHT_DTYPE_BF16) {
+    if (M == 1) {
+      general_cosine_single_point_bf16<<<1, 1>>>(
+          (uint16_t *)out->data, (const double *)coeffs_arr->data, K);
+    } else {
+      dim3 blocks((int)((M + 255) / 256));
+      dim3 threads(256);
+      general_cosine_kernel_bf16<<<blocks, threads>>>(
+          (uint16_t *)out->data, (const double *)coeffs_arr->data, M, K);
+    }
+  } else {
+    gpu_set_last_error("general_cosine: unsupported dtype");
     return C_FAILED;
   }
 
@@ -78,4 +153,10 @@ C_Status general_cosine_kernel_gpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_GPU_KERNEL(general_cosine, INSIGHT_DTYPE_F64,
+                    general_cosine_kernel_gpu);
+REGISTER_GPU_KERNEL(general_cosine, INSIGHT_DTYPE_F32,
+                    general_cosine_kernel_gpu);
+REGISTER_GPU_KERNEL(general_cosine, INSIGHT_DTYPE_F16,
+                    general_cosine_kernel_gpu);
+REGISTER_GPU_KERNEL(general_cosine, INSIGHT_DTYPE_BF16,
                     general_cosine_kernel_gpu);

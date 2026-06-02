@@ -32,8 +32,17 @@ C_Status cosine_kernel_cpu(void **inputs, void **outputs) {
     for (int64_t i = 0; i < M; ++i) {
       data[i] = sin(scale * (i + 0.5));
     }
+  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    float *data = (float *)out->data;
+    float scale = (float)M_PI / M;
+#ifdef _OPENMP
+#pragma omp parallel for if (M > 1000)
+#endif
+    for (int64_t i = 0; i < M; ++i) {
+      data[i] = sinf(scale * (i + 0.5f));
+    }
   } else {
-    cpu_set_last_error("cosine: only F64 dtype supported");
+    cpu_set_last_error("cosine: unsupported dtype");
     return C_FAILED;
   }
 
@@ -43,3 +52,4 @@ C_Status cosine_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(cosine, INSIGHT_DTYPE_F64, cosine_kernel_cpu);
+REGISTER_CPU_KERNEL(cosine, INSIGHT_DTYPE_F32, cosine_kernel_cpu);

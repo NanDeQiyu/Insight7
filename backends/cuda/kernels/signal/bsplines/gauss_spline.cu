@@ -4,6 +4,8 @@
 // where sigma^2 = (n+1)/12
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
@@ -27,6 +29,30 @@ __global__ void gauss_spline_kernel_f32(float *data, float coeff,
     return;
   float x2 = data[i] * data[i];
   data[i] = coeff * expf(-x2 * r_sigma_sq);
+}
+
+__global__ void gauss_spline_kernel_f16(uint16_t *data, float coeff,
+                                        float r_sigma_sq, int64_t M) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float val = __half2float(*(const __half *)&data[i]);
+  float x2 = val * val;
+  float result = coeff * expf(-x2 * r_sigma_sq);
+  __half res = __float2half(result);
+  data[i] = *(uint16_t *)&res;
+}
+
+__global__ void gauss_spline_kernel_bf16(uint16_t *data, float coeff,
+                                         float r_sigma_sq, int64_t M) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float val = __bfloat162float(*(const __nv_bfloat16 *)&data[i]);
+  float x2 = val * val;
+  float result = coeff * expf(-x2 * r_sigma_sq);
+  __nv_bfloat16 res = __float2bfloat16(result);
+  data[i] = *(uint16_t *)&res;
 }
 
 extern "C" {
@@ -68,14 +94,26 @@ C_Status gauss_spline_kernel_gpu(void **inputs, void **outputs) {
   int threads = 256;
   int blocks = (int)((M + threads - 1) / threads);
 
-  if (out->dtype == INSIGHT_DTYPE_F64) {
+  switch (out->dtype) {
+  case INSIGHT_DTYPE_F64:
     gauss_spline_kernel_f64<<<blocks, threads>>>((double *)out->data, coeff,
                                                  r_sigma_sq, M);
-  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    break;
+  case INSIGHT_DTYPE_F32:
     gauss_spline_kernel_f32<<<blocks, threads>>>(
         (float *)out->data, (float)coeff, (float)r_sigma_sq, M);
-  } else {
-    gpu_set_last_error("gauss_spline: unsupported dtype, need F32 or F64");
+    break;
+  case INSIGHT_DTYPE_F16:
+    gauss_spline_kernel_f16<<<blocks, threads>>>(
+        (uint16_t *)out->data, (float)coeff, (float)r_sigma_sq, M);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    gauss_spline_kernel_bf16<<<blocks, threads>>>(
+        (uint16_t *)out->data, (float)coeff, (float)r_sigma_sq, M);
+    break;
+  default:
+    gpu_set_last_error(
+        "gauss_spline: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -91,3 +129,5 @@ C_Status gauss_spline_kernel_gpu(void **inputs, void **outputs) {
 
 REGISTER_GPU_KERNEL(gauss_spline, INSIGHT_DTYPE_F64, gauss_spline_kernel_gpu);
 REGISTER_GPU_KERNEL(gauss_spline, INSIGHT_DTYPE_F32, gauss_spline_kernel_gpu);
+REGISTER_GPU_KERNEL(gauss_spline, INSIGHT_DTYPE_F16, gauss_spline_kernel_gpu);
+REGISTER_GPU_KERNEL(gauss_spline, INSIGHT_DTYPE_BF16, gauss_spline_kernel_gpu);

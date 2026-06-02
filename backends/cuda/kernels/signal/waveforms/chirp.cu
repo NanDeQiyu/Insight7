@@ -3,6 +3,8 @@
 // w[n] = cos(2*pi * (f0 + (f1-f0)*t/2) * t) where t = n/(M-1) * T
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
@@ -34,6 +36,34 @@ __global__ void chirp_kernel_f32(float *out, float f0, float f1, float T,
   out[i] = cosf(2.0f * (float)M_PI * inst_freq * t);
 }
 
+__global__ void chirp_kernel_f16(uint16_t *out, float f0, float f1, float T,
+                                 int64_t M) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float inv_M1 = (M > 1) ? 1.0f / (float)(M - 1) : 1.0f;
+  float t = (float)i * inv_M1 * T;
+  float beta = (f1 - f0) / T;
+  float inst_freq = f0 + beta * t;
+  float result = cosf(2.0f * (float)M_PI * inst_freq * t);
+  __half res = __float2half(result);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void chirp_kernel_bf16(uint16_t *out, float f0, float f1, float T,
+                                  int64_t M) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float inv_M1 = (M > 1) ? 1.0f / (float)(M - 1) : 1.0f;
+  float t = (float)i * inv_M1 * T;
+  float beta = (f1 - f0) / T;
+  float inst_freq = f0 + beta * t;
+  float result = cosf(2.0f * (float)M_PI * inst_freq * t);
+  __nv_bfloat16 res = __float2bfloat16(result);
+  out[i] = *(uint16_t *)&res;
+}
+
 extern "C" {
 
 C_Status chirp_kernel_gpu(void **inputs, void **outputs) {
@@ -60,13 +90,24 @@ C_Status chirp_kernel_gpu(void **inputs, void **outputs) {
   int threads = 256;
   int blocks = (int)((M + threads - 1) / threads);
 
-  if (out->dtype == INSIGHT_DTYPE_F64) {
+  switch (out->dtype) {
+  case INSIGHT_DTYPE_F64:
     chirp_kernel_f64<<<blocks, threads>>>((double *)out->data, f0, f1, T, M);
-  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    break;
+  case INSIGHT_DTYPE_F32:
     chirp_kernel_f32<<<blocks, threads>>>((float *)out->data, (float)f0,
                                           (float)f1, (float)T, M);
-  } else {
-    gpu_set_last_error("chirp: unsupported dtype, need F32 or F64");
+    break;
+  case INSIGHT_DTYPE_F16:
+    chirp_kernel_f16<<<blocks, threads>>>((uint16_t *)out->data, (float)f0,
+                                          (float)f1, (float)T, M);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    chirp_kernel_bf16<<<blocks, threads>>>((uint16_t *)out->data, (float)f0,
+                                           (float)f1, (float)T, M);
+    break;
+  default:
+    gpu_set_last_error("chirp: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -82,3 +123,5 @@ C_Status chirp_kernel_gpu(void **inputs, void **outputs) {
 
 REGISTER_GPU_KERNEL(chirp, INSIGHT_DTYPE_F64, chirp_kernel_gpu);
 REGISTER_GPU_KERNEL(chirp, INSIGHT_DTYPE_F32, chirp_kernel_gpu);
+REGISTER_GPU_KERNEL(chirp, INSIGHT_DTYPE_F16, chirp_kernel_gpu);
+REGISTER_GPU_KERNEL(chirp, INSIGHT_DTYPE_BF16, chirp_kernel_gpu);

@@ -4,6 +4,8 @@
 // where a = -4*ln(2)*pi^2*fc^2*bw^2 (from -6dB bandwidth reference)
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
@@ -35,6 +37,34 @@ __global__ void gausspulse_kernel_f32(float *out, float a, float two_pi_fc,
   out[i] = env * cosf(two_pi_fc * t);
 }
 
+__global__ void gausspulse_kernel_f16(uint16_t *out, float a, float two_pi_fc,
+                                      int64_t M) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float inv_M1 = (M > 1) ? 1.0f / (float)(M - 1) : 1.0f;
+  float t = (float)i * inv_M1;
+  float t2 = t * t;
+  float env = expf(a * t2);
+  float result = env * cosf(two_pi_fc * t);
+  __half res = __float2half(result);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void gausspulse_kernel_bf16(uint16_t *out, float a, float two_pi_fc,
+                                       int64_t M) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float inv_M1 = (M > 1) ? 1.0f / (float)(M - 1) : 1.0f;
+  float t = (float)i * inv_M1;
+  float t2 = t * t;
+  float env = expf(a * t2);
+  float result = env * cosf(two_pi_fc * t);
+  __nv_bfloat16 res = __float2bfloat16(result);
+  out[i] = *(uint16_t *)&res;
+}
+
 extern "C" {
 
 C_Status gausspulse_kernel_gpu(void **inputs, void **outputs) {
@@ -63,14 +93,26 @@ C_Status gausspulse_kernel_gpu(void **inputs, void **outputs) {
   int threads = 256;
   int blocks = (int)((M + threads - 1) / threads);
 
-  if (out->dtype == INSIGHT_DTYPE_F64) {
+  switch (out->dtype) {
+  case INSIGHT_DTYPE_F64:
     gausspulse_kernel_f64<<<blocks, threads>>>((double *)out->data, a,
                                                two_pi_fc, M);
-  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    break;
+  case INSIGHT_DTYPE_F32:
     gausspulse_kernel_f32<<<blocks, threads>>>((float *)out->data, (float)a,
                                                (float)two_pi_fc, M);
-  } else {
-    gpu_set_last_error("gausspulse: unsupported dtype, need F32 or F64");
+    break;
+  case INSIGHT_DTYPE_F16:
+    gausspulse_kernel_f16<<<blocks, threads>>>((uint16_t *)out->data, (float)a,
+                                               (float)two_pi_fc, M);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    gausspulse_kernel_bf16<<<blocks, threads>>>((uint16_t *)out->data, (float)a,
+                                                (float)two_pi_fc, M);
+    break;
+  default:
+    gpu_set_last_error(
+        "gausspulse: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -86,3 +128,5 @@ C_Status gausspulse_kernel_gpu(void **inputs, void **outputs) {
 
 REGISTER_GPU_KERNEL(gausspulse, INSIGHT_DTYPE_F64, gausspulse_kernel_gpu);
 REGISTER_GPU_KERNEL(gausspulse, INSIGHT_DTYPE_F32, gausspulse_kernel_gpu);
+REGISTER_GPU_KERNEL(gausspulse, INSIGHT_DTYPE_F16, gausspulse_kernel_gpu);
+REGISTER_GPU_KERNEL(gausspulse, INSIGHT_DTYPE_BF16, gausspulse_kernel_gpu);
