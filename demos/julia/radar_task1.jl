@@ -5,7 +5,6 @@
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "bindings", "julia"))
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "build", "bindings", "julia"))
 using Insight
-using Random
 
 # Insight exports shadow some Base functions; use Base.xxx where needed
 
@@ -41,7 +40,12 @@ noise_sigma = sqrt(sig_power / 10^(SNR_DB/10) / 2)
 
 # ========== 2. 模拟回波 ==========
 println("[2/6] 模拟回波信号...")
-rng = MersenneTwister(42)
+# 使用 Insight 原生 RNG 确保跨语言一致
+Insight.seed(42)
+noise_r_arr = Insight.randn(Int64[N_PULSES, N], Insight.float64) * noise_sigma
+noise_i_arr = Insight.randn(Int64[N_PULSES, N], Insight.float64) * noise_sigma
+noise_r = Insight.to_data(noise_r_arr)  # Julia (N_PULSES, N) 列优先
+noise_i = Insight.to_data(noise_i_arr)
 s_rx = Base.zeros(Complex{Float64}, N_PULSES, N)
 
 for p in 1:N_PULSES
@@ -59,7 +63,7 @@ for p in 1:N_PULSES
         pulse .+= tgt
     end
 
-    noise = noise_sigma .* (Random.randn(rng, N) .+ 1im .* Random.randn(rng, N))
+    noise = noise_r[p, :] .+ 1im .* noise_i[p, :]
     s_rx[p, :] .= pulse .+ noise
 end
 
@@ -86,12 +90,12 @@ println("  耗时: $(Base.round(time() - t0, digits=2)) 秒")
 println("[4/6] 多普勒处理...")
 t0 = time()
 
-# Column-by-column FFT using Insight, then fftshift along dimension 0 (rows)
+# Column-by-column FFT using Insight (Julia 列优先，逐列处理)
 doppler_fft_jl = Base.zeros(Complex{Float64}, N_PULSES, N)
 for col in 1:N
     col_ins = Insight.from_data(pc[:, col])
-    fft_col = Insight.fft(col_ins)
-    shifted = Insight.fftshift(fft_col, axis=0)
+    fft_col = Insight.fft(col_ins, n=Int64(N_PULSES))
+    shifted = Insight.fftshift(fft_col)
     doppler_fft_jl[:, col] .= Insight.to_data(shifted)
 end
 
@@ -142,14 +146,14 @@ for i in 1:raw_count
 end
 
 # ========== 输出 ==========
-freqs_ins = Insight.fftfreq(Int64(N_PULSES), 1.0/T_PRF)
+freqs_ins = Insight.fftfreq(Int64(N_PULSES), T_PRF)
 doppler_bins_jl = Insight.to_data(Insight.fftshift(freqs_ins))
 
 println("\n[检测结果]")
 println("  原始检测点数: $raw_count, 聚类后: $(Base.length(targets))")
 
 for (d_idx, r_idx) in targets
-    range_m = (r_idx - PC_OFFSET) * RANGE_PER_BIN
+    range_m = (r_idx - 1 - PC_OFFSET) * RANGE_PER_BIN  # Julia 1-based → 0-based
     doppler_hz = doppler_bins_jl[d_idx]
     println("    → 距离: $(Base.lpad(Base.round(range_m, digits=2), 8)) 米, " *
             "多普勒: $(Base.lpad(Base.round(doppler_hz, digits=1), 8)) Hz")

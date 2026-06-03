@@ -1,17 +1,16 @@
 diff --git a/source/matplot/backend/gnuplot.cpp b/source/matplot/backend/gnuplot.cpp
-index 1e4a330..94fafe4 100644
+index 1e4a330..e0a5b36 100644
 --- a/source/matplot/backend/gnuplot.cpp
 +++ b/source/matplot/backend/gnuplot.cpp
-@@ -69,6 +69,22 @@ namespace matplot::backend {
+@@ -69,6 +69,21 @@ namespace matplot::backend {
              terminal_ = default_terminal_type();
          }
  
-+        // Do not open gnuplot pipe when terminal is "unknown".
-+        // The "unknown" terminal cannot render anything and causes
-+        // segfaults when the pipe is closed (SIGPIPE / broken pipe).
++        // When terminal is "unknown" (headless, no display), fall back to
++        // "dumb" which is always safe. pngcairo requires fonts/Pango which
++        // may crash in headless environments without proper fontconfig.
 +        if (terminal_ == "unknown") {
-+            pipe_ = nullptr;
-+            return;
++            terminal_ = "dumb";
 +        }
 +
 +        // Check if gnuplot binary is actually available before opening pipe.
@@ -25,7 +24,7 @@ index 1e4a330..94fafe4 100644
          // Open the gnuplot pipe_
          if constexpr (windows_should_persist_by_default) {
              pipe_ = POPEN("gnuplot --persist", "w");
-@@ -278,6 +294,9 @@ namespace matplot::backend {
+@@ -278,6 +293,9 @@ namespace matplot::backend {
      bool gnuplot::render_data() { return flush_commands(); }
  
      bool gnuplot::flush_commands() {
@@ -35,7 +34,7 @@ index 1e4a330..94fafe4 100644
          if constexpr (dont_let_it_close_too_fast) {
              last_flush_ = std::chrono::high_resolution_clock::now();
          }
-@@ -451,7 +470,7 @@ namespace matplot::backend {
+@@ -451,7 +469,7 @@ namespace matplot::backend {
              "hpljii",   "hppj",    "imagen",  "linux",   "lua",
              "lua tikz", "mf",      "mif",     "mp",      "pbm",
              "pm",       "qms",     "regis",   "svga",    "texdraw",

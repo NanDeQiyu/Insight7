@@ -140,6 +140,14 @@ void insight_jl_to_data(const Array *arr, void *dst) {
   std::memcpy(dst, cpu.data(), cpu.nbytes());
 }
 
+// Return shape (no reversal — Julia callers handle layout explicitly).
+void insight_jl_shape_reversed(const Array *arr, int64_t *out,
+                               int32_t max_ndim) {
+  int nd = arr->shape().ndim();
+  for (int i = 0; i < nd && i < max_ndim; ++i)
+    out[i] = arr->shape().dims()[i];
+}
+
 void insight_jl_array_free(Array *arr) { delete arr; }
 
 // Metadata queries
@@ -339,6 +347,9 @@ void insight_jl_eigh(const Array *x, Array **vals, Array **vecs) {
 
 Array *insight_jl_fft(const Array *x, int32_t has_n, int64_t n) {
   return new Array(fft::fft(*x, has_n ? n : -1));
+}
+Array *insight_jl_fft_axis(const Array *x, int64_t n, int32_t axis) {
+  return new Array(fft::fft(*x, n, axis));
 }
 Array *insight_jl_ifft(const Array *x, int32_t has_n, int64_t n) {
   return new Array(fft::ifft(*x, has_n ? n : -1));

@@ -28,13 +28,8 @@ print(string.format("  采样率: %.1f MHz, 带宽: %.1f MHz", FS / 1e6, B / 1e6
 print(string.format("  单脉冲采样点数: %d, 脉冲串数量: %d", N, N_PULSES))
 print(string.format("  距离分辨率: %.2f 米, 距离门: %.2f 米", RANGE_RES, RANGE_PER_BIN))
 
--- ========== RNG ==========
-math.randomseed(42)
-local function randn()
-  local u1 = math.random()
-  local u2 = math.random()
-  return math.sqrt(-2 * math.log(u1 + 1e-15)) * math.cos(2 * math.pi * u2)
-end
+-- ========== RNG: 使用 Insight 原生 RNG 确保跨语言一致 ==========
+ins.seed(42)
 
 -- ========== 1. LFM 发射信号 ==========
 print("\n[1/6] 生成 LFM 信号...")
@@ -59,6 +54,9 @@ local noise_sigma = math.sqrt(sig_power / 10 ^ (SNR_DB / 10) / 2)
 
 -- ========== 2. 模拟回波 ==========
 print("[2/6] 模拟回波信号...")
+-- 生成噪声数组 (Insight 原生 RNG，跨语言一致)
+local noise_r = ins.randn({ N_PULSES, N }, ins.float64) * noise_sigma
+local noise_i = ins.randn({ N_PULSES, N }, ins.float64) * noise_sigma
 local s_rx_r = {}
 local s_rx_i = {}
 
@@ -105,8 +103,8 @@ for p = 1, N_PULSES do
   end
 
   for i = 1, N do
-    pr[i] = pr[i] + noise_sigma * randn()
-    pi_[i] = pi_[i] + noise_sigma * randn()
+    pr[i] = pr[i] + noise_r:get((p - 1) * N + (i - 1))
+    pi_[i] = pi_[i] + noise_i:get((p - 1) * N + (i - 1))
   end
   s_rx_r[p] = pr
   s_rx_i[p] = pi_

@@ -37,7 +37,10 @@ def run_task1(device="cpu"):
     noise_sigma = np.sqrt(sig_power / 10 ** (SNR_DB / 10) / 2)
 
     # 2. 模拟回波 (逐目标施加 Doppler，与 C++ 对齐)
-    rng = np.random.RandomState(42)
+    # 使用 Insight 原生 RNG 确保跨语言一致
+    ins.seed(42)
+    noise_r = (ins.randn([N_PULSES, N], ins.float64) * noise_sigma).numpy()
+    noise_i = (ins.randn([N_PULSES, N], ins.float64) * noise_sigma).numpy()
     s_rx = np.zeros((N_PULSES, N), dtype=np.complex128)
 
     for p in range(N_PULSES):
@@ -51,7 +54,7 @@ def run_task1(device="cpu"):
             tgt *= np.exp(1j * 2 * np.pi * doppler * t)
             tgt *= np.exp(1j * 2 * np.pi * doppler * slow_time)
             pulse += tgt
-        pulse += noise_sigma * (rng.randn(N) + 1j * rng.randn(N))
+        pulse += noise_r[p, :] + 1j * noise_i[p, :]
         s_rx[p, :] = pulse
 
     # 3. 脉冲压缩
@@ -123,12 +126,13 @@ def print_result(r):
     )
     print(f"  原始检测点数: {r['raw_count']}, 聚类后: {len(r['targets'])}")
     energy_np = r["energy"].numpy()
+    if energy_np.dtype.kind == "c":  # complex → real magnitude
+        energy_np = np.abs(energy_np)
     for d, rr in r["targets"]:
         if 0 <= d < len(r["doppler_bins"]) and 0 <= rr < len(r["range_bins"]):
             print(
                 f"    → 距离: {r['range_bins'][rr]:7.2f} 米, "
-                f"多普勒: {r['doppler_bins'][d]:8.1f} Hz, "
-                f"强度: {energy_np[d, rr]:.3f}"
+                f"多普勒: {r['doppler_bins'][d]:8.1f} Hz"
             )
 
 

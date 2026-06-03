@@ -278,6 +278,7 @@ Insight.numel(a)  # 6
 """
 function zeros(dims::Vector{Int64}, dtype_val::Int32=float32,
                device::Int32=CPU)::InsightArray
+
     ptr = ccall((:insight_jl_zeros, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
                 dims, Int32(length(dims)), dtype_val, device)
@@ -301,6 +302,7 @@ Create an array filled with ones.
 """
 function ones(dims::Vector{Int64}, dtype_val::Int32=float32,
               device::Int32=CPU)::InsightArray
+
     ptr = ccall((:insight_jl_ones, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
                 dims, Int32(length(dims)), dtype_val, device)
@@ -311,6 +313,7 @@ end
 
 function full(dims::Vector{Int64}, fill_value::Float64,
               dtype_val::Int32=float32, device::Int32=CPU)::InsightArray
+
     ptr = ccall((:insight_jl_full, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Float64, Int32, Int32),
                 dims, Int32(length(dims)), fill_value, dtype_val, device)
@@ -470,6 +473,9 @@ Base.:+(a::InsightArray, b::InsightArray) = add(a, b)
 Base.:-(a::InsightArray, b::InsightArray) = sub(a, b)
 Base.:*(a::InsightArray, b::InsightArray) = mul(a, b)
 Base.:/(a::InsightArray, b::InsightArray) = div(a, b)
+# Scalar promotion: Array * Number and Number * Array
+Base.:*(a::InsightArray, b::Number) = mul(a, from_data([b], float64))
+Base.:*(a::Number, b::InsightArray) = mul(from_data([a], float64), b)
 Base.:-(x::InsightArray) = begin
     ptr = ccall((:insight_jl_negative, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid},), x)
@@ -832,11 +838,17 @@ end
 # Returns
 - `InsightArray`: Complex-valued DFT result.
 """
-function fft(x::InsightArray; n::Union{Int,Nothing}=nothing)::InsightArray
-    has_n = n !== nothing ? Int32(1) : Int32(0)
-    nv = n !== nothing ? Int64(n) : Int64(-1)
-    ptr = ccall((:insight_jl_fft, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32, Int64), x, has_n, nv)
+function fft(x::InsightArray; n::Union{Int,Nothing}=nothing, axis::Union{Int,Nothing}=nothing)::InsightArray
+    if axis !== nothing
+        nv = n !== nothing ? Int64(n) : Int64(-1)
+        ptr = ccall((:insight_jl_fft_axis, LIB_INSIGHT), Ptr{Cvoid},
+                    (Ptr{Cvoid}, Int64, Int32), x, nv, Int32(axis))
+    else
+        has_n = n !== nothing ? Int32(1) : Int32(0)
+        nv = n !== nothing ? Int64(n) : Int64(-1)
+        ptr = ccall((:insight_jl_fft, LIB_INSIGHT), Ptr{Cvoid},
+                    (Ptr{Cvoid}, Int32, Int64), x, has_n, nv)
+    end
     arr = InsightArray(ptr)
     finalizer(_free, arr)
     return arr
@@ -896,6 +908,7 @@ end
 
 function randn(dims::Vector{Int64}, dtype_val::Int32=float32,
                device::Int32=CPU)::InsightArray
+
     ptr = ccall((:insight_jl_randn, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
                 dims, Int32(length(dims)), dtype_val, device)

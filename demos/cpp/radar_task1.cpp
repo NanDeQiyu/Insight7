@@ -6,6 +6,7 @@
 #ifdef INSIGHT_USE_MATPLOT
 #include "insight/ops/plot.h"
 #endif
+#include "insight/ops/random.h"
 #include "insight/ops/signal.h"
 #include <algorithm>
 #include <chrono>
@@ -37,15 +38,10 @@ static bool gpu_available() {
   }
 }
 
-// Simple linear congruential RNG for reproducible noise
-static uint64_t rng_state = 42;
-static double randn() {
-  rng_state = rng_state * 6364136223846793005ULL + 1442695040888963407ULL;
-  double u1 = (double)(rng_state >> 33) / (1ULL << 31);
-  rng_state = rng_state * 6364136223846793005ULL + 1442695040888963407ULL;
-  double u2 = (double)(rng_state >> 33) / (1ULL << 31);
-  return std::sqrt(-2.0 * std::log(u1 + 1e-15)) * std::cos(2.0 * M_PI * u2);
-}
+// RNG: use Insight's native seed + randn for cross-language alignment
+static void init_rng() { ins::seed(42); }
+static const double *noise_r_data = nullptr;
+static const double *noise_i_data = nullptr;
 
 // ========== 参数 ==========
 static constexpr double fs = 10e6;   // 采样率
@@ -66,7 +62,6 @@ static constexpr int pc_offset = (N - 1) / 2; // pulse compression crop offset
 
 struct Task1Result {
   std::vector<std::pair<int, int>> targets;
-  std::vector<std::complex<double>> doppler_data;
   std::vector<double> energy;
   double pc_ms, doppler_ms, cfar_ms, total_ms;
   const char *device;
@@ -100,7 +95,15 @@ static Task1Result run_task1(Place place) {
     t_vec[i] = i / fs;
 
   // ========== 2. 模拟回波 (逐目标施加 Doppler) ==========
-  rng_state = 42;
+  // 使用 Insight 原生 RNG 确保跨语言一致
+  init_rng();
+  Array noise_r_arr =
+      randn(Shape({n_pulses, N}), DType::F64, CPUPlace()) * noise_sigma;
+  Array noise_i_arr =
+      randn(Shape({n_pulses, N}), DType::F64, CPUPlace()) * noise_sigma;
+  noise_r_data = noise_r_arr.data<double>();
+  noise_i_data = noise_i_arr.data<double>();
+
   std::vector<std::complex<double>> s_rx_flat(n_pulses * N);
 
   for (int p = 0; p < n_pulses; ++p) {
@@ -138,9 +141,10 @@ static Task1Result run_task1(Place place) {
         pulse[i] += tgt_pulse[i];
     }
 
-    // 加噪声
+    // 加噪声 (使用 Insight 原生 RNG)
     for (int i = 0; i < N; ++i) {
-      std::complex<double> noise(noise_sigma * randn(), noise_sigma * randn());
+      std::complex<double> noise(noise_r_data[p * N + i],
+                                 noise_i_data[p * N + i]);
       s_rx_flat[p * N + i] = pulse[i] + noise;
     }
   }
@@ -187,7 +191,7 @@ static Task1Result run_task1(Place place) {
   double pc_ms =
       std::chrono::duration<double, std::milli>(t_pc1 - t_pc0).count();
 
-  // ========== 4. 多普勒处理 (2D FFT, axis=0, batch_size=N) ==========
+  // ========== 4. 多普勒处理 (2D FFT, axis=0) ==========
   auto t_dp0 = std::chrono::high_resolution_clock::now();
 
   Array pc_arr =
@@ -195,21 +199,9 @@ static Task1Result run_task1(Place place) {
   if (place.kind() == DeviceKind::GPU)
     pc_arr = pc_arr.to(place);
 
-  Array doppler_arr = fft::fft(pc_arr, n_pulses, 0);
+  Array doppler_arr = fft::fftshift(fft::fft(pc_arr, n_pulses, 0), 0);
   if (place.kind() == DeviceKind::GPU)
     doppler_arr = doppler_arr.to(CPUPlace());
-
-  const std::complex<double> *dp_data =
-      reinterpret_cast<const std::complex<double> *>(doppler_arr.data<char>());
-
-  // fftshift along axis 0
-  std::vector<std::complex<double>> doppler_flat(n_pulses * N);
-  for (int p = 0; p < n_pulses; ++p) {
-    int shifted = (p + n_pulses / 2) % n_pulses;
-    for (int r = 0; r < N; ++r) {
-      doppler_flat[shifted * N + r] = dp_data[p * N + r];
-    }
-  }
 
   auto t_dp1 = std::chrono::high_resolution_clock::now();
   double doppler_ms =
@@ -218,12 +210,7 @@ static Task1Result run_task1(Place place) {
   // ========== 5. CA-CFAR ==========
   auto t_cf0 = std::chrono::high_resolution_clock::now();
 
-  std::vector<double> energy(n_pulses * N);
-  for (int i = 0; i < n_pulses * N; ++i)
-    energy[i] = std::abs(doppler_flat[i]);
-
-  Array energy_arr =
-      to_array(energy, Shape({n_pulses, N}), DType::F64, CPUPlace());
+  Array energy_arr = abs(doppler_arr);
   auto [threshold, detections] =
       signal::ca_cfar(energy_arr, {2, 2}, {4, 4}, 1e-5);
 
@@ -270,8 +257,11 @@ static Task1Result run_task1(Place place) {
 
   Task1Result result;
   result.targets = targets;
-  result.doppler_data = doppler_flat;
-  result.energy = energy;
+  // Extract energy data from Insight Array for plotting
+  {
+    const double *e_data = energy_arr.data<double>();
+    result.energy.assign(e_data, e_data + n_pulses * N);
+  }
   result.pc_ms = pc_ms;
   result.doppler_ms = doppler_ms;
   result.cfar_ms = cfar_ms;
@@ -345,6 +335,8 @@ static void save_plots(const Task1Result &result, const char *prefix) {
 #endif // INSIGHT_USE_MATPLOT
 
 int main() {
+  setbuf(stdout, NULL);
+  setbuf(stderr, NULL);
 #ifdef SIGPIPE
   // Ignore SIGPIPE to prevent process crash when gnuplot is unavailable.
   // matplotplusplus spawns gnuplot via popen; if gnuplot is not installed
@@ -393,12 +385,18 @@ int main() {
   }
 
 #ifdef INSIGHT_USE_MATPLOT
-  try {
-    save_plots(cpu, "task1_cpu");
-  } catch (const std::exception &e) {
-    printf("[Warning] CPU plotting failed: %s\n", e.what());
-  } catch (...) {
-    printf("[Warning] CPU plotting failed (unknown error)\n");
+  // Only plot when gnuplot is available AND stdout is a terminal.
+  // The "dumb" terminal writes text to stdout; redirecting stdout to a file
+  // or pipe causes gnuplot to crash (segfault).
+  if (system("gnuplot --version > /dev/null 2>&1") == 0 &&
+      isatty(fileno(stdout))) {
+    try {
+      save_plots(cpu, "task1_cpu");
+    } catch (const std::exception &e) {
+      printf("[Warning] CPU plotting failed: %s\n", e.what());
+    } catch (...) {
+      printf("[Warning] CPU plotting failed (unknown error)\n");
+    }
   }
 #endif
 
@@ -420,12 +418,15 @@ int main() {
     }
 
 #ifdef INSIGHT_USE_MATPLOT
-    try {
-      save_plots(gpu, "task1_gpu");
-    } catch (const std::exception &e) {
-      printf("[Warning] GPU plotting failed: %s\n", e.what());
-    } catch (...) {
-      printf("[Warning] GPU plotting failed (unknown error)\n");
+    if (system("gnuplot --version > /dev/null 2>&1") == 0 &&
+        isatty(fileno(stdout))) {
+      try {
+        save_plots(gpu, "task1_gpu");
+      } catch (const std::exception &e) {
+        printf("[Warning] GPU plotting failed: %s\n", e.what());
+      } catch (...) {
+        printf("[Warning] GPU plotting failed (unknown error)\n");
+      }
     }
 #endif
 
