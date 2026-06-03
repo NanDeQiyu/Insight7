@@ -35,7 +35,7 @@ end
 # --- CPU to GPU transfer ---
 separator("CPU -> GPU Transfer")
 
-cpu_arr = Insight.from_data([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [2, 3])
+cpu_arr = Insight.from_data(reshape([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], (2, 3)))
 println("CPU array:")
 println(cpu_arr)
 
@@ -52,8 +52,8 @@ println(back)
 # --- GPU arithmetic ---
 separator("GPU Arithmetic (F64)")
 
-a = Insight.to(Insight.from_data([1.0, 2.0, 3.0], [3]), 1)
-b = Insight.to(Insight.from_data([4.0, 5.0, 6.0], [3]), 1)
+a = Insight.to(Insight.from_data([1.0, 2.0, 3.0]), 1)
+b = Insight.to(Insight.from_data([4.0, 5.0, 6.0]), 1)
 
 sum_ab = a + b
 mul_ab = a * b
@@ -63,15 +63,15 @@ println("GPU [1,2,3] * [4,5,6] = $(Insight.to(mul_ab, 0))")
 # --- GPU arithmetic F32 ---
 separator("GPU Arithmetic (F32)")
 
-a32 = Insight.to(Insight.cast(Insight.from_data([1.0, 2.0, 3.0], [3]), Insight.float32), 1)
-b32 = Insight.to(Insight.cast(Insight.from_data([4.0, 5.0, 6.0], [3]), Insight.float32), 1)
+a32 = Insight.to(Insight.cast(Insight.from_data([1.0, 2.0, 3.0]), Insight.float32), 1)
+b32 = Insight.to(Insight.cast(Insight.from_data([4.0, 5.0, 6.0]), Insight.float32), 1)
 c32 = a32 * b32 + a32
 println("GPU F32: [1,2,3]*[4,5,6]+[1,2,3] = $(Insight.to(c32, 0))")
 
 # --- GPU reductions ---
 separator("GPU Reductions")
 
-data = Insight.to(Insight.from_data([1.0, 2.0, 3.0, 4.0, 5.0], [5]), 1)
+data = Insight.to(Insight.from_data([1.0, 2.0, 3.0, 4.0, 5.0]), 1)
 println("GPU sum:  $(Insight.sum(data))")
 println("GPU mean: $(Insight.mean(data))")
 println("GPU max:  $(Insight.max(data))")

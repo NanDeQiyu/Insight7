@@ -15,6 +15,7 @@
 #define SOL_NO_EXCEPTIONS 0
 #include <sol/sol.hpp>
 
+#include "insight/c_api/array.h"
 #include "insight/core/array.h"
 #include "insight/core/dtype.h"
 #include "insight/core/place.h"
@@ -154,41 +155,17 @@ static Array from_lua_table(sol::table t) {
   return result;
 }
 
-// Helper: Array __tostring
+// Helper: Array __tostring — delegates to C++ ins::to_string()
 static std::string array_tostring(const Array &a) {
   if (!a.defined())
     return "<insight.Array (undefined)>";
-  std::string s = "<insight.Array shape=(";
-  for (int i = 0; i < a.shape().ndim(); i++) {
-    if (i > 0)
-      s += ", ";
-    s += std::to_string(a.shape().dim(i));
+  char *s = insight_array_tostring(a.layout_ptr());
+  if (s) {
+    std::string result(s);
+    std::free(s);
+    return result;
   }
-  s += ") dtype=";
-  switch (a.dtype()) {
-  case DType::F32:
-    s += "float32";
-    break;
-  case DType::F64:
-    s += "float64";
-    break;
-  case DType::I32:
-    s += "int32";
-    break;
-  case DType::I64:
-    s += "int64";
-    break;
-  case DType::BOOL:
-    s += "bool";
-    break;
-  default:
-    s += "other";
-    break;
-  }
-  s += " place=";
-  s += (a.place().is_gpu() ? "gpu" : "cpu");
-  s += ">";
-  return s;
+  return "<insight.Array (error)>";
 }
 
 // Convert a Lua 1-based slice spec string to C++ 0-based.

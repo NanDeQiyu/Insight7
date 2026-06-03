@@ -5,6 +5,7 @@
 # Mirrors the C++ sndfile_demo without libsndfile dependency.
 
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "bindings", "julia"))
+push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "build", "bindings", "julia"))
 using Insight
 
 function separator(title)
@@ -33,7 +34,7 @@ signal_data = Float32[0.5 * sin(2π * 440 * i / sample_rate) +
                        0.1 * sin(2π * 3141 * i / sample_rate)
                        for i in 0:frames-1]
 
-signal = Insight.from_data(signal_data, [frames])
+signal = Insight.from_data(signal_data)
 println("    Signal: [$(frames)] elements")
 println()
 
@@ -88,7 +89,7 @@ for i in 0:r_bins-1
     end
 end
 
-mask = Insight.from_data(mask_data, [r_bins])
+mask = Insight.from_data(mask_data)
 
 # Apply mask to magnitude of rfft result
 r_real = Insight.real_part(r_spectrum)

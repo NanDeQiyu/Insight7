@@ -30,7 +30,10 @@ def gpu_available():
 
 
 def main():
-    ins.init(["cpu", "cuda"])
+    try:
+        ins.init(["cpu", "cuda"])
+    except Exception:
+        ins.init(["cpu"])
 
     print("Insight7 GPU Transfer Demo (Python)")
 

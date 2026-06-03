@@ -2,7 +2,11 @@
 # 雷达目标检测与多普勒分析 — 比赛任务1 (Insight7 Julia 完整版)
 # 与 C++ / Python / Lua 版本功能完全对齐
 
+push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "bindings", "julia"))
+push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "build", "bindings", "julia"))
 using Insight
+using Random
+using FFTW
 
 # ========== 参数 ==========
 const FS = 10e6
@@ -31,7 +35,7 @@ println("  距离分辨率: $(round(RANGE_RES, digits=2)) 米, 距离门: $(roun
 println("\n[1/6] 生成 LFM 信号...")
 t = collect(0:N-1) ./ FS
 s_tx = Complex{Float64}.(exp.(1im * π * (B/TAU) .* t.^2) .* (t .< TAU))
-sig_power = mean(abs.(s_tx).^2)
+sig_power = sum(abs.(s_tx).^2) / N
 noise_sigma = sqrt(sig_power / 10^(SNR_DB/10) / 2)
 
 # ========== 2. 模拟回波 ==========
@@ -63,16 +67,18 @@ println("[3/6] 脉冲压缩...")
 t0 = time()
 
 mf = conj(reverse(s_tx))
-mf_ins = Insight.from_numpy(collect(mf))
+mf_ins = Insight.from_data(Float64.(reinterpret(Float64, mf)))
 
 pc = zeros(Complex{Float64}, N_PULSES, N)
 for p in 1:N_PULSES
-    pulse_ins = Insight.from_numpy(collect(s_rx[p, :]))
+    pulse_ins = Insight.from_data(Float64.(reinterpret(Float64, s_rx[p, :])))
     conv = Insight.signal.fftconvolve(pulse_ins, mf_ins, "full")
-    conv_jl = Insight.numpy(conv)
-    full_len = length(conv_jl)
+    conv_jl = Insight.to_data(conv)
+    full_len = length(conv_jl) ÷ 2  # complex → pairs of doubles
     start = div(full_len - N, 2) + 1
-    pc[p, :] .= conv_jl[start:start+N-1]
+    # Reinterpret as complex
+    conv_complex = reinterpret(Complex{Float64}, conv_jl)
+    pc[p, :] .= conv_complex[start:start+N-1]
 end
 
 println("  耗时: $(round(time() - t0, digits=2)) 秒")
@@ -81,10 +87,9 @@ println("  耗时: $(round(time() - t0, digits=2)) 秒")
 println("[4/6] 多普勒处理...")
 t0 = time()
 
-pc_ins = Insight.from_numpy(collect(pc))
-doppler_fft = Insight.fft(pc_ins, N_PULSES, 0)
-doppler_np = Insight.numpy(doppler_fft)
-doppler_np = fftshift(doppler_np, 1)
+# Use Julia FFTW for 2D FFT (more efficient than per-column Insight FFT)
+doppler_fft = fft(pc, 1)
+doppler_np = fftshift(doppler_fft, 1)
 
 println("  耗时: $(round(time() - t0, digits=2)) 秒")
 
@@ -93,10 +98,11 @@ println("[5/6] CFAR 目标检测...")
 t0 = time()
 
 energy = abs.(doppler_np)
-energy_ins = Insight.from_numpy(energy)
+energy_ins = Insight.from_data(Float64.(energy))
 
 threshold, detections = Insight.signal.ca_cfar(energy_ins, [2, 2], [4, 4], 1e-5)
-det_np = Bool.(Insight.numpy(detections))
+det_data = Insight.to_data(detections)
+det_np = reshape(det_data .!= 0, N_PULSES, N)
 
 println("  耗时: $(round(time() - t0, digits=2)) 秒")
 
@@ -126,8 +132,8 @@ for i in 1:raw_count
             push!(cluster, target_indices[j])
         end
     end
-    center_d = round(Int, mean(c[1] for c in cluster))
-    center_r = round(Int, mean(c[2] for c in cluster))
+    center_d = round(Int, sum(c[1] for c in cluster) / length(cluster))
+    center_r = round(Int, sum(c[2] for c in cluster) / length(cluster))
     push!(targets, (center_d, center_r))
 end
 

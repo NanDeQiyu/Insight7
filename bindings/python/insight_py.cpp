@@ -9,6 +9,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "insight/c_api/array.h"
 #include "insight/core/array.h"
 #include "insight/core/dtype.h"
 #include "insight/core/place.h"
@@ -254,17 +255,13 @@ static py::array to_numpy(const Array &arr) {
 static std::string array_repr(const Array &a) {
   if (!a.defined())
     return "<insight.Array (undefined)>";
-  std::ostringstream ss;
-  ss << "<insight.Array shape=(";
-  for (int i = 0; i < a.shape().ndim(); i++) {
-    if (i > 0)
-      ss << ", ";
-    ss << a.shape().dim(i);
+  char *s = insight_array_tostring(a.layout_ptr());
+  if (s) {
+    std::string result(s);
+    std::free(s);
+    return result;
   }
-  ss << ") dtype=" << dtype_to_str(a.dtype());
-  ss << " place=" << (a.place().is_gpu() ? "gpu" : "cpu");
-  ss << ">";
-  return ss.str();
+  return "<insight.Array (error)>";
 }
 
 // ============================================================================

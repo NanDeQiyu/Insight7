@@ -78,11 +78,11 @@ function run_fft_gpu()
     x_recon = Insight.to(Insight.ifft(X), 0)  # CPUPlace
 
     recon8 = [string(round(Insight.item(x_recon, i-1), digits=3)) for i in 1:8]
-    println("GPU RFFT->IRFFT roundtrip (first 8): " * join(recon8, " ") * " ...")
+    println("GPU FFT->IFFT roundtrip (first 8): " * join(recon8, " ") * " ...")
 
     x_recon_data = Insight.to_data(x_recon)
-    signal_arr_data = Insight.to_data(signal_arr)
-    max_err = maximum(Base.abs.(Float64.(signal_arr_data) .- Float64.(x_recon_data)))
+    signal_data = Float64.(signal)
+    max_err = maximum(Base.abs.(signal_data .- Float64.(x_recon_data)))
     println("GPU max reconstruction error: $max_err")
 
     # GPU F64 FFT

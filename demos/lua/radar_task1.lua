@@ -3,6 +3,7 @@
 -- 与 C++ / Python / Julia 版本功能完全对齐
 
 local ins = require("insight")
+ins.init({ "cpu" })
 
 -- ========== 参数 ==========
 local FS = 10e6

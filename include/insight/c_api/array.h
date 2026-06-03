@@ -95,6 +95,16 @@ size_t insight_array_nbytes(const InsightArray *array);
  */
 int insight_array_is_contiguous(const InsightArray *array);
 
+/**
+ * @brief Get a human-readable string representation of an Array.
+ *
+ * The caller must free() the returned string. Returns NULL on error.
+ *
+ * @param array Pointer to the Array
+ * @return Heap-allocated C string (caller must free)
+ */
+char *insight_array_tostring(const InsightArray *array);
+
 #ifdef __cplusplus
 }
 #endif

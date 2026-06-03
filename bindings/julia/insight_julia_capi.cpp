@@ -9,6 +9,7 @@
 #include "insight/core/place.h"
 #include "insight/core/shape.h"
 #include "insight/init.h"
+#include "insight/io/print.h"
 #include "insight/ops/cast.h"
 #include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
@@ -143,6 +144,22 @@ int32_t insight_jl_device_type(const Array *arr) {
 void insight_jl_shape(const Array *arr, int64_t *dims_out) {
   for (int i = 0; i < arr->shape().ndim(); i++) {
     dims_out[i] = arr->shape().dim(i);
+  }
+}
+
+// Get human-readable string representation. Caller must free() the result.
+char *insight_jl_array_tostring(const Array *arr) {
+  if (!arr || !arr->defined())
+    return nullptr;
+  try {
+    std::string s = ins::to_string(*arr);
+    char *result = static_cast<char *>(std::malloc(s.size() + 1));
+    if (!result)
+      return nullptr;
+    std::memcpy(result, s.c_str(), s.size() + 1);
+    return result;
+  } catch (...) {
+    return nullptr;
   }
 }
 
@@ -304,6 +321,9 @@ Array *insight_jl_ifft(const Array *x, int32_t has_n, int64_t n) {
 }
 Array *insight_jl_rfft(const Array *x, int32_t has_n, int64_t n) {
   return new Array(fft::rfft(*x, has_n ? n : -1));
+}
+Array *insight_jl_irfft(const Array *x, int64_t n) {
+  return new Array(fft::irfft(*x, n));
 }
 Array *insight_jl_fftfreq(int64_t n, double d) {
   return new Array(fft::fftfreq(n, d));

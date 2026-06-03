@@ -40,7 +40,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        exponential, gamma_dist, beta_dist, binomial_dist, poisson_dist,
        # Additional FFT
        fftshift, ifftshift, next_fast_len, hfft, ihfft,
-       rfft2, irfft2, rfftn, irfftn,
+       rfft, irfft, rfft2, irfft2, rfftn, irfftn,
        # Additional linalg
        lstsq, cond_fn, matrix_rank,
        # Signal
@@ -794,6 +794,34 @@ function ifft(x::InsightArray; n::Union{Int,Nothing}=nothing)::InsightArray
     return arr
 end
 
+"""
+    rfft(x; n=nothing)
+
+Real-input FFT (returns complex output of length n÷2+1).
+"""
+function rfft(x::InsightArray; n::Union{Int,Nothing}=nothing)::InsightArray
+    has_n = n !== nothing ? Int32(1) : Int32(0)
+    nv = n !== nothing ? Int64(n) : Int64(-1)
+    ptr = ccall((:insight_jl_rfft, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32, Int64), x, has_n, nv)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+"""
+    irfft(x, n)
+
+Inverse real FFT (complex input, real output of length n).
+"""
+function irfft(x::InsightArray, n::Int)::InsightArray
+    ptr = ccall((:insight_jl_irfft, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int64), x, Int64(n))
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
 # ============================================================================
 # Random
 # ============================================================================
@@ -1439,18 +1467,27 @@ function Base.show(io::IO, a::InsightArray)
         print(io, "Array(<freed>)")
         return
     end
-    s = shape(a)
-    d = dtype(a)
-    dt_name = d == float64 ? "float64" :
-              d == float32 ? "float32" :
-              d == int32   ? "int32" :
-              d == int64   ? "int64" :
-              d == int8    ? "int8" :
-              d == uint8   ? "uint8" :
-              d == bool    ? "bool" : "dtype($d)"
-    p = device_type(a)
-    place_name = p == GPU ? "gpu" : "cpu"
-    print(io, "Array(shape=$(s), dtype=$dt_name, place=$place_name)")
+    cstr = ccall((:insight_jl_array_tostring, LIB_INSIGHT), Ptr{UInt8},
+                 (Ptr{Cvoid},), a)
+    if cstr != C_NULL
+        s = unsafe_string(cstr)
+        Libc.free(cstr)
+        print(io, s)
+    else
+        # Fallback to metadata-only
+        s = shape(a)
+        d = dtype(a)
+        dt_name = d == float64 ? "float64" :
+                  d == float32 ? "float32" :
+                  d == int32   ? "int32" :
+                  d == int64   ? "int64" :
+                  d == int8    ? "int8" :
+                  d == uint8   ? "uint8" :
+                  d == bool    ? "bool" : "dtype($d)"
+        p = device_type(a)
+        place_name = p == GPU ? "gpu" : "cpu"
+        print(io, "Array(shape=$s, dtype=$dt_name, place=$place_name)")
+    end
 end
 
 function Base.show(io::IO, ::MIME"text/plain", a::InsightArray)

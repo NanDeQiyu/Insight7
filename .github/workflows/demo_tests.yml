@@ -65,6 +65,7 @@ jobs:
           ./demo_basic_ops
           ./demo_linalg
           ./demo_fft
+          ./demo_radar_task1
 
   python-demos:
     name: Python Demos
@@ -108,6 +109,8 @@ jobs:
           python3 demos/python/basic_ops.py
           python3 demos/python/linalg_demo.py
           python3 demos/python/fft_demo.py
+          python3 demos/python/sndfile_demo.py
+          python3 demos/python/radar_task1.py
 
   lua-demos:
     name: Lua Demos
@@ -139,6 +142,7 @@ jobs:
             -DINSIGHT_WITH_CUDA=OFF \
             -DINSIGHT_USE_FFTW3=ON \
             -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_USE_MATPLOT=OFF \
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF \
             -DINSIGHT_BUILD_LUA_BINDING=ON
@@ -152,6 +156,8 @@ jobs:
           luajit demos/lua/basic_ops.lua
           luajit demos/lua/linalg_demo.lua
           luajit demos/lua/fft_demo.lua
+          luajit demos/lua/sndfile_demo.lua
+          luajit demos/lua/radar_task1.lua
 
   julia-demos:
     name: Julia Demos
@@ -186,6 +192,7 @@ jobs:
             -DINSIGHT_WITH_CUDA=OFF \
             -DINSIGHT_USE_FFTW3=ON \
             -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_USE_MATPLOT=OFF \
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF \
             -DINSIGHT_BUILD_JULIA_BINDING=ON
@@ -199,3 +206,5 @@ jobs:
           julia demos/julia/basic_ops.jl
           julia demos/julia/linalg_demo.jl
           julia demos/julia/fft_demo.jl
+          julia demos/julia/sndfile_demo.jl
+          julia demos/julia/radar_task1.jl

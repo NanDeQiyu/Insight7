@@ -3,7 +3,9 @@
 // 用 Insight7 C++ API 复刻 numpy+scipy 的完整处理流程
 #include "insight/insight.h"
 #include "insight/ops/fft.h"
+#ifdef INSIGHT_USE_MATPLOT
 #include "insight/ops/plot.h"
+#endif
 #include "insight/ops/signal.h"
 #include <algorithm>
 #include <chrono>
@@ -278,6 +280,7 @@ static Task1Result run_task1(Place place) {
 }
 
 // ========== 绘图 ==========
+#ifdef INSIGHT_USE_MATPLOT
 static void save_plots(const Task1Result &result, const char *prefix) {
   separator("绘图");
 
@@ -338,6 +341,7 @@ static void save_plots(const Task1Result &result, const char *prefix) {
   plot::save(path2);
   printf("  已保存: %s\n", path2.c_str());
 }
+#endif // INSIGHT_USE_MATPLOT
 
 int main() {
   ins::init({"cpu"});
@@ -379,7 +383,9 @@ int main() {
     printf("  → 距离: %7.2f 米, 多普勒: %8.1f Hz\n", range_m, doppler_bins[d]);
   }
 
+#ifdef INSIGHT_USE_MATPLOT
   save_plots(cpu, "task1_cpu");
+#endif
 
   // GPU
   if (has_gpu) {
@@ -398,7 +404,9 @@ int main() {
              doppler_bins[d]);
     }
 
+#ifdef INSIGHT_USE_MATPLOT
     save_plots(gpu, "task1_gpu");
+#endif
 
     separator("一致性验证");
     printf("  CPU 目标数: %zu, GPU 目标数: %zu\n", cpu.targets.size(),
