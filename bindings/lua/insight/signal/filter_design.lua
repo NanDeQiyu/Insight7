@@ -28,12 +28,16 @@ end)
 --- Design a FIR filter using the window method.
 -- @int numtaps Number of filter taps.
 -- @number cutoff Cutoff frequency (normalized, 0 to 1).
--- @string[opt="lowpass"] type Filter type: 'lowpass', 'highpass', 'bandpass', 'bandstop'.
--- @bool[opt=false] pass_zero If true, the DC gain is nonzero at frequency 0.
+-- @string[opt="hamming"] window Window function name: 'hamming', 'hann', 'blackman', etc.
+-- @string[opt="lowpass"] pass_zero Filter type: 'lowpass', 'highpass', 'bandpass', 'bandstop', or boolean.
+-- @bool[opt=true] scale If true, scale coefficients.
 -- @treturn Array FIR filter coefficients.
-M.firwin = _wrap({ "numtaps", "cutoff", "type", "pass_zero" }, function(numtaps, cutoff, type, pass_zero)
-  return sig.firwin(numtaps, cutoff, type or "lowpass", pass_zero or false)
-end)
+M.firwin = _wrap(
+  { "numtaps", "cutoff", "window", "pass_zero", "scale" },
+  function(numtaps, cutoff, window, pass_zero, scale)
+    return sig.firwin(numtaps, cutoff, window, pass_zero, scale)
+  end
+)
 
 --- Design a FIR filter using frequency sampling.
 -- @int numtaps Number of filter taps.

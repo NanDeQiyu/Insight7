@@ -121,7 +121,7 @@ jobs:
           export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
           export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
-          cd tests/cpu/lua && busted --pattern="test_.+%.lua" .
+          cd tests/cpu/lua && busted --no-auto-insulate --pattern="test_.+%.lua" .
 
   lua53:
     name: Lua Binding (Lua 5.3)
@@ -172,7 +172,7 @@ jobs:
           export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
           export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
-          cd tests/cpu/lua && busted --lua=lua5.3 --pattern="test_.+%.lua" .
+          cd tests/cpu/lua && busted --lua=lua5.3 --no-auto-insulate --pattern="test_.+%.lua" .
 
   julia:
     name: Julia Binding

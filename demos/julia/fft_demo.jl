@@ -14,8 +14,7 @@ end
 
 function gpu_available()
     try
-        Insight.load_backend("cuda")
-        return true
+        return Insight.load_backend("cuda")
     catch
         return false
     end

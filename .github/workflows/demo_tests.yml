@@ -41,7 +41,8 @@ jobs:
             liblapacke-dev \
             libomp-dev \
             cmake \
-            build-essential
+            build-essential \
+            gnuplot-nox
 
       - name: Configure CMake
         run: |
@@ -52,6 +53,7 @@ jobs:
             -DINSIGHT_WITH_CUDA=OFF \
             -DINSIGHT_USE_FFTW3=ON \
             -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_USE_MATPLOT=ON \
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF
 

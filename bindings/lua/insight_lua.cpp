@@ -608,6 +608,26 @@ extern "C" int luaopen__insight(lua_State *L) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
     return argmin(x, ax, keepdims.value_or(false));
   };
+  m["any"] = [](const Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return any(x, ax, keepdims.value_or(false));
+  };
+  m["all"] = [](const Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return all(x, ax, keepdims.value_or(false));
+  };
+  m["var"] = [](const Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims, sol::optional<int> ddof) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return var(x, ax, keepdims.value_or(false), ddof.value_or(0));
+  };
+  m["std"] = [](const Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims, sol::optional<int> ddof) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return ins::std(x, ax, keepdims.value_or(false), ddof.value_or(0));
+  };
   m["cumsum"] = [](const Array &x, int axis) { return cumsum(x, axis); };
   m["cumprod"] = [](const Array &x, int axis) { return cumprod(x, axis); };
   m["cummax"] = [](const Array &x, int axis) { return cummax(x, axis); };
@@ -1165,7 +1185,9 @@ extern "C" int luaopen__insight(lua_State *L) {
     sig["bark2hz"] = &signal::bark2hz;
 
     // --- Demod ---
-    sig["fm_demod"] = &signal::fm_demod;
+    sig["fm_demod"] = [](const Array &x, sol::optional<int> axis) {
+      return signal::fm_demod(x, axis.value_or(-1));
+    };
 
     // --- Peak Finding ---
     sig["argrelextrema"] = &signal::argrelextrema;
@@ -1173,11 +1195,20 @@ extern "C" int luaopen__insight(lua_State *L) {
     sig["argrelmin"] = &signal::argrelmin;
 
     // --- Radar ---
-    sig["pulse_compression"] = &signal::pulse_compression;
+    sig["pulse_compression"] = [](const Array &x, const Array &tpl,
+                                  sol::optional<bool> normalize,
+                                  sol::optional<std::string> window,
+                                  sol::optional<int64_t> nfft) {
+      return signal::pulse_compression(x, tpl, normalize.value_or(false),
+                                       window.value_or(""), nfft.value_or(0));
+    };
     sig["pulse_doppler"] = &signal::pulse_doppler;
     sig["cfar_alpha"] = &signal::cfar_alpha;
     sig["ca_cfar"] = &signal::ca_cfar;
-    sig["mvdr"] = &signal::mvdr;
+    sig["mvdr"] = [](const Array &x, const Array &sv,
+                     sol::optional<bool> calc_cov) {
+      return signal::mvdr(x, sv, calc_cov.value_or(true));
+    };
     sig["ambgfun"] = &signal::ambgfun;
 
     // --- Signal I/O ---
@@ -1214,13 +1245,23 @@ extern "C" int luaopen__insight(lua_State *L) {
 
     // Top-level aliases
     sig["convolve"] = &convolve;
-    sig["unwrap"] = &unwrap;
+    sig["unwrap"] = [](const Array &p, sol::optional<int> axis,
+                       sol::optional<double> discont,
+                       sol::optional<double> period) {
+      return unwrap(p, axis.value_or(-1), discont.value_or(M_PI),
+                    period.value_or(2 * M_PI));
+    };
     sig["sinc"] = &sinc;
   }
 
   // Top-level aliases (scipy-compatible)
   m["convolve"] = &convolve;
-  m["unwrap"] = &unwrap;
+  m["unwrap"] = [](const Array &p, sol::optional<int> axis,
+                   sol::optional<double> discont,
+                   sol::optional<double> period) {
+    return unwrap(p, axis.value_or(-1), discont.value_or(M_PI),
+                  period.value_or(2 * M_PI));
+  };
   m["sinc"] = &sinc;
 
   // ====================================================================
@@ -1464,7 +1505,11 @@ extern "C" int luaopen__insight(lua_State *L) {
     return randint(low, high, Shape(table_to_shape(shape)),
                    dtype.value_or(DType::I64), place.value_or(get_device()));
   };
-  m["randperm"] = &randperm;
+  m["randperm"] = [](int64_t n, sol::optional<DType> dtype,
+                     sol::optional<Place> place) {
+    return randperm(n, dtype.value_or(DType::I64),
+                    place.value_or(get_device()));
+  };
   m["seed"] = [](uint64_t s) { return seed(s); };
   m["get_seed"] = []() { return get_seed(); };
   m["rand_like"] = [](const Array &x) { return rand_like(x); };
@@ -1500,7 +1545,10 @@ extern "C" int luaopen__insight(lua_State *L) {
   // ====================================================================
   // Cast
   // ====================================================================
-  m["cast"] = &cast;
+  m["cast"] = [](const Array &input, DType target_dtype,
+                 sol::optional<bool> copy) {
+    return cast(input, target_dtype, copy.value_or(true));
+  };
 
   // ====================================================================
   // Indexing
@@ -1514,8 +1562,14 @@ extern "C" int luaopen__insight(lua_State *L) {
 
   m["take"] = &take;
   m["nonzero"] = &nonzero;
-  m["argsort"] = &argsort;
-  m["sort"] = &sort;
+  m["argsort"] = [](const Array &x, sol::optional<int> axis,
+                    sol::optional<bool> descending) {
+    return argsort(x, axis.value_or(-1), descending.value_or(false));
+  };
+  m["sort"] = [](const Array &x, sol::optional<int> axis,
+                 sol::optional<bool> descending) {
+    return sort(x, axis.value_or(-1), descending.value_or(false));
+  };
   m["unique"] = [](const Array &x, sol::optional<bool> return_indices,
                    sol::optional<bool> return_inverse,
                    sol::optional<bool> return_counts) {

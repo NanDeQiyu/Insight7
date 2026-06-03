@@ -28,14 +28,13 @@ end)
 
 --- Return a Gaussian pulse.
 -- @number t Time array or scalar.
--- @number[opt=0] fc Center frequency.
+-- @number[opt=1000] fc Center frequency in Hz.
 -- @number[opt=1.0] bw Fractional bandwidth.
 -- @number[opt=6] bwr Bandwidth reference level in dB.
 -- @number[opt=-60] tpr Pulse reference level in dB.
--- @number[opt=1] retenv If true, return the envelope.
 -- @treturn Array Gaussian pulse.
-M.gausspulse = _wrap({ "t", "fc", "bw", "bwr", "tpr", "retenv" }, function(t, fc, bw, bwr, tpr, retenv)
-  return sig.gausspulse(t, fc or 0, bw or 1.0, bwr or 6, tpr or -60, retenv or 1)
+M.gausspulse = _wrap({ "t", "fc", "bw", "bwr", "tpr" }, function(t, fc, bw, bwr, tpr)
+  return sig.gausspulse(t, fc, bw, bwr, tpr)
 end)
 
 --- Return a chirp signal.

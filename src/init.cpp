@@ -65,8 +65,12 @@ using LibHandle = void *;
 static LibHandle load_library(const char *path) {
   LibHandle handle = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
   if (!handle) {
-    fprintf(stderr, "[insight] Failed to load library '%s': %s\n", path,
-            dlerror());
+    // Only warn for CPU backend; GPU backend absence is expected on CPU-only
+    // machines
+    if (strstr(path, "cuda") == nullptr && strstr(path, "gpu") == nullptr) {
+      fprintf(stderr, "[insight] Failed to load library '%s': %s\n", path,
+              dlerror());
+    }
   }
   return handle;
 }

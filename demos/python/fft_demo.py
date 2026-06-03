@@ -41,14 +41,14 @@ def run_fft_cpu():
     signal = signal.astype(np.float32)
 
     x = ins.from_numpy(signal)
-    print(f"Input signal (first 8): {x.numpy()[:8]}")
+    print(f"Input signal (first 8): {x[:8]}")
 
     # RFFT -> IRFFT roundtrip
     X = ins.rfft(x)
     print(f"RFFT output length: {X.numel()} (complex)")
 
     x_recon = ins.irfft(X, n=n)
-    print(f"Reconstructed signal (first 8): {x_recon.numpy()[:8]}")
+    print(f"Reconstructed signal (first 8): {x_recon[:8]}")
 
     # Check reconstruction error
     max_err = np.max(np.abs(signal - x_recon.numpy()))
@@ -81,7 +81,7 @@ def run_fft_gpu():
     X = ins.rfft(x)
     x_recon = ins.irfft(X, n=n).to(ins.CPUPlace())
 
-    print(f"GPU RFFT->IRFFT roundtrip (first 8): {x_recon.numpy()[:8]}")
+    print(f"GPU RFFT->IRFFT roundtrip (first 8): {x_recon[:8]}")
     max_err = np.max(np.abs(signal - x_recon.numpy()))
     print(f"GPU max reconstruction error: {max_err:.6e}")
 

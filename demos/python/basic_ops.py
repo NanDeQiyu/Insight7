@@ -37,10 +37,10 @@ def main():
     print(f"ones(3,4) shape=({s[0]},{s[1]}) dtype={a.dtype()}")
 
     b = ins.arange(12, dtype=ins.float64).reshape(ins.Shape([3, 4]))
-    print(f"arange(0,12).reshape(3,4):\n{b.numpy()}")
+    print(f"arange(0,12).reshape(3,4):\n{b}")
 
     c = ins.eye(4, dtype=ins.float64)
-    print(f"eye(4) F64:\n{c.numpy()}")
+    print(f"eye(4) F64:\n{c}")
 
     # --- Multi-dtype arithmetic ---
     separator("Multi-Dtype Arithmetic")
@@ -69,26 +69,26 @@ def main():
     m = ins.from_array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
     row = ins.from_array([[10.0, 20.0, 30.0]])
     result = m + row
-    print(f"Matrix + Row broadcast:\n{result.numpy()}")
+    print(f"Matrix + Row broadcast:\n{result}")
 
     # --- Unary operations ---
     separator("Unary Operations")
 
     x = ins.from_array([-2.0, -1.0, 0.0, 1.0, 2.0])
-    print(f"x:      {x.numpy()}")
-    print(f"abs(x): {ins.abs(x).numpy()}")
-    print(f"sin(x): {ins.sin(x).numpy()}")
-    print(f"exp(x): {ins.exp(x).numpy()}")
+    print(f"x:      {x}")
+    print(f"abs(x): {ins.abs(x)}")
+    print(f"sin(x): {ins.sin(x)}")
+    print(f"exp(x): {ins.exp(x)}")
 
     # --- Reductions ---
     separator("Reductions")
 
     data = ins.from_array([1.0, 2.0, 3.0, 4.0, 5.0])
-    print(f"data:  {data.numpy()}")
-    print(f"sum:   {ins.sum(data).numpy()}")
-    print(f"mean:  {ins.mean(data).numpy()}")
-    print(f"max:   {ins.max(data).numpy()}")
-    print(f"min:   {ins.min(data).numpy()}")
+    print(f"data:  {data}")
+    print(f"sum:   {ins.sum(data)}")
+    print(f"mean:  {ins.mean(data)}")
+    print(f"max:   {ins.max(data)}")
+    print(f"min:   {ins.min(data)}")
 
     print("\nDone!")
 

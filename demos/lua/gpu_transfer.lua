@@ -10,10 +10,10 @@ local function separator(title)
 end
 
 local function gpu_available()
-  local ok, _ = pcall(function()
-    ins.load_backend("cuda")
+  local ok, result = pcall(function()
+    return ins.load_backend("cuda")
   end)
-  return ok
+  return ok and result
 end
 
 local ok = pcall(ins.init, { "cpu", "cuda" })

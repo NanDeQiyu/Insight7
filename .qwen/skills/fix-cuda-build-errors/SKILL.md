@@ -1,8 +1,8 @@
 ---
 name: fix-cuda-build-errors
-description: Common fixes for CUDA kernel build errors (atomicAdd, void*, missing headers).
+description: Common fixes for CUDA kernel build errors (atomicAdd, void*, missing headers, half-precision).
 source: auto-skill
-extracted_at: '2026-05-29T07:30:49.130Z'
+extracted_at: '2026-06-03T04:29:25.212Z'
 ---
 
 # Fix Common CUDA Build Errors
@@ -45,7 +45,67 @@ if constexpr (std::is_same_v<W, double>) {
 
 Also check `scatter_reduce.cu` and any other kernel that uses `atomicAdd` with a template type that could be `double`.
 
-## 2. `void` type incompatible with `void*`
+## 2. Half-Precision (`__half` / `__nv_bfloat16`) Compilation Errors (CUDA 11.8)
+
+### Ambiguous conversion for `__half`
+**Error**: `more than one conversion function from "const __half" to a built-in type applies`
+
+**Cause**: CUDA 11.8's `__half` has multiple implicit conversion operators. Using `+`/`-`/`*`/`/` with template `kernel<__half>` triggers ambiguity.
+
+**Solution**: Define device helpers in `common.cuh` and use explicit kernel specializations:
+```cpp
+// common.cuh — CUDA 11.8 only has __hadd for __half
+__device__ __forceinline__ __half hadd(__half a, __half b) { return __hadd(a, b); }
+__device__ __forceinline__ __half hsub(__half a, __half b) {
+  return __float2half(__half2float(a) - __half2float(b));
+}
+__device__ __forceinline__ __half hmul(__half a, __half b) {
+  return __float2half(__half2float(a) * __half2float(b));
+}
+__device__ __forceinline__ __half hdiv(__half a, __half b) {
+  return __float2half(__half2float(a) / __half2float(b));
+}
+```
+
+Then add explicit specializations instead of template instantiation:
+```cpp
+__global__ void add_f16_kernel(const __half *a, const __half *b, __half *out, ...) {
+  out[i] = hadd(a[i], b[i]);  // NOT a[i] + b[i]
+}
+// In wrapper: case INSIGHT_DTYPE_F16: add_f16_kernel<<<...>>>(...);
+```
+
+### Undefined `__half` / `__nv_bfloat16`
+**Error**: `identifier "__half" is undefined`
+
+**Cause**: Missing `#include <cuda_fp16.h>` / `<cuda_bf16.h>`.
+
+**Solution**: Add to `common.cuh` (all elementwise files include it):
+```cpp
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+```
+
+### `__nv_bfloat16` has no native arithmetic on CUDA 11.8
+**Error**: `identifier "__hsub" is undefined` (for bfloat16)
+
+**Cause**: CUDA 11.8 has NO native bfloat16 arithmetic intrinsics.
+
+**Solution**: Always cast through float:
+```cpp
+__device__ __forceinline__ __nv_bfloat16 hadd(__nv_bfloat16 a, __nv_bfloat16 b) {
+  return __float2bfloat16(__bfloat162float(a) + __bfloat162float(b));
+}
+```
+
+### Missing `#include <vector>` in `.cu` files
+**Error**: `namespace "std" has no member "vector"`
+
+**Cause**: CUDA `.cu` files don't implicitly include STL headers.
+
+**Solution**: Always add `#include <vector>` when using `std::vector` in `.cu` files.
+
+## 3. `void` type incompatible with `void*`
 **Error**: `argument of type "void" is incompatible with parameter of type "void *"` or `a value of type "void" cannot be used to initialize an entity of type "void *"`.
 
 **Cause**: Usually happens when calling `cudaMemcpy` or similar functions with the result of a function that returns `void`, or passing a `void` value where a pointer is expected. In `std::vector::data()`, this might happen if the compiler is confused or the include is missing.
@@ -58,7 +118,7 @@ Also check `scatter_reduce.cu` and any other kernel that uses `atomicAdd` with a
    ```
 3. **Use Raw Pointers**: If `std::vector` causes issues in `.cu` files, switch to raw `new/delete` or `cudaMallocHost` as a fallback.
 
-## 3. Undefined `is_nan_device` or similar helpers
+## 4. Undefined `is_nan_device` or similar helpers
 **Error**: `identifier "is_nan_device" is undefined`.
 
 **Cause**: Helper functions defined in one file but used in another without a shared header.
@@ -67,7 +127,7 @@ Also check `scatter_reduce.cu` and any other kernel that uses `atomicAdd` with a
 - Move the helper to a shared header (e.g., `backends/cuda/kernels/reduction/common.cuh`).
 - Include this header in all files that need it.
 
-## 4. Template Artifacts (Double Braces `{{`)
+## 5. Template Artifacts (Double Braces `{{`)
 **Error**: `expected a declaration` or syntax errors in `.cu` files.
 
 **Cause**: Code generated from templates (like Python's Jinja2 or similar) often leaves double braces `{{` instead of single braces `{`, which is invalid C++ syntax.

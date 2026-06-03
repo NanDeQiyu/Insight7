@@ -96,8 +96,8 @@ def main() -> None:
     print()
     separator("[5] Signal statistics")
 
-    energy_orig = float(ins.sum(ins.mul(signal, signal)).numpy().item())
-    energy_filt = float(ins.sum(ins.mul(filtered, filtered)).numpy().item())
+    energy_orig = float(str(ins.sum(ins.mul(signal, signal))))
+    energy_filt = float(str(ins.sum(ins.mul(filtered, filtered))))
 
     print(f"    Energy (original): {energy_orig:.4f}")
     print(f"    Energy (filtered): {energy_filt:.4f}")

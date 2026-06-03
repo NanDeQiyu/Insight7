@@ -63,7 +63,7 @@ describe("Random CPU Tests", function()
   end)
 
   it("gamma shape", function()
-    local a = ins.gamma(2.0, { 100 }, ins.float64)
+    local a = ins.gamma(2.0, 1.0, { 100 }, ins.float64)
     assert.is_not_nil(a)
     assert.are.equal(100, a.numel)
   end)

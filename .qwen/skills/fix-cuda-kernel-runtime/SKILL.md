@@ -29,6 +29,27 @@ in both `REGISTER_GPU_KERNEL` name and the frontend's `ops().launch("signal_<op>
 
 **Cause**: The CUDA kernel's `switch(dtype)` block and `REGISTER_GPU_KERNEL` macros don't cover all dtypes that the CPU version supports. Common missing dtypes: `BOOL`, `U8`, `I8`.
 
+## 1b. Premature GPU Transfer Back (CmplxSort pattern)
+
+**Symptom**: CUDA test segfaults on `data<T>()` access, but CPU test passes.
+
+**Cause**: A function transfers input to CPU, does computation there, then transfers result back to GPU with `sorted.to(p.place())`. The test then calls `sorted.data<double>()` which dereferences a device pointer on the host.
+
+**Fix**: Remove the transfer-back. If computation is CPU-only, return CPU result:
+```cpp
+// ❌ WRONG — transfers back to GPU, test dereferences device pointer
+Array sorted = take(p_cpu, sort_idx);
+if (p.place().kind() != DeviceKind::CPU)
+  sorted = sorted.to(p.place());
+return sorted;
+
+// ✅ CORRECT — return CPU result
+Array sorted = take(p_cpu, sort_idx);
+return sorted;
+```
+
+**Why**: The caller (test or frontend) handles device placement. The function should return results on the device where they were computed.
+
 **Fix**:
 1. Check CPU kernel registrations: `grep "REGISTER_CPU_KERNEL" backends/cpu/kernels/<module>/<op>.cpp`
 2. Check CUDA kernel registrations: `grep "REGISTER_GPU_KERNEL" backends/cuda/kernels/<module>/<op>.cu`
