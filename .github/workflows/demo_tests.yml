@@ -57,6 +57,15 @@ jobs:
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF
 
+      - name: Force recompile matplotplusplus
+        run: |
+          # Touch gnuplot.cpp to force recompile with unknown terminal blacklist fix.
+          # For FetchContent builds, source is in build/_deps/.
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          # For local third_party/ clone (if present).
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
 
@@ -103,6 +112,7 @@ jobs:
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF \
             -DINSIGHT_BUILD_PYTHON_BINDING=ON
+          find _deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           cmake --build . -j$(nproc)
 
       - name: Run Python demos
@@ -149,6 +159,7 @@ jobs:
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF \
             -DINSIGHT_BUILD_LUA_BINDING=ON
+          find _deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           cmake --build . -j$(nproc)
 
       - name: Run Lua demos
@@ -199,6 +210,7 @@ jobs:
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF \
             -DINSIGHT_BUILD_JULIA_BINDING=ON
+          find _deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           cmake --build . -j$(nproc)
 
       - name: Run Julia demos

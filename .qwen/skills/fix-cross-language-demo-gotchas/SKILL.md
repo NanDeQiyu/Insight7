@@ -2,7 +2,7 @@
 name: fix-cross-language-demo-gotchas
 description: Common issues in Python/Lua/Julia demos — numel/item/tostring/init patterns
 source: auto-skill
-extracted_at: '2026-06-02T06:00:00.000Z'
+extracted_at: '2026-06-03T15:00:00.000Z'
 ---
 
 # Cross-Language Demo Gotchas

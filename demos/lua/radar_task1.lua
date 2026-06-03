@@ -206,7 +206,9 @@ for p = 1, N_PULSES do
 end
 local energy_arr = ins.from_table(energy_2d)
 
-local threshold, detections = ins.signal.ca_cfar(energy_arr, { 2, 2 }, { 4, 4 }, 1e-5)
+local cfar_result = ins.signal.ca_cfar(energy_arr, { 2, 2 }, { 4, 4 }, 1e-5)
+local threshold = cfar_result[1]
+local detections = cfar_result[2]
 
 local det = {}
 for idx = 0, detections.numel - 1 do

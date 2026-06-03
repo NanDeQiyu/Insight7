@@ -56,9 +56,17 @@ describe("Signal Radar CPU Tests", function()
     assert.is_true(alpha1 < alpha2)
   end)
 
-  -- Note: ca_cfar requires std::vector<int> args which need special binding.
   -- Note: mvdr requires well-conditioned covariance (may fail with certain inputs).
   -- Note: ambgfun requires complex-valued input.
+
+  it("ca_cfar_1d", function()
+    local data = ins.from_table({ 1.0, 1.0, 1.0, 100.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 })
+    local result = ins.signal.ca_cfar(data, { 2 }, { 3 }, 1e-3)
+    assert.is_not_nil(result)
+    assert.are.equal(2, #result)
+    assert.are.equal(10, result[1].numel)
+    assert.are.equal(10, result[2].numel)
+  end)
 
   it("mvdr_square_input", function()
     -- Use square input to avoid singular covariance issues

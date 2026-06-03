@@ -1255,7 +1255,22 @@ extern "C" int luaopen__insight(lua_State *L) {
     };
     sig["pulse_doppler"] = &signal::pulse_doppler;
     sig["cfar_alpha"] = &signal::cfar_alpha;
-    sig["ca_cfar"] = &signal::ca_cfar;
+    sig["ca_cfar"] = [](sol::this_state L, const Array &data,
+                        sol::table guard_tbl, sol::table ref_tbl,
+                        sol::optional<double> pfa) {
+      std::vector<int> guard, ref;
+      for (auto &kv : guard_tbl)
+        guard.push_back(kv.second.as<int>());
+      for (auto &kv : ref_tbl)
+        ref.push_back(kv.second.as<int>());
+      auto result =
+          signal::ca_cfar(data, guard, ref, pfa.value_or(1e-3));
+      sol::state_view lua(L);
+      sol::table ret = lua.create_table();
+      ret[1] = result.first;
+      ret[2] = result.second;
+      return ret;
+    };
     sig["mvdr"] = [](const Array &x, const Array &sv,
                      sol::optional<bool> calc_cov) {
       return signal::mvdr(x, sv, calc_cov.value_or(true));

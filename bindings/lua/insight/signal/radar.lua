@@ -37,12 +37,12 @@ end)
 
 --- Apply Cell-Averaging CFAR detection.
 -- @tparam Array data Input signal array.
--- @int guard_cells Number of guard cells per side.
--- @int ref_cells Number of reference cells per side.
+-- @table guard_cells Guard cells per dimension, e.g. {2} or {2, 2}.
+-- @table ref_cells Reference cells per dimension, e.g. {3} or {3, 3}.
 -- @number[opt=1e-3] pfa Probability of false alarm.
 -- @treturn table Pair of {threshold, detections} arrays.
 M.ca_cfar = _wrap({ "data", "guard_cells", "ref_cells", "pfa" }, function(data, guard_cells, ref_cells, pfa)
-  return sig.ca_cfar(data, { guard_cells }, { ref_cells }, pfa or 1e-3)
+  return sig.ca_cfar(data, guard_cells, ref_cells, pfa or 1e-3)
 end)
 
 --- Perform MVDR (Capon) beamforming.

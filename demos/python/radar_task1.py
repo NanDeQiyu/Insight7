@@ -132,83 +132,48 @@ def print_result(r):
 
 
 def save_plots(r, prefix):
+    """Save radar analysis plots using Insight7 plot API (no matplotlib)."""
     try:
-        import matplotlib
+        import insight.plot as plt
 
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-        # 距离-多普勒谱
-        ax = axes[0, 0]
         db = 20 * np.log10(r["energy"] + 1e-8)
-        ax.imshow(
-            db,
-            aspect="auto",
-            cmap="inferno",
-            extent=[
-                r["range_bins"][0],
-                r["range_bins"][-1],
-                r["doppler_bins"][-1],
-                r["doppler_bins"][0],
-            ],
-        )
-        ax.set_title("Range-Doppler Map")
-        ax.set_xlabel("Range [m]")
-        ax.set_ylabel("Doppler [Hz]")
-        plt.colorbar(ax.images[0], ax=ax, label="dB")
 
-        # CFAR 检测叠加
-        ax = axes[0, 1]
-        ax.imshow(
-            db,
-            aspect="auto",
-            cmap="inferno",
-            extent=[
-                r["range_bins"][0],
-                r["range_bins"][-1],
-                r["doppler_bins"][-1],
-                r["doppler_bins"][0],
-            ],
-        )
-        for d, rr in r["targets"]:
-            if 0 <= d < len(r["doppler_bins"]) and 0 <= rr < len(r["range_bins"]):
-                ax.scatter(
-                    r["range_bins"][rr],
-                    r["doppler_bins"][d],
-                    c="red",
-                    s=100,
-                    marker="x",
-                    linewidths=3,
-                )
-        ax.set_title("CFAR Detection")
-        ax.set_xlabel("Range [m]")
-        ax.set_ylabel("Doppler [Hz]")
+        # Figure 1: Range-Doppler Map
+        plt.figure()
+        plt.imshow(ins.from_numpy(db.astype(np.float64)))
+        plt.colorbar()
+        plt.title("Range-Doppler Map")
+        plt.xlabel("Range Bin")
+        plt.ylabel("Doppler Bin")
+        plt.save(f"{prefix}_range_doppler.png")
+        print(f"  已保存: {prefix}_range_doppler.png")
 
-        # 多普勒切面
-        max_r = np.argmax(np.max(r["energy"], axis=0))
-        ax = axes[1, 0]
-        ax.plot(r["doppler_bins"], r["energy"][:, max_r])
-        ax.set_title(f"Doppler Spectrum (range bin {max_r})")
-        ax.set_xlabel("Doppler [Hz]")
-        ax.set_ylabel("Amplitude")
-        ax.grid(True, alpha=0.3)
+        # Figure 2: Doppler Spectrum (max range bin)
+        max_r = int(np.argmax(np.max(r["energy"], axis=0)))
+        doppler_arr = ins.from_numpy(r["doppler_bins"].astype(np.float64))
+        ds_arr = ins.from_numpy(r["energy"][:, max_r].astype(np.float64))
+        plt.figure()
+        plt.plot(doppler_arr, ds_arr)
+        plt.title(f"Doppler Spectrum (range bin {max_r})")
+        plt.xlabel("Doppler [Hz]")
+        plt.ylabel("Amplitude")
+        plt.grid(True)
+        plt.save(f"{prefix}_doppler_slice.png")
+        print(f"  已保存: {prefix}_doppler_slice.png")
 
-        # 距离切面
-        max_d = np.argmax(np.max(r["energy"], axis=1))
-        ax = axes[1, 1]
-        ax.plot(r["range_bins"], r["energy"][max_d, :])
-        ax.set_title(f"Range Profile (doppler bin {max_d})")
-        ax.set_xlabel("Range [m]")
-        ax.set_ylabel("Amplitude")
-        ax.grid(True, alpha=0.3)
+        # Figure 3: Range Profile (max doppler bin)
+        max_d = int(np.argmax(np.max(r["energy"], axis=1)))
+        range_arr = ins.from_numpy(r["range_bins"].astype(np.float64))
+        rp_arr = ins.from_numpy(r["energy"][max_d, :].astype(np.float64))
+        plt.figure()
+        plt.plot(range_arr, rp_arr)
+        plt.title(f"Range Profile (doppler bin {max_d})")
+        plt.xlabel("Range [m]")
+        plt.ylabel("Amplitude")
+        plt.grid(True)
+        plt.save(f"{prefix}_range_profile.png")
+        print(f"  已保存: {prefix}_range_profile.png")
 
-        plt.tight_layout()
-        path = f"{prefix}.png"
-        plt.savefig(path, dpi=150)
-        plt.close()
-        print(f"  已保存: {path}")
     except Exception as e:
         print(f"  绘图失败: {e}")
 

@@ -396,7 +396,9 @@ int main() {
   try {
     save_plots(cpu, "task1_cpu");
   } catch (const std::exception &e) {
-    printf("[Warning] Plotting failed: %s\n", e.what());
+    printf("[Warning] CPU plotting failed: %s\n", e.what());
+  } catch (...) {
+    printf("[Warning] CPU plotting failed (unknown error)\n");
   }
 #endif
 
@@ -421,7 +423,9 @@ int main() {
     try {
       save_plots(gpu, "task1_gpu");
     } catch (const std::exception &e) {
-      printf("[Warning] Plotting failed: %s\n", e.what());
+      printf("[Warning] GPU plotting failed: %s\n", e.what());
+    } catch (...) {
+      printf("[Warning] GPU plotting failed (unknown error)\n");
     }
 #endif
 

@@ -2,7 +2,7 @@
 name: fix-lua-binding-api-gotchas
 description: Common Lua binding API issues — comparison operators, item/get, __tostring, scalar inputs
 source: auto-skill
-extracted_at: '2026-06-02T06:00:00.000Z'
+extracted_at: '2026-06-03T15:00:00.000Z'
 ---
 
 # Lua Binding API Gotchas
@@ -232,4 +232,82 @@ ins.signal.write_bin(data_array, "/tmp/out.bin")
 ins.signal.write_bin("/tmp/out.bin", data_array)
 -- append defaults to true; pass false to overwrite:
 ins.signal.write_bin("/tmp/out.bin", data_array, false)
+```
+
+## 11. `from_table` requires 1-based indexing
+
+Lua tables with 0-based keys are SILENTLY ignored by `from_table`. Both the
+Lua wrapper (`#tbl`, `for i = 1, len`) and C++ `flatten_lua_table` (`for i=1 to t.size()`)
+only read 1-based keys.
+
+```lua
+-- ❌ WRONG — 0-based loop, from_table skips index 0
+local t = {}
+for i = 0, N-1 do
+  t[i] = math.sin(i)  -- t[0] is ignored!
+end
+local arr = ins.from_table(t)  -- numel = N-1, missing first element
+
+-- ✅ CORRECT — 1-based loop
+local t = {}
+for i = 1, N do
+  t[i] = math.sin(i-1)
+end
+local arr = ins.from_table(t)  -- numel = N
+```
+
+For 2D arrays, use nested tables:
+```lua
+-- ❌ WRONG — flat table, from_table sees 1D
+local flat = {}
+for p = 0, N_PULSES-1 do
+  for i = 0, N-1 do
+    flat[p*N + i + 1] = data[p][i]
+  end
+end
+local arr = ins.from_table(flat)  -- shape {N_PULSES*N}, not {N_PULSES, N}!
+
+-- ✅ CORRECT — nested table
+local nested = {}
+for p = 1, N_PULSES do
+  nested[p] = {}
+  for i = 1, N do
+    nested[p][i] = data[p-1][i-1]
+  end
+end
+local arr = ins.from_table(nested)  -- shape {N_PULSES, N}
+```
+
+**Why:** Lua tables can have 0-based keys, but `from_table` and `#tbl` ignore them.
+This causes subtle off-by-one bugs and segfaults when downstream code assumes
+the full array size.
+
+## 12. Adding missing native bindings
+
+When a C++ function exists but isn't bound to Lua, add it in `insight_lua.cpp`:
+
+```cpp
+// Direct binding (no default params)
+m["conj"] = &conj;
+m["flatnonzero"] = &flatnonzero;
+m["masked_select"] = &masked_select;
+
+// Lambda wrapper (with default params — sol2 doesn't propagate C++ defaults)
+m["searchsorted"] = [](const Array &x, const Array &v,
+                        sol::optional<std::string> side) {
+    return searchsorted(x, v, side.value_or("left"));
+};
+m["device_count"] = [](int kind) {
+    return static_cast<int>(device_count(static_cast<DeviceKind>(kind)));
+};
+
+// Table-based vector params (fft2/ifft2)
+m["fft2"] = [](const Array &x, sol::optional<sol::table> s,
+               sol::optional<sol::table> axes, sol::optional<std::string> norm) {
+    std::vector<int64_t> s_vec;
+    if (s) { for (auto &kv : *s) s_vec.push_back(kv.second.as<int64_t>()); }
+    std::vector<int> axes_vec = {-2, -1};
+    if (axes) { axes_vec.clear(); for (auto &kv : *axes) axes_vec.push_back(kv.second.as<int>()); }
+    return fft::fft2(x, s_vec, axes_vec, norm.value_or("backward"));
+};
 ```

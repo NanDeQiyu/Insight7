@@ -60,6 +60,12 @@ jobs:
           git clone --depth 1 --branch 1.2.2 https://github.com/libsndfile/libsndfile.git
         fi
 
+    - name: Force recompile matplotplusplus
+      run: |
+        # Touch gnuplot.cpp to force recompile with unknown terminal blacklist fix.
+        [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+          touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+
     - name: Configure
       run: |
         mkdir -p build && cd build

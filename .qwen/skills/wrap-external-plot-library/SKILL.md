@@ -2,7 +2,7 @@
 name: wrap-external-plot-library
 description: Wrapping an external C++ library (matplotplusplus) with Array conversion, conditional compilation, and separate CI
 source: auto-skill
-extracted_at: '2026-05-30T19:00:00.000Z'
+extracted_at: '2026-06-03T15:00:00.000Z'
 ---
 
 # Wrap External Plot Library (matplotplusplus)
@@ -176,4 +176,61 @@ cmake .. -DINSIGHT_USE_MATPLOT=ON && make -j$(nproc)
 # Build without MATPLOT (should still work)
 cmake .. -DINSIGHT_USE_MATPLOT=OFF && make -j$(nproc)
 ./tests/insight_tests_cpu  # All tests pass, plot tests skipped
+```
+
+## gnuplot 5.4.2 `unknown` terminal font crash
+
+gnuplot 5.4.2 (Ubuntu 22.04) doesn't support `font` option on the `unknown`
+terminal. matplotplusplus sends `set terminal unknown font "Helvetica,10"`
+which causes gnuplot to error, leading to a broken pipe and segfault.
+
+**Fix:** Add `"unknown"` to the font blacklist in matplotplusplus:
+`third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp` line ~455:
+
+```cpp
+SV_CONSTEXPR std::string_view blacklist[] = {
+    "dxf", "eepic", ..., "pdf", "unknown"};  // ← add "unknown"
+```
+
+**Why:** The `unknown` terminal is used internally by matplotplusplus for
+bounding box computation. gnuplot 5.4.2's `unknown` terminal doesn't accept
+`font`, but 5.4.4+ does. The blacklist prevents font option being sent.
+
+**CI fix:** Use `ubuntu-24.04` (gnuplot 6.0) instead of `ubuntu-latest` (22.04).
+
+## SIGPIPE handling for plot functions
+
+matplotplusplus spawns gnuplot as a subprocess. If gnuplot crashes or the pipe
+breaks, SIGPIPE kills the process. This is NOT a C++ exception — try/catch
+won't help.
+
+**Fix:** Add `signal(SIGPIPE, SIG_IGN)` before any plot calls:
+
+```cpp
+// C++ demo main()
+#include <csignal>
+#ifdef SIGPIPE
+std::signal(SIGPIPE, SIG_IGN);
+#endif
+
+// Lua/Python bindings — inside #ifdef INSIGHT_USE_MATPLOT block
+#include <csignal>
+std::signal(SIGPIPE, SIG_IGN);
+```
+
+**Why:** SIGPIPE is a signal, not an exception. The default handler terminates
+the process. Ignoring it causes the write to fail with EPIPE instead, which
+matplotplusplus handles internally.
+
+## C++ radar demo plot crash pattern
+
+The radar demo generates detection results THEN plots. If plotting crashes,
+all the computation is lost. Wrap plot calls in try/catch:
+
+```cpp
+try {
+    save_plots(cpu_result, "task1_cpu");
+} catch (const std::exception &e) {
+    printf("[Warning] Plotting failed: %s\n", e.what());
+}
 ```

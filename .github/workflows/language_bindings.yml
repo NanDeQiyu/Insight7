@@ -65,6 +65,12 @@ jobs:
             -DINSIGHT_BUILD_LUA_BINDING=OFF \
             -DINSIGHT_BUILD_JULIA_BINDING=OFF
 
+      - name: Force recompile matplotplusplus
+        run: |
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
 
@@ -113,6 +119,12 @@ jobs:
             -DINSIGHT_BUILD_PYTHON_BINDING=OFF \
             -DINSIGHT_BUILD_LUA_BINDING=ON \
             -DINSIGHT_BUILD_JULIA_BINDING=OFF
+
+      - name: Force recompile matplotplusplus
+        run: |
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
 
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
@@ -165,6 +177,12 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=OFF \
             -DLUA_DIR=/usr
 
+      - name: Force recompile matplotplusplus
+        run: |
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+
       - name: Build
         run: cd build && cmake --build . -j$(nproc) --target insight_lua --target insight_cpu_backend
 
@@ -215,6 +233,12 @@ jobs:
             -DINSIGHT_BUILD_PYTHON_BINDING=OFF \
             -DINSIGHT_BUILD_LUA_BINDING=OFF \
             -DINSIGHT_BUILD_JULIA_BINDING=ON
+
+      - name: Force recompile matplotplusplus
+        run: |
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
 
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
