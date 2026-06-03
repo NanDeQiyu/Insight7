@@ -21,7 +21,7 @@ describe("Signal B-Splines CPU Tests", function()
     -- At x=0: 1/sqrt(2*pi*sigma^2), sigma^2=(n+1)/12 = 4/12
     local sigma_sq = 4.0 / 12.0
     local expected = 1.0 / math.sqrt(2.0 * math.pi * sigma_sq)
-    assert.near(expected, y:item(0), 1e-10)
+    assert.near(expected, y:get(0), 1e-10)
   end)
 
   it("gauss_spline_symmetry", function()
@@ -55,7 +55,7 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.cubic(x)
     assert.is_not_nil(y)
     assert.are.equal(1, y.numel)
-    assert.near(2.0 / 3.0, y:item(0), 1e-10)
+    assert.near(2.0 / 3.0, y:get(0), 1e-10)
   end)
 
   it("cubic_symmetry", function()
@@ -83,7 +83,7 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.cubic(x)
     assert.is_not_nil(y)
     local expected = 2.0 / 3.0 - 0.5 * 0.25 * 1.5
-    assert.near(expected, y:item(0), 1e-10)
+    assert.near(expected, y:get(0), 1e-10)
   end)
 
   it("cubic_region2", function()
@@ -92,7 +92,7 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.cubic(x)
     assert.is_not_nil(y)
     local expected = (1.0 / 6.0) * 0.125
-    assert.near(expected, y:item(0), 1e-10)
+    assert.near(expected, y:get(0), 1e-10)
   end)
 
   -- ========================================================================
@@ -104,7 +104,7 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.quadratic(x)
     assert.is_not_nil(y)
     assert.are.equal(1, y.numel)
-    assert.near(0.75, y:item(0), 1e-10)
+    assert.near(0.75, y:get(0), 1e-10)
   end)
 
   it("quadratic_symmetry", function()
