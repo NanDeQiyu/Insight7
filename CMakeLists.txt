@@ -364,6 +364,8 @@ if(INSIGHT_USE_MATPLOT)
         # Apply GCC compatibility patches (idempotent)
         apply_patch("${LOCAL_MATPLOT}"
             "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gcc-compat.patch")
+        apply_patch("${LOCAL_MATPLOT}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gnuplot-unknown-terminal.patch")
     else()
         message(STATUS "Fetching matplotplusplus from GitHub...")
         include(FetchContent)
@@ -379,6 +381,8 @@ if(INSIGHT_USE_MATPLOT)
         # Apply GCC compatibility patches (idempotent)
         apply_patch("${matplotplusplus_SOURCE_DIR}"
             "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gcc-compat.patch")
+        apply_patch("${matplotplusplus_SOURCE_DIR}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gnuplot-unknown-terminal.patch")
     endif()
     if(TARGET matplot)
         target_compile_definitions(insight_core PUBLIC INSIGHT_USE_MATPLOT)

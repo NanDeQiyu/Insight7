@@ -39,7 +39,7 @@ for i = 0, frames - 1 do
   signal_data[i + 1] = 0.5 * sin(2 * pi * 440 * t) + 0.3 * sin(2 * pi * 880 * t) + 0.1 * sin(2 * pi * 3141 * t)
 end
 
-local signal = ins.from_table(signal_data)
+local signal = ins.from_table(signal_data):to(ins.float32)
 print(fmt("    Signal: [%d] elements", signal.numel))
 print()
 

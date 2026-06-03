@@ -1263,8 +1263,7 @@ extern "C" int luaopen__insight(lua_State *L) {
         guard.push_back(kv.second.as<int>());
       for (auto &kv : ref_tbl)
         ref.push_back(kv.second.as<int>());
-      auto result =
-          signal::ca_cfar(data, guard, ref, pfa.value_or(1e-3));
+      auto result = signal::ca_cfar(data, guard, ref, pfa.value_or(1e-3));
       sol::state_view lua(L);
       sol::table ret = lua.create_table();
       ret[1] = result.first;

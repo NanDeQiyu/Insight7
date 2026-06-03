@@ -111,7 +111,7 @@ static void load_backend_plugin(DeviceKind kind, const char *lib_name) {
 
   LibHandle lib = load_library(lib_path);
 
-  INS_CHECK(lib, std::string(lib_name) + "not available");
+  INS_CHECK(lib, std::string(lib_name) + " not available");
 
   // Get InitPlugin entry point
   typedef C_Status (*InitPluginFunc)(CustomRuntimeParams *);

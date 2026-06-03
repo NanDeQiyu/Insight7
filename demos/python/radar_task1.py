@@ -205,7 +205,7 @@ if __name__ == "__main__":
         speedup = cpu["total_ms"] / gpu["total_ms"]
         print(f"  CPU: {cpu['total_ms']:.2f} ms, GPU: {gpu['total_ms']:.2f} ms")
         print(f"  加速比: {speedup:.2f}x {'✅ GPU 更快' if speedup > 1 else '⚠️ 需优化'}")
-    except Exception as e:
-        print(f"\n  GPU 不可用: {e}")
+    except Exception:
+        print("\n  GPU 不可用: CUDA backend not available")
 
     print("\n完成！")

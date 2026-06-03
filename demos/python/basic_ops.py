@@ -49,19 +49,19 @@ def main():
     f32_a = ins.from_array([1.0, 2.0, 3.0]).to(ins.float32)
     f32_b = ins.from_array([4.0, 5.0, 6.0]).to(ins.float32)
     f32_c = f32_a + f32_b
-    print(f"F32: [1,2,3] + [4,5,6] = {f32_c.numpy()}")
+    print(f"F32: [1,2,3] + [4,5,6] = {f32_c}")
 
     # F64
     f64_a = ins.from_array([1.0, 2.0, 3.0])
     f64_b = ins.from_array([0.5, 0.5, 0.5])
     f64_c = f64_a * f64_b
-    print(f"F64: [1,2,3] * [0.5,0.5,0.5] = {f64_c.numpy()}")
+    print(f"F64: [1,2,3] * [0.5,0.5,0.5] = {f64_c}")
 
     # I32
     i32_a = ins.from_array([10, 20, 30]).to(ins.int32)
     i32_b = ins.from_array([3, 3, 3]).to(ins.int32)
     i32_c = i32_a / i32_b
-    print(f"I32: [10,20,30] / [3,3,3] = {i32_c.to(ins.int32).numpy()}")
+    print(f"I32: [10,20,30] / [3,3,3] = {i32_c.to(ins.int32)}")
 
     # --- Broadcasting ---
     separator("Broadcasting")
