@@ -252,8 +252,6 @@ Array cmplx_sort(const Array &p) {
     Array mag_sq = add(square(re), square(im));
     Array sort_idx = argsort(mag_sq, 0, false);
     Array sorted = take(p_cpu, sort_idx);
-    if (p.place().kind() != DeviceKind::CPU)
-      sorted = sorted.to(p.place());
     return sorted;
   }
 
@@ -261,8 +259,6 @@ Array cmplx_sort(const Array &p) {
   Array mag_sq = square(p_cpu);
   Array sort_idx = argsort(mag_sq, 0, false);
   Array sorted = take(p_cpu, sort_idx);
-  if (p.place().kind() != DeviceKind::CPU)
-    sorted = sorted.to(p.place());
   return sorted;
 }
 

@@ -18,9 +18,9 @@ M.read_bin = _wrap({ "filepath", "dtype" }, function(filepath, dtype)
 end)
 
 --- Write an array to a binary file.
--- @tparam Array x Input array.
 -- @string filepath Path to the output binary file.
-M.write_bin = _wrap({ "x", "filepath" }, function(x, filepath)
+-- @tparam Array x Input array.
+M.write_bin = _wrap({ "filepath", "x" }, function(filepath, x)
   return sig.write_bin(filepath, x)
 end)
 

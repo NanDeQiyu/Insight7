@@ -57,7 +57,7 @@ print()
 -- Step 3: FFT analysis
 separator("[3] FFT analysis")
 
-local spectrum = ins.fft.rfft(signal)
+local spectrum = ins.rfft(signal)
 local freq_bins = spectrum.numel
 print(fmt("    FFT bins: %d", freq_bins))
 print(fmt("    Nyquist: %d Hz", sample_rate / 2))
@@ -100,7 +100,7 @@ local filtered_imag = ins.mul(spec_imag, mask)
 local filtered_spectrum = ins.to_complex(filtered_real, filtered_imag)
 
 -- Inverse FFT to get filtered signal
-local filtered = ins.fft.irfft(filtered_spectrum, frames)
+local filtered = ins.irfft(filtered_spectrum, frames)
 print(fmt("    Filtered signal: [%d] elements", filtered.numel))
 
 -- Step 5: Energy comparison

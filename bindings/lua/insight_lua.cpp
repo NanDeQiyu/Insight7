@@ -168,6 +168,18 @@ static std::string array_tostring(const Array &a) {
   return "<insight.Array (error)>";
 }
 
+// Helper: signal::write_bin wrapper (avoids sol2 default-param issues)
+static void lua_write_bin(const std::string &file, const Array &data,
+                          sol::optional<bool> append) {
+  signal::write_bin(file, data, append.value_or(true));
+}
+
+// Helper: signal::read_bin wrapper
+static Array lua_read_bin(const std::string &file, sol::optional<int> dtype) {
+  DType dt = dtype.has_value() ? static_cast<DType>(dtype.value()) : DType::U8;
+  return signal::read_bin(file, dt);
+}
+
 // Convert a Lua 1-based slice spec string to C++ 0-based.
 // Positive numbers are decremented by 1; negative numbers and colons unchanged.
 // Example: "1:3" → "0:2", "2,1:-1" → "1,0:-1", "::-1" → "::-1"
@@ -1169,8 +1181,8 @@ extern "C" int luaopen__insight(lua_State *L) {
     sig["ambgfun"] = &signal::ambgfun;
 
     // --- Signal I/O ---
-    sig["read_bin"] = &signal::read_bin;
-    sig["write_bin"] = &signal::write_bin;
+    sig["read_bin"] = &lua_read_bin;
+    sig["write_bin"] = &lua_write_bin;
     sig["unpack_bin"] = &signal::unpack_bin;
     sig["pack_bin"] = &signal::pack_bin;
     sig["read_sigmf"] = &signal::read_sigmf;
