@@ -18,7 +18,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        add, sub, mul, div, pow, matmul, dot, det, inv, solve, svd,
        fft, ifft, rand, randn, cast,
        # Convenience
-       item, to_data, negative, abs, equal, greater, less,
+       item, to, to_data, negative, abs, equal, greater, less,
        max, min, argmax, argmin, prod, outer, norm, trace, DType,
        # Complex
        is_complex, has_complex_shape, to_complex, as_complex, as_real,
@@ -67,7 +67,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        choose_conv_method, firfilter_zi_state,
        # Device info
        device_name, cuda_version, driver_version, compute_capability,
-       device_memory, gpu_count,
+       device_memory, gpu_count, load_backend,
        # Signal submodule
        signal
 
@@ -87,6 +87,15 @@ end
 # Auto-initialize CPU backend on module load
 function __init__()
     ccall((:insight_jl_init_cpu, LIB_INSIGHT), Cvoid, ())
+end
+
+"""
+    load_backend(name::String)::Bool
+
+Load an additional backend (e.g. "cuda"). Returns true on success.
+"""
+function load_backend(name::String)::Bool
+    ccall((:insight_jl_load_backend, LIB_INSIGHT), Int32, (Cstring,), name) == 1
 end
 
 # DType enum mapping (matches InsightDType in c_api/dtype.h)
@@ -1256,6 +1265,19 @@ end
 Alias for `to_array`. Copies data from an InsightArray to a Julia Array.
 """
 const to_data = to_array
+
+"""
+    to(x::InsightArray, device_type::Int) -> InsightArray
+
+Transfer array to a different device. device_type: 0=CPU, 1=GPU.
+"""
+function to(x::InsightArray, device_type::Int)::InsightArray
+    ptr = ccall((:insight_jl_to_device, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(device_type))
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
 
 """
     negative(x::InsightArray) -> InsightArray

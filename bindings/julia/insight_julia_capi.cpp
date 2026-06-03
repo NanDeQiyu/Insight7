@@ -54,6 +54,16 @@ void insight_jl_init_cpu() {
   }
 }
 
+// Load an additional backend (e.g. "cuda"). Returns 1 on success, 0 on failure.
+int32_t insight_jl_load_backend(const char *backend) {
+  try {
+    ins::load_backend(std::string(backend));
+    return 1;
+  } catch (...) {
+    return 0;
+  }
+}
+
 // ============================================================================
 // Device information
 // ============================================================================
