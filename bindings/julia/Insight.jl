@@ -26,6 +26,11 @@ export Array, zeros, ones, full, arange, linspace, eye,
        # Additional unary
        exp2_fn, expm1_fn, log1p_fn, cbrt_fn, reciprocal_fn,
        asinh_fn, acosh_fn, atanh_fn, trunc_fn, deg2rad_fn, rad2deg_fn,
+       conj_fn, angle_fn,
+       # Logical binary
+       logical_and, logical_or, logical_xor, logical_not,
+       # Manipulation
+       squeeze,
        # Additional reduction
        cummax, cummin, sem, count_nonzero, median, quantile, percentile,
        nansum, nanmean, nanmax, nanmin, nanstd, nanvar,
@@ -39,10 +44,10 @@ export Array, zeros, ones, full, arange, linspace, eye,
        seed, get_seed, rand_like, randn_like,
        exponential, gamma_dist, beta_dist, binomial_dist, poisson_dist,
        # Additional FFT
-       fftshift, ifftshift, next_fast_len, hfft, ihfft,
+       fftshift, ifftshift, fftfreq, next_fast_len, hfft, ihfft,
        rfft, irfft, rfft2, irfft2, rfftn, irfftn,
        # Additional linalg
-       lstsq, cond_fn, matrix_rank,
+       lstsq, cond_fn, matrix_rank, matrix_power, slogdet, eigvalsh, pinv,
        # Signal
        convolve, unwrap, sinc,
        hann, hamming, blackman, kaiser, gaussian, boxcar, triang,
@@ -55,7 +60,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        welch_jl, periodogram_jl,
        morlet, ricker,
        mel2hz, hz2mel, mel_frequencies, hz2bark, bark2hz,
-       fm_demod, argrelmax, argrelmin, cfar_alpha,
+       fm_demod, argrelmax, argrelmin, cfar_alpha, ca_cfar,
        pulse_compression, pulse_doppler, mvdr,
        read_bin, write_bin, pack_bin, unpack_bin, read_sigmf, write_sigmf,
        cosine_win, general_hamming, parzen_win, bohman_win, barthann_win,
@@ -70,6 +75,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        device_memory, gpu_count, load_backend,
        # Signal submodule
        signal
+
 
 # ============================================================================
 # Configuration
@@ -342,8 +348,27 @@ function linspace(start::Float64, stop::Float64, num::Int64,
     return arr
 end
 
-function from_data(data::AbstractArray{T}, dtype_val::Int32=float32,
+# Auto-detect Insight dtype from Julia element type
+_auto_dtype(::Type{Float64}) = DTypeValues.F64
+_auto_dtype(::Type{Float32}) = DTypeValues.F32
+_auto_dtype(::Type{Int64}) = DTypeValues.I64
+_auto_dtype(::Type{Int32}) = DTypeValues.I32
+_auto_dtype(::Type{Int16}) = DTypeValues.I16
+_auto_dtype(::Type{Int8}) = DTypeValues.I8
+_auto_dtype(::Type{UInt64}) = DTypeValues.U64
+_auto_dtype(::Type{UInt32}) = DTypeValues.U32
+_auto_dtype(::Type{UInt16}) = DTypeValues.U16
+_auto_dtype(::Type{UInt8}) = DTypeValues.U8
+_auto_dtype(::Type{Bool}) = DTypeValues.BOOL
+_auto_dtype(::Type{Complex{Float32}}) = DTypeValues.C32
+_auto_dtype(::Type{Complex{Float64}}) = DTypeValues.C64
+_auto_dtype(::Type) = DTypeValues.F32  # fallback
+
+function from_data(data::AbstractArray{T}, dtype_val::Int32=Int32(-1),
                    device::Int32=CPU) where T
+    # Auto-detect dtype from Julia element type when not explicitly specified
+    actual_dtype = dtype_val == Int32(-1) ? _auto_dtype(T) : dtype_val
+
     # Convert data to match the requested dtype before passing to C
     _julia_type(dt::Int32) = dt == DTypeValues.F32 ? Float32 :
                              dt == DTypeValues.F64 ? Float64 :
@@ -355,13 +380,15 @@ function from_data(data::AbstractArray{T}, dtype_val::Int32=float32,
                              dt == DTypeValues.U16 ? UInt16 :
                              dt == DTypeValues.U32 ? UInt32 :
                              dt == DTypeValues.U64 ? UInt64 :
-                             dt == DTypeValues.BOOL ? Bool : Float32
-    target_type = _julia_type(dtype_val)
+                             dt == DTypeValues.BOOL ? Bool :
+                             dt == DTypeValues.C32 ? Complex{Float32} :
+                             dt == DTypeValues.C64 ? Complex{Float64} : Float32
+    target_type = _julia_type(actual_dtype)
     converted = T === target_type ? data : convert(Array{target_type}, data)
     dims = collect(Int64, size(converted))
     ptr = ccall((:insight_jl_from_data, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Ptr{Int64}, Int32, Int32, Int32),
-                pointer(converted), dims, Int32(length(dims)), dtype_val, device)
+                pointer(converted), dims, Int32(length(dims)), actual_dtype, device)
     arr = InsightArray(ptr)
     finalizer(_free, arr)
     return arr
@@ -378,6 +405,24 @@ function to_array(arr::InsightArray)::Array
         dst = Vector{Int32}(undef, n)
     elseif dt == DTypeValues.I64
         dst = Vector{Int64}(undef, n)
+    elseif dt == DTypeValues.I8
+        dst = Vector{Int8}(undef, n)
+    elseif dt == DTypeValues.U8
+        dst = Vector{UInt8}(undef, n)
+    elseif dt == DTypeValues.I16
+        dst = Vector{Int16}(undef, n)
+    elseif dt == DTypeValues.U16
+        dst = Vector{UInt16}(undef, n)
+    elseif dt == DTypeValues.U32
+        dst = Vector{UInt32}(undef, n)
+    elseif dt == DTypeValues.U64
+        dst = Vector{UInt64}(undef, n)
+    elseif dt == DTypeValues.BOOL
+        dst = Vector{Bool}(undef, n)
+    elseif dt == DTypeValues.C32
+        dst = Vector{Complex{Float32}}(undef, n)
+    elseif dt == DTypeValues.C64
+        dst = Vector{Complex{Float64}}(undef, n)
     else
         dst = Vector{Float64}(undef, n)
     end
@@ -463,6 +508,10 @@ end
 @jl_unary trunc_fn     :insight_jl_trunc_unary
 @jl_unary deg2rad_fn   :insight_jl_deg2rad
 @jl_unary rad2deg_fn   :insight_jl_rad2deg
+
+# Complex unary
+@jl_unary conj_fn      :insight_jl_conj
+@jl_unary angle_fn     :insight_jl_angle
 
 # ============================================================================
 # Complex
@@ -896,6 +945,19 @@ function Base.copy(x::InsightArray)::InsightArray
     return arr
 end
 
+"""
+    squeeze(x::InsightArray) -> InsightArray
+
+Remove dimensions of size 1 from the array shape.
+"""
+function squeeze(x::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_squeeze, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid},), x)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
 # ============================================================================
 # Additional Manipulation (Phase D)
 # ============================================================================
@@ -1170,6 +1232,17 @@ function ifftshift(x::InsightArray; axis::Int=-1)::InsightArray
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
+"""
+    fftfreq(n::Int, d::Float64=1.0) -> InsightArray
+
+Return the DFT sample frequencies for a signal of length `n` with sample spacing `d`.
+"""
+function fftfreq(n::Int, d::Float64=1.0)::InsightArray
+    ptr = ccall((:insight_jl_fftfreq, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Float64), Int64(n), d)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
 function next_fast_len(target::Int)::Int
     Int(ccall((:insight_jl_next_fast_len, LIB_INSIGHT), Int32,
               (Int32,), Int32(target)))
@@ -1242,6 +1315,35 @@ end
 function matrix_rank(x::InsightArray)::InsightArray
     ptr = ccall((:insight_jl_matrix_rank, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid},), x)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function matrix_power(x::InsightArray, n::Int)::InsightArray
+    ptr = ccall((:insight_jl_matrix_power, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(n))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function slogdet(x::InsightArray)
+    sign_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    logdet_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_slogdet, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, sign_ref, logdet_ref)
+    sign = InsightArray(sign_ref[]); finalizer(_free, sign)
+    logdet = InsightArray(logdet_ref[]); finalizer(_free, logdet)
+    return (sign, logdet)
+end
+
+function eigvalsh(x::InsightArray; uplo::String="L")::InsightArray
+    ptr = ccall((:insight_jl_eigvalsh, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Cstring), x, uplo)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function pinv(x::InsightArray; rcond::Float64=-1.0)::InsightArray
+    ptr = ccall((:insight_jl_pinv, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Float64), x, rcond)
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
@@ -1366,6 +1468,14 @@ round(x::InsightArray) = round_fn(x)
 @jl_binary equal  :insight_jl_equal
 @jl_binary greater :insight_jl_greater
 @jl_binary less   :insight_jl_less
+
+# Logical binary ops
+@jl_binary logical_and :insight_jl_logical_and
+@jl_binary logical_or  :insight_jl_logical_or
+@jl_binary logical_xor :insight_jl_logical_xor
+
+# Logical unary ops
+@jl_unary logical_not :insight_jl_logical_not
 
 # --- Additional reductions ---
 function max(x::InsightArray; axis::Union{Int,Nothing}=nothing,
@@ -1517,6 +1627,146 @@ function Base.show(io::IO, ::MIME"text/plain", a::InsightArray)
 end
 
 # ============================================================================
+# Plot Module (conditionally available — requires INSIGHT_USE_MATPLOT)
+# ============================================================================
+
+module plot
+    using ..Insight
+
+    # Check at load time whether plot symbols are available
+    const _has_plot = try
+        ccall((:insight_jl_figure, Insight.LIB_INSIGHT), Cvoid,
+              (Int32,), Int32(-1))
+        true
+    catch
+        false
+    end
+
+    function _check()
+        if !_has_plot
+            error("Plot functions not available. Rebuild with INSIGHT_USE_MATPLOT=ON")
+        end
+    end
+
+    function plotfn(y::Insight.InsightArray; format::String="")
+        _check()
+        ccall((:insight_jl_plot, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Cstring), y, format)
+    end
+
+    function plotxy(x::Insight.InsightArray, y::Insight.InsightArray;
+                  format::String="")
+        _check()
+        ccall((:insight_jl_plot_xy, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Ptr{Cvoid}, Cstring), x, y, format)
+    end
+
+    function scatter(x::Insight.InsightArray, y::Insight.InsightArray;
+                     size::Float64=20.0)
+        _check()
+        ccall((:insight_jl_plot_scatter, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Ptr{Cvoid}, Float64), x, y, size)
+    end
+
+    function bar(y::Insight.InsightArray; width::Float64=0.8)
+        _check()
+        ccall((:insight_jl_bar, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Float64), y, width)
+    end
+
+    function bar(x::Insight.InsightArray, y::Insight.InsightArray;
+                 width::Float64=0.8)
+        _check()
+        ccall((:insight_jl_bar_xy, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Ptr{Cvoid}, Float64), x, y, width)
+    end
+
+    function hist(data::Insight.InsightArray; bins::Int=10)
+        _check()
+        ccall((:insight_jl_hist, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Int32), data, Int32(bins))
+    end
+
+    function hist(data::Insight.InsightArray, bins::Int)
+        _check()
+        ccall((:insight_jl_hist, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Int32), data, Int32(bins))
+    end
+
+    function imshow(data::Insight.InsightArray)
+        _check()
+        ccall((:insight_jl_imshow, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid},), data)
+    end
+
+    function contour(X::Insight.InsightArray, Y::Insight.InsightArray,
+                     Z::Insight.InsightArray; levels::Int=10)
+        _check()
+        ccall((:insight_jl_contour, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}, Int32),
+              X, Y, Z, Int32(levels))
+    end
+
+    function subplot(rows::Int, cols::Int, index::Int)
+        _check()
+        ccall((:insight_jl_subplot, Insight.LIB_INSIGHT), Cvoid,
+              (Int32, Int32, Int32), Int32(rows), Int32(cols), Int32(index))
+    end
+
+    function title(text::String)
+        _check()
+        ccall((:insight_jl_title, Insight.LIB_INSIGHT), Cvoid,
+              (Cstring,), text)
+    end
+
+    function xlabel(text::String)
+        _check()
+        ccall((:insight_jl_xlabel, Insight.LIB_INSIGHT), Cvoid,
+              (Cstring,), text)
+    end
+
+    function ylabel(text::String)
+        _check()
+        ccall((:insight_jl_ylabel, Insight.LIB_INSIGHT), Cvoid,
+              (Cstring,), text)
+    end
+
+    function legend(labels::Vector{String})
+        _check()
+        ccall((:insight_jl_legend, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cstring}, Int32), labels, Int32(length(labels)))
+    end
+
+    function savefig(filename::String)
+        _check()
+        ccall((:insight_jl_savefig, Insight.LIB_INSIGHT), Cvoid,
+              (Cstring,), filename)
+    end
+
+    function figure(number::Int=-1)
+        _check()
+        ccall((:insight_jl_figure, Insight.LIB_INSIGHT), Cvoid,
+              (Int32,), Int32(number))
+    end
+
+    function clf()
+        _check()
+        ccall((:insight_jl_clf, Insight.LIB_INSIGHT), Cvoid, ())
+    end
+
+    function grid(on::Bool=true)
+        _check()
+        ccall((:insight_jl_grid, Insight.LIB_INSIGHT), Cvoid,
+              (Int32,), on ? Int32(1) : Int32(0))
+    end
+
+    function close()
+        _check()
+        ccall((:insight_jl_close, Insight.LIB_INSIGHT), Cvoid, ())
+    end
+end
+
+# ============================================================================
 # Signal Processing
 # ============================================================================
 
@@ -1619,6 +1869,7 @@ module signal
     const argrelmax = Insight.argrelmax
     const argrelmin = Insight.argrelmin
     const cfar_alpha = Insight.cfar_alpha
+    const ca_cfar = Insight.ca_cfar
     const read_bin = Insight.read_bin
     const write_bin = Insight.write_bin
     const pack_bin = Insight.pack_bin

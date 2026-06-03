@@ -93,13 +93,26 @@ KalmanFilter::KalmanFilter(int dim_x, int dim_z, int dim_u, int points,
   }
 }
 
+// Ensure a matrix is 3D [points, rows, cols] by broadcasting 2D -> 3D
+static Array ensure_3d(const Array &mat, int points) {
+  if (mat.shape().ndim() == 2) {
+    int rows = mat.shape().dim(0);
+    int cols = mat.shape().dim(1);
+    return reshape(mat, {1, rows, cols});
+  }
+  return mat;
+}
+
 void KalmanFilter::predict() {
+  // Ensure F is 3D (broadcast 2D -> [1, dim_x, dim_x])
+  Array F3 = ensure_3d(F, points);
+
   // x = F * x
-  Array new_x = matmul(F, x);
+  Array new_x = matmul(F3, x);
 
   // P = F * P * F^T + Q
-  Array FP = matmul(F, P);
-  Array FT = batched_transpose(F, points, dim_x, dim_x);
+  Array FP = matmul(F3, P);
+  Array FT = batched_transpose(F3, points, dim_x, dim_x);
   Array P_new = add(matmul(FP, FT), Q);
 
   // Update state
@@ -112,16 +125,27 @@ void KalmanFilter::update(const Array &z_in) {
 
   Place cpu = CPUPlace();
   Array z_cpu = (z_in.place().kind() == DeviceKind::CPU) ? z_in : z_in.to(cpu);
-  z = z_cpu;
+
+  // Ensure z is 3D [points, dim_z, 1]
+  z = ensure_3d(z_cpu, points);
+
+  // Ensure H is 3D (broadcast 2D -> [1, dim_z, dim_x])
+  Array H3 = ensure_3d(H, points);
 
   // Innovation: y = z - H * x
-  Array Hx = matmul(H, x);
+  Array Hx = matmul(H3, x);
   Array y = sub(z, Hx);
 
   // Innovation covariance: S = H * P * H^T + R
-  Array HP = matmul(H, P);
-  Array HT = batched_transpose(H, points, dim_x, dim_z);
+  Array HP = matmul(H3, P);
+  Array HT = batched_transpose(H3, points, dim_x, dim_z);
   Array S = add(matmul(HP, HT), R);
+
+  // Regularize S to avoid singular matrix when P and R are zero-initialized
+  Array eps_I = batched_eye(points, dim_z, S.dtype(), S.place());
+  // Scale identity by epsilon using element-wise multiplication with scalar
+  Array eps_scalar = full(S.shape(), 1e-6, S.dtype(), S.place());
+  S = add(S, mul(eps_I, eps_scalar));
 
   // Kalman gain: K = P * H^T * inv(S)
   Array P_Ht = matmul(P, HT); // [points, dim_x, dim_z]
@@ -144,7 +168,7 @@ void KalmanFilter::update(const Array &z_in) {
   x = add(x, Ky);
 
   // P = (I - K*H) * P
-  Array KH = matmul(K, H);
+  Array KH = matmul(K, H3);
   Array I_x = batched_eye(points, dim_x, dtype_, cpu);
   if (KH.place() != I_x.place())
     I_x = I_x.to(KH.place());

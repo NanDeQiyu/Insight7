@@ -230,11 +230,17 @@ catch e
 end
 
 # ============================================================================
-# Wiener (1 test) — SKIP: C++ wiener calls convolve on 2D array which throws
-# "only 1D tensors supported". This is a known C++ limitation.
+# Wiener (1 test) — uses 1D input (2D triggers unsupported convolve path)
 # ============================================================================
 println("=== Wiener ===")
-println("SKIP: wiener (C++ wiener calls convolve on 2D, unsupported)")
+
+try
+    local x = Insight.from_data([1.0, 2.0, 3.0, 4.0, 5.0], Insight.float64)
+    local y = Insight.signal.wiener(x)
+    check("wiener_numel", Insight.numel(y) == 5)
+catch e
+    println("FAIL: wiener ($e)")
+end
 
 # ============================================================================
 # Firfilter (1 test)

@@ -34,7 +34,7 @@ data = Insight.from_data([1.0, 2.0, 3.0, 4.0, 5.0])
 tmpfile = tempname() * ".bin"
 Insight.write_bin(tmpfile, data, append=false)
 result = Insight.read_bin(tmpfile, dtype=Float64)
-println("SKIP: write_read_roundtrip (write_bin issue)")
+check("write_read_roundtrip", Insight.numel(result) == 5)
 rm(tmpfile, force=true)
 
 # write_bin / read_bin float32
@@ -50,7 +50,7 @@ data = Insight.from_data(Int16[100, 200, 300, 400])
 tmpfile = tempname() * ".bin"
 Insight.write_bin(tmpfile, data, append=false)
 result = Insight.read_bin(tmpfile, dtype=Int16)
-println("SKIP: write_read_int16 (write_bin issue)")
+check("write_read_int16", Insight.numel(result) == 4)
 rm(tmpfile, force=true)
 
 # write_bin / read_bin large
@@ -59,7 +59,7 @@ data = Insight.from_data(large_data)
 tmpfile = tempname() * ".bin"
 Insight.write_bin(tmpfile, data, append=false)
 result = Insight.read_bin(tmpfile, dtype=Float64)
-println("SKIP: write_read_large (write_bin issue)")
+check("write_read_large", Insight.numel(result) == 1024)
 rm(tmpfile, force=true)
 
 # pack_bin

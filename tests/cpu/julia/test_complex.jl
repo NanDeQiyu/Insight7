@@ -66,16 +66,23 @@ check("has_complex_shape", Insight.has_complex_shape(a4))
 abs_c = Insight.abs(c)
 check("complex_abs", Insight.numel(abs_c) == 3)
 
-# complex conj/angle/exp (not available or kernel not available for complex)
-println("SKIP: conj (not exposed in binding)")
-println("SKIP: angle (not exposed in binding)")
-println("SKIP: complex_exp (kernel not available for complex dtype)")
+# complex conj
+conj_c = Insight.conj_fn(c)
+check("conj", Insight.numel(conj_c) == 3)
 
-# complex add
+# complex angle
+angle_c = Insight.angle_fn(c)
+check("angle", Insight.numel(angle_c) == 3)
+
+# complex add (verifies complex arithmetic works)
 c_a = Insight.to_complex(Insight.from_data([1.0, 2.0], Insight.float64))
 c_b = Insight.to_complex(Insight.from_data([3.0, 4.0], Insight.float64))
 s = Insight.add(c_a, c_b)
 check("complex_add", Insight.numel(s) == 2)
+
+# complex sub
+d = Insight.sub(c_a, c_b)
+check("complex_sub", Insight.numel(d) == 2)
 
 # complex mul
 p = Insight.mul(c_a, c_b)

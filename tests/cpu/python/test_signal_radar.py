@@ -84,7 +84,6 @@ class TestSignalRadarCPU:
         assert result is not None
         assert result.numel() > 0
 
-    @pytest.mark.skip(reason="sum kernel missing C64 support")
     def test_ambgfun(self):
         n = 64
         x_np = np.random.randn(n).astype(np.float64)
@@ -94,12 +93,20 @@ class TestSignalRadarCPU:
         assert result.numel() > 0
 
     def test_ambgfun_delay_cut(self):
-        # Only "2d" cut is supported; "delay" is not available
-        pytest.skip("ambgfun cut='delay' is not supported; only '2d' is available")
+        n = 32
+        x_np = np.random.randn(n).astype(np.float64)
+        x = ins.from_numpy(x_np)
+        result = ins.signal.ambgfun(x, fs=1000.0, prf=100.0, cut="delay", cutValue=0)
+        assert result is not None
+        assert result.numel() > 0
 
     def test_ambgfun_doppler_cut(self):
-        # Only "2d" cut is supported; "doppler" is not available
-        pytest.skip("ambgfun cut='doppler' is not supported; only '2d' is available")
+        n = 32
+        x_np = np.random.randn(n).astype(np.float64)
+        x = ins.from_numpy(x_np)
+        result = ins.signal.ambgfun(x, fs=1000.0, prf=100.0, cut="doppler", cutValue=0)
+        assert result is not None
+        assert result.numel() > 0
 
 
 if __name__ == "__main__":

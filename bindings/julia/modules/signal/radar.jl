@@ -12,6 +12,29 @@ function cfar_alpha(pfa::Float64, N::Int)::Float64
 end
 
 """
+    ca_cfar(data::InsightArray, guard_cells::Vector{Int32},
+            reference_cells::Vector{Int32}, pfa::Float64=1e-3)
+            -> (InsightArray, InsightArray)
+
+Cell-Averaging CFAR detector. Returns (threshold, detections).
+"""
+function ca_cfar(data::InsightArray, guard_cells::Vector{Int32},
+                 reference_cells::Vector{Int32},
+                 pfa::Float64=1e-3)
+    thresh_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    det_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_ca_cfar, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Int32}, Int32, Ptr{Int32}, Int32, Float64,
+           Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          data, guard_cells, Int32(length(guard_cells)),
+          reference_cells, Int32(length(reference_cells)), pfa,
+          thresh_ref, det_ref)
+    thresh = InsightArray(thresh_ref[]); finalizer(_free, thresh)
+    det = InsightArray(det_ref[]); finalizer(_free, det)
+    return (thresh, det)
+end
+
+"""
     pulse_compression(x::InsightArray, tpl::InsightArray; normalize=false) -> InsightArray
 
 Perform pulse compression (matched filtering) using FFT correlation.

@@ -222,6 +222,16 @@ JL_BINARY_OP(less, less)
 JL_BINARY_OP(greater_equal, greater_equal)
 JL_BINARY_OP(less_equal, less_equal)
 
+// Logical binary ops
+JL_BINARY_OP(logical_and, logical_and)
+JL_BINARY_OP(logical_or, logical_or)
+JL_BINARY_OP(logical_xor, logical_xor)
+
+// Logical unary ops (use ins:: namespace to avoid std::logical_not conflict)
+Array *insight_jl_logical_not(const Array *x) {
+  return new Array(ins::logical_not(*x));
+}
+
 // ============================================================================
 // Unary
 // ============================================================================
@@ -250,6 +260,10 @@ JL_UNARY_OP(floor, floor)
 JL_UNARY_OP(ceil, ceil)
 JL_UNARY_OP(round, rint)
 JL_UNARY_OP(sign, sign)
+
+// Complex unary
+Array *insight_jl_conj(const Array *x) { return new Array(conj(*x)); }
+Array *insight_jl_angle(const Array *x) { return new Array(angle(*x)); }
 
 // ============================================================================
 // Reduction
@@ -599,6 +613,18 @@ Array *insight_jl_mvdr(const Array *x, const Array *sv) {
   return new Array(signal::mvdr(*x, *sv));
 }
 
+// ca_cfar returns (threshold, detections) — two arrays
+void insight_jl_ca_cfar(const Array *data, const int32_t *guard_cells,
+                        int32_t gc_len, const int32_t *reference_cells,
+                        int32_t rc_len, double pfa, Array **threshold_out,
+                        Array **detections_out) {
+  std::vector<int> gc(guard_cells, guard_cells + gc_len);
+  std::vector<int> rc(reference_cells, reference_cells + rc_len);
+  auto [thresh, det] = signal::ca_cfar(*data, gc, rc, pfa);
+  *threshold_out = new Array(std::move(thresh));
+  *detections_out = new Array(std::move(det));
+}
+
 Array *insight_jl_general_cosine(int64_t M, const double *a, int32_t a_len,
                                  int32_t sym) {
   std::vector<double> av(a, a + a_len);
@@ -776,6 +802,8 @@ Array *insight_jl_transpose(const Array *x) {
 }
 
 Array *insight_jl_copy(const Array *x) { return new Array(x->copy()); }
+
+Array *insight_jl_squeeze(const Array *x) { return new Array(squeeze(*x)); }
 
 // ============================================================================
 // Additional Unary (Phase D)
@@ -1091,6 +1119,20 @@ Array *insight_jl_cond(const Array *x, double p) {
 Array *insight_jl_matrix_rank(const Array *x) {
   return new Array(matrix_rank(*x));
 }
+Array *insight_jl_matrix_power(const Array *x, int32_t n) {
+  return new Array(matrix_power(*x, n));
+}
+void insight_jl_slogdet(const Array *x, Array **sign_out, Array **logdet_out) {
+  auto [sign, logdet] = slogdet(*x);
+  *sign_out = new Array(std::move(sign));
+  *logdet_out = new Array(std::move(logdet));
+}
+Array *insight_jl_eigvalsh(const Array *x, const char *uplo) {
+  return new Array(eigvalsh(*x, std::string(uplo)));
+}
+Array *insight_jl_pinv(const Array *x, double rcond) {
+  return new Array(pinv(*x, rcond));
+}
 
 // ============================================================================
 // Spectral analysis (returns decomposed results)
@@ -1238,5 +1280,122 @@ int32_t insight_jl_kf_get_dim_u(void *kf) {
 int32_t insight_jl_kf_get_points(void *kf) {
   return static_cast<signal::KalmanFilter *>(kf)->points;
 }
+
+// ============================================================================
+// Plot (conditionally compiled with INSIGHT_USE_MATPLOT)
+// ============================================================================
+
+#ifdef INSIGHT_USE_MATPLOT
+void insight_jl_plot(const Array *y, const char *format) {
+  try {
+    plot::plot(*y, std::string(format));
+  } catch (...) {
+  }
+}
+void insight_jl_plot_xy(const Array *x, const Array *y, const char *format) {
+  try {
+    plot::plot(*x, *y, std::string(format));
+  } catch (...) {
+  }
+}
+void insight_jl_plot_scatter(const Array *x, const Array *y, double size) {
+  try {
+    plot::scatter(*x, *y, size);
+  } catch (...) {
+  }
+}
+void insight_jl_bar(const Array *y, double width) {
+  try {
+    plot::bar(*y, width);
+  } catch (...) {
+  }
+}
+void insight_jl_bar_xy(const Array *x, const Array *y, double width) {
+  try {
+    plot::bar(*x, *y, width);
+  } catch (...) {
+  }
+}
+void insight_jl_hist(const Array *data, int32_t bins) {
+  try {
+    plot::hist(*data, bins);
+  } catch (...) {
+  }
+}
+void insight_jl_imshow(const Array *data) {
+  try {
+    plot::imshow(*data);
+  } catch (...) {
+  }
+}
+void insight_jl_contour(const Array *X, const Array *Y, const Array *Z,
+                        int32_t levels) {
+  try {
+    plot::contour(*X, *Y, *Z, levels);
+  } catch (...) {
+  }
+}
+void insight_jl_subplot(int32_t rows, int32_t cols, int32_t index) {
+  try {
+    plot::subplot(rows, cols, index);
+  } catch (...) {
+  }
+}
+void insight_jl_title(const char *text) {
+  try {
+    plot::title(std::string(text));
+  } catch (...) {
+  }
+}
+void insight_jl_xlabel(const char *text) {
+  try {
+    plot::xlabel(std::string(text));
+  } catch (...) {
+  }
+}
+void insight_jl_ylabel(const char *text) {
+  try {
+    plot::ylabel(std::string(text));
+  } catch (...) {
+  }
+}
+void insight_jl_legend(const char **labels, int32_t count) {
+  try {
+    std::vector<std::string> v(labels, labels + count);
+    plot::legend(v);
+  } catch (...) {
+  }
+}
+void insight_jl_savefig(const char *filename) {
+  try {
+    plot::save(std::string(filename));
+  } catch (...) {
+  }
+}
+void insight_jl_figure(int32_t number) {
+  try {
+    plot::figure(number);
+  } catch (...) {
+  }
+}
+void insight_jl_clf() {
+  try {
+    plot::clf();
+  } catch (...) {
+  }
+}
+void insight_jl_grid(int32_t on) {
+  try {
+    plot::grid(on != 0);
+  } catch (...) {
+  }
+}
+void insight_jl_close() {
+  try {
+    plot::clf();
+  } catch (...) {
+  }
+}
+#endif
 
 } // extern "C"

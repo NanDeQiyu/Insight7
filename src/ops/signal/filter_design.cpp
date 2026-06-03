@@ -110,23 +110,66 @@ Array firwin_cpu(int64_t numtaps, const std::vector<double> &cutoff,
 
   // Scale using composite ops
   if (scale) {
-    Array scale_factor;
-    if (pass_zero) {
-      scale_factor = sum(result);
+    // Compute peak gain by evaluating DFT across the passband.
+    // For a symmetric (Type I/II) FIR filter:
+    //   H(f) = sum_k h[k] * cos(pi * k * f)  (Type I, odd length)
+    // We want to find max |H(f)| in the passband and normalize to 1.
+    //
+    // Lowpass/bandstop (pass_zero=true): passband includes DC, omega=0.
+    // Highpass/bandpass (pass_zero=false): passband excludes DC.
+    double peak_gain = 0.0;
+
+    if (pass_zero && cutoff.size() < 2) {
+      // Lowpass: gain at DC = sum(h)
+      peak_gain = sum(result).item<double>();
+    } else if (!pass_zero && cutoff.size() < 2) {
+      // Highpass: gain at Nyquist = alternating sum h[k]*(-1)^k
+      // This is the DTFT evaluated at omega = pi.
+      const double *h_data = result.data<double>();
+      double alt_sum = 0.0;
+      for (int64_t k = 0; k < n; ++k) {
+        alt_sum += h_data[k] * ((k % 2 == 0) ? 1.0 : -1.0);
+      }
+      peak_gain = alt_sum;
     } else {
-      // Alternating sign sum: sum(result * [1, -1, 1, -1, ...])
-      std::vector<double> alt(n);
-      for (int64_t k = 0; k < n; ++k)
-        alt[k] = (k % 2 == 0) ? 1.0 : -1.0;
-      Array alt_arr = to_array(alt, DType::F64, cpu);
-      scale_factor = sum(mul(result, alt_arr));
+      // Bandpass/bandstop: evaluate DFT across frequency grid
+      // and find the peak magnitude.
+      int64_t nfreq = std::max((int64_t)256, 4 * n);
+      double df = M_PI / nfreq;
+
+      // Determine frequency search range
+      double f_lo = 0.0, f_hi = M_PI;
+      if (!pass_zero) {
+        if (cutoff.size() >= 2) {
+          // Bandpass: search between first and last cutoff
+          f_lo = M_PI * cutoff.front() * 0.5;
+          f_hi = M_PI * cutoff.back() * 1.5;
+          f_hi = std::min(f_hi, M_PI);
+        } else {
+          // Highpass: search from cutoff to Nyquist (inclusive)
+          f_lo = M_PI * cutoff[0];
+          f_hi = M_PI;
+        }
+      } else {
+        // Bandstop: search from DC to first cutoff
+        f_hi = M_PI * cutoff.front();
+      }
+
+      const double *h_data = result.data<double>();
+      for (int64_t fi = 0; fi <= nfreq; ++fi) {
+        double freq = f_lo + (f_hi - f_lo) * fi / nfreq;
+        double re = 0.0;
+        for (int64_t k = 0; k < n; ++k) {
+          re += h_data[k] * std::cos(k * freq);
+        }
+        double mag = std::abs(re);
+        if (mag > peak_gain)
+          peak_gain = mag;
+      }
     }
 
-    double sf = (result.dtype() == DType::F64)
-                    ? scale_factor.item<double>()
-                    : static_cast<double>(scale_factor.item<float>());
-    if (std::abs(sf) > 1e-15) {
-      result = div(result, full(result.shape(), sf, DType::F64, cpu));
+    if (std::abs(peak_gain) > 1e-15) {
+      result = div(result, full(result.shape(), peak_gain, DType::F64, cpu));
     }
   }
 

@@ -384,7 +384,11 @@ int main() {
   }
 
 #ifdef INSIGHT_USE_MATPLOT
-  save_plots(cpu, "task1_cpu");
+  try {
+    save_plots(cpu, "task1_cpu");
+  } catch (const std::exception &e) {
+    printf("[Warning] Plotting failed: %s\n", e.what());
+  }
 #endif
 
   // GPU
@@ -405,7 +409,11 @@ int main() {
     }
 
 #ifdef INSIGHT_USE_MATPLOT
-    save_plots(gpu, "task1_gpu");
+    try {
+      save_plots(gpu, "task1_gpu");
+    } catch (const std::exception &e) {
+      printf("[Warning] Plotting failed: %s\n", e.what());
+    }
 #endif
 
     separator("一致性验证");

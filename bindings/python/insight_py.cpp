@@ -33,6 +33,7 @@
 #endif
 
 #include <cmath>
+#include <csignal>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -454,6 +455,12 @@ PYBIND11_MODULE(_insight, m) {
       .def("__getitem__",
            [](const Array &a, const std::string &spec) { return a[spec]; })
       .def("__getitem__", [](const Array &a, const Slice &s) { return a[s]; })
+      .def("__getitem__",
+           [](const Array &a, py::slice pyslice) {
+             py::ssize_t start, stop, step, slicelength;
+             pyslice.compute(a.numel(), &start, &stop, &step, &slicelength);
+             return a[Slice((int64_t)start, (int64_t)stop, (int64_t)step)];
+           })
       .def("at",
            [](const Array &a, std::vector<int64_t> idx) { return a.at(idx); })
       // --- arithmetic operators ---
@@ -644,6 +651,8 @@ PYBIND11_MODULE(_insight, m) {
   m.def("trunc", [](const Array &x) { return trunc(x); }, py::arg("x"));
   m.def("deg2rad", [](const Array &x) { return deg2rad(x); }, py::arg("x"));
   m.def("rad2deg", [](const Array &x) { return rad2deg(x); }, py::arg("x"));
+  m.def("conj", [](const Array &x) { return conj(x); }, py::arg("x"));
+  m.def("angle", [](const Array &x) { return angle(x); }, py::arg("x"));
   m.def(
       "where",
       [](const Array &cond, const Array &x, const Array &y) {
@@ -1208,9 +1217,13 @@ PYBIND11_MODULE(_insight, m) {
             py::arg("w") = 5.0);
     sig.def(
         "cwt",
-        [](const Array &data, std::function<Array(int64_t, double)> wavelet,
+        [](const Array &data, py::function wavelet,
            const std::vector<double> &widths) {
-          return signal::cwt(data, wavelet, widths);
+          // Wrap Python callable as std::function<Array(int64_t, double)>
+          auto wavelet_fn = [&wavelet](int64_t points, double a) -> Array {
+            return wavelet(py::cast(points), py::cast(a)).cast<Array>();
+          };
+          return signal::cwt(data, wavelet_fn, widths);
         },
         py::arg("data"), py::arg("wavelet"), py::arg("widths"));
 
@@ -1337,251 +1350,977 @@ PYBIND11_MODULE(_insight, m) {
   // ====================================================================
 #ifdef INSIGHT_USE_MATPLOT
   {
+    // Ignore SIGPIPE to prevent process crash when gnuplot is unavailable.
+    // matplotplusplus spawns gnuplot via popen; if gnuplot is not installed
+    // the pipe breaks and SIGPIPE would kill the process.
+    std::signal(SIGPIPE, SIG_IGN);
+
     auto plt = m.def_submodule("plot", "Plotting functions (matplotlib-style)");
 
+    // Helper: wrap a void() callable with try/catch to prevent C++ exceptions
+    // from crashing the Python process (e.g. when gnuplot is unavailable).
+    auto safe_plot = [](auto fn) {
+      return [fn]() {
+        try {
+          fn();
+        } catch (const std::exception &e) {
+          throw py::value_error(e.what());
+        }
+      };
+    };
+
     // Figure & Axes
-    plt.def("figure", &plot::figure, py::arg("number") = -1);
-    plt.def("subplot", &plot::subplot, py::arg("rows"), py::arg("cols"),
-            py::arg("index"));
-    plt.def("hold", &plot::hold, py::arg("on"));
-    plt.def("clf", &plot::clf);
-    plt.def("show", &plot::show);
-    plt.def("save", &plot::save, py::arg("filename"));
+    plt.def(
+        "figure",
+        [](int number) {
+          try {
+            plot::figure(number);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("number") = -1);
+    plt.def(
+        "subplot",
+        [](int r, int c, int i) {
+          try {
+            plot::subplot(r, c, i);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("rows"), py::arg("cols"), py::arg("index"));
+    plt.def(
+        "hold",
+        [](bool on) {
+          try {
+            plot::hold(on);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("on"));
+    plt.def("clf", safe_plot([]() { plot::clf(); }));
+    plt.def("show", safe_plot([]() { plot::show(); }));
+    plt.def(
+        "save",
+        [](const std::string &fn) {
+          try {
+            plot::save(fn);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("filename"));
 
     // Line plots
     plt.def(
         "plot",
-        [](const Array &y, const std::string &fmt) { plot::plot(y, fmt); },
+        [](const Array &y, const std::string &fmt) {
+          try {
+            plot::plot(y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("y"), py::arg("format") = "");
     plt.def(
         "plot",
         [](const Array &x, const Array &y, const std::string &fmt) {
-          plot::plot(x, y, fmt);
+          try {
+            plot::plot(x, y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
         },
         py::arg("x"), py::arg("y"), py::arg("format") = "");
     plt.def(
         "plot3",
         [](const Array &x, const Array &y, const Array &z,
-           const std::string &fmt) { plot::plot3(x, y, z, fmt); },
+           const std::string &fmt) {
+          try {
+            plot::plot3(x, y, z, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("x"), py::arg("y"), py::arg("z"), py::arg("format") = "");
     plt.def(
         "fplot",
         [](std::function<double(double)> f, double xmin, double xmax,
-           const std::string &fmt,
-           int n) { plot::fplot(f, xmin, xmax, fmt, n); },
+           const std::string &fmt, int n) {
+          try {
+            plot::fplot(f, xmin, xmax, fmt, n);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("f"), py::arg("xmin"), py::arg("xmax"), py::arg("format") = "",
         py::arg("n_points") = 100);
     plt.def(
         "stairs",
-        [](const Array &y, const std::string &fmt) { plot::stairs(y, fmt); },
+        [](const Array &y, const std::string &fmt) {
+          try {
+            plot::stairs(y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("y"), py::arg("format") = "");
     plt.def(
         "stairs",
         [](const Array &x, const Array &y, const std::string &fmt) {
-          plot::stairs(x, y, fmt);
+          try {
+            plot::stairs(x, y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
         },
         py::arg("x"), py::arg("y"), py::arg("format") = "");
-    plt.def("errorbar", &plot::errorbar, py::arg("x"), py::arg("y"),
-            py::arg("err"), py::arg("format") = "");
-    plt.def("area", [](const Array &y) { plot::area(y); }, py::arg("y"));
     plt.def(
-        "area", [](const Array &x, const Array &y) { plot::area(x, y); },
+        "errorbar",
+        [](const Array &x, const Array &y, const Array &err,
+           const std::string &fmt) {
+          try {
+            plot::errorbar(x, y, err, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("y"), py::arg("err"), py::arg("format") = "");
+    plt.def(
+        "area",
+        [](const Array &y) {
+          try {
+            plot::area(y);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("y"));
+    plt.def(
+        "area",
+        [](const Array &x, const Array &y) {
+          try {
+            plot::area(x, y);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("x"), py::arg("y"));
-    plt.def("fill", &plot::fill, py::arg("x"), py::arg("y"),
-            py::arg("color") = "b");
-    plt.def("line", &plot::line, py::arg("x"), py::arg("y"),
-            py::arg("format") = "");
+    plt.def(
+        "fill",
+        [](const Array &x, const Array &y, const std::string &color) {
+          try {
+            plot::fill(x, y, color);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("y"), py::arg("color") = "b");
+    plt.def(
+        "line",
+        [](const Array &x, const Array &y, const std::string &fmt) {
+          try {
+            plot::line(x, y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("y"), py::arg("format") = "");
 
     // Logarithmic
     plt.def(
         "semilogx",
-        [](const Array &y, const std::string &fmt) { plot::semilogx(y, fmt); },
+        [](const Array &y, const std::string &fmt) {
+          try {
+            plot::semilogx(y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("y"), py::arg("format") = "");
     plt.def(
         "semilogx",
         [](const Array &x, const Array &y, const std::string &fmt) {
-          plot::semilogx(x, y, fmt);
+          try {
+            plot::semilogx(x, y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
         },
         py::arg("x"), py::arg("y"), py::arg("format") = "");
     plt.def(
         "semilogy",
-        [](const Array &y, const std::string &fmt) { plot::semilogy(y, fmt); },
+        [](const Array &y, const std::string &fmt) {
+          try {
+            plot::semilogy(y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("y"), py::arg("format") = "");
     plt.def(
         "semilogy",
         [](const Array &x, const Array &y, const std::string &fmt) {
-          plot::semilogy(x, y, fmt);
+          try {
+            plot::semilogy(x, y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
         },
         py::arg("x"), py::arg("y"), py::arg("format") = "");
     plt.def(
         "loglog",
-        [](const Array &y, const std::string &fmt) { plot::loglog(y, fmt); },
+        [](const Array &y, const std::string &fmt) {
+          try {
+            plot::loglog(y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("y"), py::arg("format") = "");
     plt.def(
         "loglog",
         [](const Array &x, const Array &y, const std::string &fmt) {
-          plot::loglog(x, y, fmt);
+          try {
+            plot::loglog(x, y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
         },
         py::arg("x"), py::arg("y"), py::arg("format") = "");
 
     // Scatter
-    plt.def("scatter", &plot::scatter, py::arg("x"), py::arg("y"),
-            py::arg("size") = 20.0);
-    plt.def("scatter3", &plot::scatter3, py::arg("x"), py::arg("y"),
-            py::arg("z"), py::arg("size") = 20.0);
-    plt.def("binscatter", &plot::binscatter, py::arg("x"), py::arg("y"));
+    plt.def(
+        "scatter",
+        [](const Array &x, const Array &y, double sz) {
+          try {
+            plot::scatter(x, y, sz);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("y"), py::arg("size") = 20.0);
+    plt.def(
+        "scatter3",
+        [](const Array &x, const Array &y, const Array &z, double sz) {
+          try {
+            plot::scatter3(x, y, z, sz);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("y"), py::arg("z"), py::arg("size") = 20.0);
+    plt.def(
+        "binscatter",
+        [](const Array &x, const Array &y) {
+          try {
+            plot::binscatter(x, y);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("y"));
 
     // Bar
     plt.def(
-        "bar", [](const Array &y, double w) { plot::bar(y, w); }, py::arg("y"),
-        py::arg("width") = 0.8);
+        "bar",
+        [](const Array &y, double w) {
+          try {
+            plot::bar(y, w);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("y"), py::arg("width") = 0.8);
     plt.def(
         "bar",
-        [](const Array &x, const Array &y, double w) { plot::bar(x, y, w); },
+        [](const Array &x, const Array &y, double w) {
+          try {
+            plot::bar(x, y, w);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("x"), py::arg("y"), py::arg("width") = 0.8);
     plt.def(
-        "barh", [](const Array &y, double w) { plot::barh(y, w); },
+        "barh",
+        [](const Array &y, double w) {
+          try {
+            plot::barh(y, w);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("y"), py::arg("width") = 0.8);
     plt.def(
         "barh",
-        [](const Array &x, const Array &y, double w) { plot::barh(x, y, w); },
+        [](const Array &x, const Array &y, double w) {
+          try {
+            plot::barh(x, y, w);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("x"), py::arg("y"), py::arg("width") = 0.8);
-    plt.def("barstacked", py::overload_cast<const Array &>(&plot::barstacked),
-            py::arg("Y"));
-    plt.def("barstacked",
-            py::overload_cast<const Array &, const Array &>(&plot::barstacked),
-            py::arg("x"), py::arg("Y"));
-    plt.def("pareto", [](const Array &y) { plot::pareto(y); }, py::arg("y"));
     plt.def(
-        "pareto", [](const Array &x, const Array &y) { plot::pareto(x, y); },
+        "barstacked",
+        [](const Array &Y) {
+          try {
+            plot::barstacked(Y);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("Y"));
+    plt.def(
+        "barstacked",
+        [](const Array &x, const Array &Y) {
+          try {
+            plot::barstacked(x, Y);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("Y"));
+    plt.def(
+        "pareto",
+        [](const Array &y) {
+          try {
+            plot::pareto(y);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("y"));
+    plt.def(
+        "pareto",
+        [](const Array &x, const Array &y) {
+          try {
+            plot::pareto(x, y);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("x"), py::arg("y"));
 
     // Histograms
-    plt.def("hist", &plot::hist, py::arg("data"), py::arg("bins") = 10);
-    plt.def("hist2", &plot::hist2, py::arg("x"), py::arg("y"),
-            py::arg("bins") = 10);
     plt.def(
-        "boxplot", [](const Array &d) { plot::boxplot(d); }, py::arg("data"));
+        "hist",
+        [](const Array &data, int bins) {
+          try {
+            plot::hist(data, bins);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("data"), py::arg("bins") = 10);
+    plt.def(
+        "hist2",
+        [](const Array &x, const Array &y, int bins) {
+          try {
+            plot::hist2(x, y, bins);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("y"), py::arg("bins") = 10);
+    plt.def(
+        "boxplot",
+        [](const Array &d) {
+          try {
+            plot::boxplot(d);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("data"));
     plt.def(
         "boxplot",
         [](const Array &d, const std::vector<std::string> &g) {
-          plot::boxplot(d, g);
+          try {
+            plot::boxplot(d, g);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
         },
         py::arg("data"), py::arg("groups"));
-    plt.def("heatmap", &plot::heatmap, py::arg("data"));
+    plt.def(
+        "heatmap",
+        [](const Array &data) {
+          try {
+            plot::heatmap(data);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("data"));
 
     // Stem
     plt.def(
         "stem",
-        [](const Array &y, const std::string &fmt) { plot::stem(y, fmt); },
+        [](const Array &y, const std::string &fmt) {
+          try {
+            plot::stem(y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("y"), py::arg("format") = "");
     plt.def(
         "stem",
         [](const Array &x, const Array &y, const std::string &fmt) {
-          plot::stem(x, y, fmt);
+          try {
+            plot::stem(x, y, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
         },
         py::arg("x"), py::arg("y"), py::arg("format") = "");
-    plt.def("stem3", &plot::stem3, py::arg("x"), py::arg("y"), py::arg("z"),
-            py::arg("format") = "");
+    plt.def(
+        "stem3",
+        [](const Array &x, const Array &y, const Array &z,
+           const std::string &fmt) {
+          try {
+            plot::stem3(x, y, z, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("y"), py::arg("z"), py::arg("format") = "");
 
     // Contour
-    plt.def("contour", &plot::contour, py::arg("X"), py::arg("Y"), py::arg("Z"),
-            py::arg("levels") = 10);
-    plt.def("contourf", &plot::contourf, py::arg("X"), py::arg("Y"),
-            py::arg("Z"), py::arg("levels") = 10);
-    plt.def("pcolor", &plot::pcolor, py::arg("C"));
+    plt.def(
+        "contour",
+        [](const Array &X, const Array &Y, const Array &Z, int levels) {
+          try {
+            plot::contour(X, Y, Z, levels);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"), py::arg("levels") = 10);
+    plt.def(
+        "contourf",
+        [](const Array &X, const Array &Y, const Array &Z, int levels) {
+          try {
+            plot::contourf(X, Y, Z, levels);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"), py::arg("levels") = 10);
+    plt.def(
+        "pcolor",
+        [](const Array &C) {
+          try {
+            plot::pcolor(C);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("C"));
 
     // Surface / Mesh
-    plt.def("surf", &plot::surf, py::arg("X"), py::arg("Y"), py::arg("Z"));
-    plt.def("surfc", &plot::surfc, py::arg("X"), py::arg("Y"), py::arg("Z"));
-    plt.def("mesh", &plot::mesh, py::arg("X"), py::arg("Y"), py::arg("Z"));
-    plt.def("meshc", &plot::meshc, py::arg("X"), py::arg("Y"), py::arg("Z"));
-    plt.def("meshz", &plot::meshz, py::arg("X"), py::arg("Y"), py::arg("Z"));
-    plt.def("waterfall", &plot::waterfall, py::arg("X"), py::arg("Y"),
-            py::arg("Z"));
+    plt.def(
+        "surf",
+        [](const Array &X, const Array &Y, const Array &Z) {
+          try {
+            plot::surf(X, Y, Z);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def(
+        "surfc",
+        [](const Array &X, const Array &Y, const Array &Z) {
+          try {
+            plot::surfc(X, Y, Z);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def(
+        "mesh",
+        [](const Array &X, const Array &Y, const Array &Z) {
+          try {
+            plot::mesh(X, Y, Z);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def(
+        "meshc",
+        [](const Array &X, const Array &Y, const Array &Z) {
+          try {
+            plot::meshc(X, Y, Z);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def(
+        "meshz",
+        [](const Array &X, const Array &Y, const Array &Z) {
+          try {
+            plot::meshz(X, Y, Z);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def(
+        "waterfall",
+        [](const Array &X, const Array &Y, const Array &Z) {
+          try {
+            plot::waterfall(X, Y, Z);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"));
     plt.def(
         "fsurf",
         [](std::function<double(double, double)> f,
-           const std::vector<double> &uv) { plot::fsurf(f, uv); },
+           const std::vector<double> &uv) {
+          try {
+            plot::fsurf(f, uv);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("f"), py::arg("uv") = std::vector<double>{-5, 5, -5, 5});
     plt.def(
         "fmesh",
         [](std::function<double(double, double)> f,
-           const std::vector<double> &uv) { plot::fmesh(f, uv); },
+           const std::vector<double> &uv) {
+          try {
+            plot::fmesh(f, uv);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("f"), py::arg("uv") = std::vector<double>{-5, 5, -5, 5});
-    plt.def("ribbon", [](const Array &y) { plot::ribbon(y); }, py::arg("y"));
     plt.def(
-        "ribbon", [](const Array &x, const Array &y) { plot::ribbon(x, y); },
+        "ribbon",
+        [](const Array &y) {
+          try {
+            plot::ribbon(y);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("y"));
+    plt.def(
+        "ribbon",
+        [](const Array &x, const Array &y) {
+          try {
+            plot::ribbon(x, y);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("x"), py::arg("y"));
-    plt.def("fence", &plot::fence, py::arg("X"), py::arg("Y"), py::arg("Z"));
+    plt.def(
+        "fence",
+        [](const Array &X, const Array &Y, const Array &Z) {
+          try {
+            plot::fence(X, Y, Z);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"));
 
     // Vector fields
-    plt.def("quiver", &plot::quiver, py::arg("X"), py::arg("Y"), py::arg("U"),
-            py::arg("V"), py::arg("scale") = 1.0);
-    plt.def("quiver3", &plot::quiver3, py::arg("X"), py::arg("Y"), py::arg("Z"),
-            py::arg("U"), py::arg("V"), py::arg("W"));
-    plt.def("feather", &plot::feather, py::arg("u"), py::arg("v"));
+    plt.def(
+        "quiver",
+        [](const Array &X, const Array &Y, const Array &U, const Array &V,
+           double scale) {
+          try {
+            plot::quiver(X, Y, U, V, scale);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("U"), py::arg("V"),
+        py::arg("scale") = 1.0);
+    plt.def(
+        "quiver3",
+        [](const Array &X, const Array &Y, const Array &Z, const Array &U,
+           const Array &V, const Array &W) {
+          try {
+            plot::quiver3(X, Y, Z, U, V, W);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"), py::arg("Y"), py::arg("Z"), py::arg("U"), py::arg("V"),
+        py::arg("W"));
+    plt.def(
+        "feather",
+        [](const Array &u, const Array &v) {
+          try {
+            plot::feather(u, v);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("u"), py::arg("v"));
 
     // Polar
-    plt.def("polarplot", &plot::polarplot, py::arg("theta"), py::arg("rho"),
-            py::arg("format") = "");
-    plt.def("polarscatter", &plot::polarscatter, py::arg("theta"),
-            py::arg("rho"), py::arg("size") = 20.0);
-    plt.def("polarhistogram", &plot::polarhistogram, py::arg("data"),
-            py::arg("bins") = 10);
-    plt.def("compass", &plot::compass, py::arg("u"), py::arg("v"));
-    plt.def("ezpolar", &plot::ezpolar, py::arg("expr"));
+    plt.def(
+        "polarplot",
+        [](const Array &theta, const Array &rho, const std::string &fmt) {
+          try {
+            plot::polarplot(theta, rho, fmt);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("theta"), py::arg("rho"), py::arg("format") = "");
+    plt.def(
+        "polarscatter",
+        [](const Array &theta, const Array &rho, double sz) {
+          try {
+            plot::polarscatter(theta, rho, sz);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("theta"), py::arg("rho"), py::arg("size") = 20.0);
+    plt.def(
+        "polarhistogram",
+        [](const Array &data, int bins) {
+          try {
+            plot::polarhistogram(data, bins);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("data"), py::arg("bins") = 10);
+    plt.def(
+        "compass",
+        [](const Array &u, const Array &v) {
+          try {
+            plot::compass(u, v);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("u"), py::arg("v"));
+    plt.def(
+        "ezpolar",
+        [](const std::string &expr) {
+          try {
+            plot::ezpolar(expr);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("expr"));
 
     // Pie
-    plt.def("pie", [](const Array &x) { plot::pie(x); }, py::arg("x"));
+    plt.def(
+        "pie",
+        [](const Array &x) {
+          try {
+            plot::pie(x);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"));
     plt.def(
         "pie",
         [](const Array &x, const std::vector<std::string> &labels) {
-          plot::pie(x, labels);
+          try {
+            plot::pie(x, labels);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
         },
         py::arg("x"), py::arg("labels"));
 
     // Images
-    plt.def("imshow", &plot::imshow, py::arg("data"));
-    plt.def("image", &plot::image, py::arg("data"));
-    plt.def("imagesc", &plot::imagesc, py::arg("data"));
+    plt.def(
+        "imshow",
+        [](const Array &data) {
+          try {
+            plot::imshow(data);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("data"));
+    plt.def(
+        "image",
+        [](const Array &data) {
+          try {
+            plot::image(data);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("data"));
+    plt.def(
+        "imagesc",
+        [](const Array &data) {
+          try {
+            plot::imagesc(data);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("data"));
 
     // Graph
-    plt.def("graph", &plot::graph, py::arg("sources"), py::arg("targets"));
-    plt.def("digraph", &plot::digraph, py::arg("sources"), py::arg("targets"));
+    plt.def(
+        "graph",
+        [](const std::vector<int> &s, const std::vector<int> &t) {
+          try {
+            plot::graph(s, t);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("sources"), py::arg("targets"));
+    plt.def(
+        "digraph",
+        [](const std::vector<int> &s, const std::vector<int> &t) {
+          try {
+            plot::digraph(s, t);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("sources"), py::arg("targets"));
 
     // Misc
-    plt.def("parallelplot", &plot::parallelplot, py::arg("data"));
-    plt.def("plotmatrix", &plot::plotmatrix, py::arg("X"));
-    plt.def("wordcloud", &plot::wordcloud, py::arg("words"), py::arg("sizes"));
-    plt.def("rgbplot", &plot::rgbplot, py::arg("data"));
+    plt.def(
+        "parallelplot",
+        [](const Array &data) {
+          try {
+            plot::parallelplot(data);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("data"));
+    plt.def(
+        "plotmatrix",
+        [](const Array &X) {
+          try {
+            plot::plotmatrix(X);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("X"));
+    plt.def(
+        "wordcloud",
+        [](const std::vector<std::string> &w, const std::vector<double> &s) {
+          try {
+            plot::wordcloud(w, s);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("words"), py::arg("sizes"));
+    plt.def(
+        "rgbplot",
+        [](const Array &data) {
+          try {
+            plot::rgbplot(data);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("data"));
 
     // Labels & Titles
-    plt.def("title", &plot::title, py::arg("text"));
-    plt.def("subtitle", &plot::subtitle, py::arg("text"));
-    plt.def("xlabel", &plot::xlabel, py::arg("text"));
-    plt.def("ylabel", &plot::ylabel, py::arg("text"));
-    plt.def("zlabel", &plot::zlabel, py::arg("text"));
-    plt.def("legend", &plot::legend, py::arg("labels"));
+    plt.def(
+        "title",
+        [](const std::string &text) {
+          try {
+            plot::title(text);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("text"));
+    plt.def(
+        "subtitle",
+        [](const std::string &text) {
+          try {
+            plot::subtitle(text);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("text"));
+    plt.def(
+        "xlabel",
+        [](const std::string &text) {
+          try {
+            plot::xlabel(text);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("text"));
+    plt.def(
+        "ylabel",
+        [](const std::string &text) {
+          try {
+            plot::ylabel(text);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("text"));
+    plt.def(
+        "zlabel",
+        [](const std::string &text) {
+          try {
+            plot::zlabel(text);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("text"));
+    plt.def(
+        "legend",
+        [](const std::vector<std::string> &labels) {
+          try {
+            plot::legend(labels);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("labels"));
 
     // Axis limits
-    plt.def("xlim", &plot::xlim, py::arg("xmin"), py::arg("xmax"));
-    plt.def("ylim", &plot::ylim, py::arg("ymin"), py::arg("ymax"));
-    plt.def("zlim", &plot::zlim, py::arg("zmin"), py::arg("zmax"));
-    plt.def("axis_equal", &plot::axis_equal);
-    plt.def("axis_tight", &plot::axis_tight);
-    plt.def("axis_off", &plot::axis_off);
-    plt.def("axis_ij", &plot::axis_ij);
-    plt.def("grid", &plot::grid, py::arg("on"));
+    plt.def(
+        "xlim",
+        [](double xmin, double xmax) {
+          try {
+            plot::xlim(xmin, xmax);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("xmin"), py::arg("xmax"));
+    plt.def(
+        "ylim",
+        [](double ymin, double ymax) {
+          try {
+            plot::ylim(ymin, ymax);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("ymin"), py::arg("ymax"));
+    plt.def(
+        "zlim",
+        [](double zmin, double zmax) {
+          try {
+            plot::zlim(zmin, zmax);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("zmin"), py::arg("zmax"));
+    plt.def("axis_equal", safe_plot([]() { plot::axis_equal(); }));
+    plt.def("axis_tight", safe_plot([]() { plot::axis_tight(); }));
+    plt.def("axis_off", safe_plot([]() { plot::axis_off(); }));
+    plt.def("axis_ij", safe_plot([]() { plot::axis_ij(); }));
+    plt.def(
+        "grid",
+        [](bool on) {
+          try {
+            plot::grid(on);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("on"));
 
     // Ticks
-    plt.def("xticks", &plot::xticks, py::arg("ticks"));
-    plt.def("yticks", &plot::yticks, py::arg("ticks"));
-    plt.def("zticks", &plot::zticks, py::arg("ticks"));
-    plt.def("xticklabels", &plot::xticklabels, py::arg("labels"));
-    plt.def("yticklabels", &plot::yticklabels, py::arg("labels"));
-    plt.def("xtickangle", &plot::xtickangle, py::arg("angle"));
-    plt.def("ytickangle", &plot::ytickangle, py::arg("angle"));
+    plt.def(
+        "xticks",
+        [](const std::vector<double> &t) {
+          try {
+            plot::xticks(t);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("ticks"));
+    plt.def(
+        "yticks",
+        [](const std::vector<double> &t) {
+          try {
+            plot::yticks(t);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("ticks"));
+    plt.def(
+        "zticks",
+        [](const std::vector<double> &t) {
+          try {
+            plot::zticks(t);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("ticks"));
+    plt.def(
+        "xticklabels",
+        [](const std::vector<std::string> &l) {
+          try {
+            plot::xticklabels(l);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("labels"));
+    plt.def(
+        "yticklabels",
+        [](const std::vector<std::string> &l) {
+          try {
+            plot::yticklabels(l);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("labels"));
+    plt.def(
+        "xtickangle",
+        [](double angle) {
+          try {
+            plot::xtickangle(angle);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("angle"));
+    plt.def(
+        "ytickangle",
+        [](double angle) {
+          try {
+            plot::ytickangle(angle);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("angle"));
 
     // Colormap
     py::enum_<plot::Colormap>(plt, "Colormap")
@@ -1601,23 +2340,80 @@ PYBIND11_MODULE(_insight, m) {
         .value("colorcube", plot::Colormap::Colorcube)
         .value("prism", plot::Colormap::Prism)
         .value("flag", plot::Colormap::Flag);
-    plt.def("colormap", &plot::colormap, py::arg("cmap"));
-    plt.def("colorbar", &plot::colorbar, py::arg("on") = true);
+    plt.def(
+        "colormap",
+        [](plot::Colormap cmap) {
+          try {
+            plot::colormap(cmap);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("cmap"));
+    plt.def(
+        "colorbar",
+        [](bool on) {
+          try {
+            plot::colorbar(on);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("on") = true);
 
     // Annotations
     plt.def(
         "text",
-        [](double x, double y, const std::string &s) { plot::text(x, y, s); },
+        [](double x, double y, const std::string &s) {
+          try {
+            plot::text(x, y, s);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
         py::arg("x"), py::arg("y"), py::arg("text"));
-    plt.def("arrow", &plot::arrow, py::arg("x1"), py::arg("y1"), py::arg("x2"),
-            py::arg("y2"));
-    plt.def("rectangle", &plot::rectangle, py::arg("x"), py::arg("y"),
-            py::arg("w"), py::arg("h"));
-    plt.def("ellipse", &plot::ellipse, py::arg("cx"), py::arg("cy"),
-            py::arg("rx"), py::arg("ry"));
+    plt.def(
+        "arrow",
+        [](double x1, double y1, double x2, double y2) {
+          try {
+            plot::arrow(x1, y1, x2, y2);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x1"), py::arg("y1"), py::arg("x2"), py::arg("y2"));
+    plt.def(
+        "rectangle",
+        [](double x, double y, double w, double h) {
+          try {
+            plot::rectangle(x, y, w, h);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("x"), py::arg("y"), py::arg("w"), py::arg("h"));
+    plt.def(
+        "ellipse",
+        [](double cx, double cy, double rx, double ry) {
+          try {
+            plot::ellipse(cx, cy, rx, ry);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("cx"), py::arg("cy"), py::arg("rx"), py::arg("ry"));
 
     // 3D Camera
-    plt.def("view", &plot::view, py::arg("azimuth"), py::arg("elevation"));
+    plt.def(
+        "view",
+        [](double az, double el) {
+          try {
+            plot::view(az, el);
+          } catch (const std::exception &e) {
+            throw py::value_error(e.what());
+          }
+        },
+        py::arg("azimuth"), py::arg("elevation"));
   }
 #endif // INSIGHT_USE_MATPLOT
 

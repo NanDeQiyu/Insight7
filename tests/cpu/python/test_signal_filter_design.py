@@ -83,7 +83,6 @@ class TestFirwin:
         nyquist_gain = sum(d[i] * (1.0 if i % 2 == 0 else -1.0) for i in range(21))
         assert abs(nyquist_gain - 1.0) < 1e-6
 
-    @pytest.mark.skip(reason="firwin bandpass needs C++ fix")
     def test_firwin_bandpass(self):
         h = ins.signal.firwin(21, [0.2, 0.5], window="hamming", pass_zero="bandpass")
         assert h.numel() == 21

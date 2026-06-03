@@ -49,14 +49,56 @@ H = Insight.reshape(H, Int64[1, 2])
 kf.H = H
 check("set_H", Insight.numel(kf.H) == 2)
 
-# Note: predict/update calls are skipped because the C++ Kalman filter
-# implementation has a dimension mismatch bug that causes a segfault
-# when called from the Julia binding (transpose perm size mismatch).
-# These tests verify the constructor and property accessors work correctly.
+# predict
+kf2 = Insight.KalmanFilter(2, 1)
+F = Insight.from_data([1.0, 1.0, 0.0, 1.0], Insight.float64)
+F = Insight.reshape(F, Int64[2, 2])
+kf2.F = F
+H = Insight.from_data([1.0, 0.0], Insight.float64)
+H = Insight.reshape(H, Int64[1, 2])
+kf2.H = H
+# Set initial covariance and noise matrices
+P = Insight.from_data([1.0, 0.0, 0.0, 1.0], Insight.float64)
+P = Insight.reshape(P, Int64[2, 2])
+kf2.P = P
+R = Insight.from_data([1.0], Insight.float64)
+R = Insight.reshape(R, Int64[1, 1])
+kf2.R = R
+Q = Insight.from_data([0.1, 0.0, 0.0, 0.1], Insight.float64)
+Q = Insight.reshape(Q, Int64[2, 2])
+kf2.Q = Q
+Insight.predict(kf2)
+x_after = kf2.x
+check("predict", Insight.numel(x_after) == 2)
 
-println("SKIP: predict (C++ dimension mismatch bug)")
-println("SKIP: update (C++ dimension mismatch bug)")
-println("SKIP: predict_update_cycle (C++ dimension mismatch bug)")
+# update
+kf3 = Insight.KalmanFilter(2, 1)
+kf3.F = F
+kf3.H = H
+kf3.P = P
+kf3.R = R
+kf3.Q = Q
+Insight.predict(kf3)
+z = Insight.from_data([1.0], Insight.float64)
+z = Insight.reshape(z, Int64[1, 1])
+Insight.update(kf3, z)
+x_after_u = kf3.x
+check("update", Insight.numel(x_after_u) == 2)
+
+# predict-update cycle
+kf4 = Insight.KalmanFilter(2, 1)
+kf4.F = F
+kf4.H = H
+kf4.P = P
+kf4.R = R
+kf4.Q = Q
+for i in 1:5
+    Insight.predict(kf4)
+    zi = Insight.from_data([1.0], Insight.float64)
+    zi = Insight.reshape(zi, Int64[1, 1])
+    Insight.update(kf4, zi)
+end
+check("predict_update_cycle", Insight.numel(kf4.x) == 2)
 
 # ============================================================================
 # Results

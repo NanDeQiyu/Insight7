@@ -123,6 +123,26 @@ Array conj(const Array &x) {
   return out;
 }
 
+Array angle(const Array &x) {
+  INS_CHECK(x.defined(), "angle: input is undefined");
+
+  DType out_dtype;
+  if (x.dtype() == DType::C32 || x.dtype() == DType::F32 ||
+      x.dtype() == DType::F16 || x.dtype() == DType::BF16) {
+    out_dtype = DType::F32;
+  } else if (x.dtype() == DType::C64 || x.dtype() == DType::F64) {
+    out_dtype = DType::F64;
+  } else {
+    // For integer types, angle is 0 for non-negative, pi for negative
+    out_dtype = DType::F64;
+  }
+
+  Array out(x.shape(), out_dtype, x.place());
+  ops().launch("angle", x.place(), x.dtype(), {(void *)x.layout_ptr()},
+               {out.layout_ptr()});
+  return out;
+}
+
 // ============================================================================
 // Degree/radian conversion
 // ============================================================================

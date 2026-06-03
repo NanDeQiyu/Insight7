@@ -137,3 +137,99 @@ ins.reshape(a, {2, 3})
 -- ✅ CORRECT
 a:reshape({2, 3})
 ```
+
+## 8. `load_backend` returns boolean, does NOT throw
+
+Unlike Python (which throws `py::value_error`), Lua's `load_backend` catches
+C++ exceptions internally and returns `true`/`false`:
+
+```lua
+-- ❌ WRONG — pcall always succeeds (load_backend returns false, not throw)
+local ok, _ = pcall(function() ins.load_backend("cuda") end)
+return ok  -- always true!
+
+-- ✅ CORRECT — check return value
+local ok, result = pcall(function() return ins.load_backend("cuda") end)
+return ok and result
+```
+
+Same pattern for Julia:
+```julia
+# ❌ WRONG — always returns true
+function gpu_available()
+    try
+        Insight.load_backend("cuda")
+        return true
+    catch
+        return false
+    end
+end
+
+# ✅ CORRECT — check return value
+function gpu_available()
+    try
+        return Insight.load_backend("cuda")
+    catch
+        return false
+    end
+end
+```
+
+## 9. Busted `--no-auto-insulate` required
+
+Busted's auto-insulate feature creates sandboxed environments per test file,
+which breaks `require("_insight")` for sol2 Array usertypes. The `numel`
+property returns userdata instead of number when run alongside other tests.
+
+```bash
+# ❌ WRONG — auto-insulate breaks Array usertypes
+busted --pattern="test_.+%.lua" .
+
+# ✅ CORRECT — disable sandboxing
+busted --no-auto-insulate --pattern="test_.+%.lua" .
+```
+
+## 10. Signal wrapper parameter conventions
+
+### fm_demod: axis, NOT fs
+```lua
+-- ❌ WRONG — fs is not a parameter
+M.fm_demod = _wrap({ "x", "fs" }, function(x, fs)
+  return sig.fm_demod(x, fs)
+end)
+
+-- ✅ CORRECT — C++ takes axis (default -1)
+M.fm_demod = _wrap({ "x", "axis" }, function(x, axis)
+  return sig.fm_demod(x, axis or -1)
+end)
+```
+
+### firwin: window THEN pass_zero
+```lua
+-- ❌ WRONG — "lowpass" goes to window param
+ins.signal.firwin(11, {0.3}, "lowpass", true)
+
+-- ✅ CORRECT — nil for window, then pass_zero
+ins.signal.firwin(11, {0.3}, nil, "lowpass", true)
+```
+
+### morlet/morlet2: M (int) is first param
+```lua
+-- ❌ WRONG — passes float where int expected
+ins.signal.morlet(5.0)
+
+-- ✅ CORRECT
+ins.signal.morlet(16, 5.0)  -- M=16, w=5.0
+ins.signal.morlet2(16, 1.0, 5.0)  -- M=16, s=1.0, w=5.0
+```
+
+### write_bin: filepath first, then data
+```lua
+-- ❌ WRONG — data first
+ins.signal.write_bin(data_array, "/tmp/out.bin")
+
+-- ✅ CORRECT — filepath first
+ins.signal.write_bin("/tmp/out.bin", data_array)
+-- append defaults to true; pass false to overwrite:
+ins.signal.write_bin("/tmp/out.bin", data_array, false)
+```

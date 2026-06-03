@@ -197,13 +197,14 @@ print(string.format("  耗时: %.2f 秒", os.clock() - t0))
 print("[5/6] CFAR 目标检测...")
 t0 = os.clock()
 
-local energy_flat = {}
+local energy_2d = {}
 for p = 0, N_PULSES - 1 do
+  energy_2d[p + 1] = {}
   for i = 0, N - 1 do
-    energy_flat[p * N + i + 1] = math.sqrt(doppler_r[i][p] ^ 2 + doppler_i[i][p] ^ 2)
+    energy_2d[p + 1][i + 1] = math.sqrt(doppler_r[i][p] ^ 2 + doppler_i[i][p] ^ 2)
   end
 end
-local energy_arr = ins.from_table(energy_flat)
+local energy_arr = ins.from_table(energy_2d)
 
 local threshold, detections = ins.signal.ca_cfar(energy_arr, { 2, 2 }, { 4, 4 }, 1e-5)
 

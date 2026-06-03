@@ -27,6 +27,23 @@ val = ins.sum(arr).item()  # AttributeError
 val = ins.sum(arr).numpy().item()
 ```
 
+### Array printing — use `str()` not `.numpy()`
+```python
+# ❌ WRONG — bypasses C++ tostring, shows numpy format
+print(arr.numpy())
+# [[ 0.  1.  2.  3.]
+#  [ 4.  5.  6.  7.]]
+
+# ✅ CORRECT — uses C++ insight_array_tostring(), shows Insight format
+print(arr)
+# Array(shape=[2, 4], dtype=float64, place=cpu:0,
+#       [[0., 1., 2., 3.],
+#        [4., 5., 6., 7.]])
+
+# For energy/stats, .numpy() is still correct for computation:
+energy = float(str(ins.sum(arr)))  # or float(ins.sum(arr).numpy())
+```
+
 ### Init with CPU only
 ```python
 # ❌ WRONG — tries to load CUDA, prints warning
@@ -172,6 +189,31 @@ Insight.load_backend("cuda")
 
 # GPU not available through Julia binding (no load_backend function)
 # Julia demos should gracefully skip GPU sections
+```
+
+### `load_backend` exists and returns Bool
+```julia
+# load_backend DOES exist and returns Bool (true=success, false=failure)
+# It does NOT throw on failure
+
+# ❌ WRONG — always returns true
+function gpu_available()
+    try
+        Insight.load_backend("cuda")
+        return true
+    catch
+        return false
+    end
+end
+
+# ✅ CORRECT — check return value
+function gpu_available()
+    try
+        return Insight.load_backend("cuda")
+    catch
+        return false
+    end
+end
 ```
 
 ## C++ demos

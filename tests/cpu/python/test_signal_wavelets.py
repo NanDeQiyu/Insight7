@@ -53,7 +53,6 @@ class TestSignalWaveletsCPU:
         assert w is not None
         assert w.numel() == 64
 
-    @pytest.mark.skip(reason="cwt requires std::function, not convertible from Python")
     def test_cwt(self):
         x_np = np.sin(2 * np.pi * 5 * np.arange(256) / 256.0).astype(np.float64)
         x = ins.from_numpy(x_np)

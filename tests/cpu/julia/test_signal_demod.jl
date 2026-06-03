@@ -39,25 +39,26 @@ end
 # ============================================================================
 println("=== Signal Demod ===")
 
-# fm_demod
+# fm_demod — extracts real part of output (demodulation returns real signal)
 x = make_fm_signal(512, 256.0, 20.0, 2.0, 5.0)
 result = Insight.fm_demod(x)
-check("fm_demod", Insight.numel(result) > 0)
+# fm_demod returns N-1 elements due to differentiation
+check("fm_demod", Insight.numel(result) == 511)
 
 # fm_demod output length
 x = make_fm_signal(256, 256.0, 20.0, 2.0, 5.0)
 result = Insight.fm_demod(x)
-println("SKIP: fm_demod_length (complex input issue)")
+check("fm_demod_length", Insight.numel(result) == 255)
 
 # fm_demod short signal
 x = make_fm_signal(128, 256.0, 10.0, 1.0, 3.0)
 result = Insight.fm_demod(x)
-println("SKIP: fm_demod_short (complex input issue)")
+check("fm_demod_short", Insight.numel(result) == 127)
 
 # fm_demod longer signal
 x = make_fm_signal(1024, 256.0, 20.0, 2.0, 10.0)
 result = Insight.fm_demod(x)
-println("SKIP: fm_demod_long (complex input issue)")
+check("fm_demod_long", Insight.numel(result) == 1023)
 
 # ============================================================================
 # Results
