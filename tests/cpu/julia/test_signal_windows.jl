@@ -193,7 +193,7 @@ w_hann = Insight.signal.hann(10)
 tukey_match = true
 for i in 0:9
     if !approx(Insight.item(w_tukey, i), Insight.item(w_hann, i), atol=0.1)
-        tukey_match = false; break
+        local tukey_match = false; break
     end
 end
 check("tukey_alpha1_match", tukey_match)
@@ -270,7 +270,7 @@ ref = Insight.signal.hann(5)
 hann_match = true
 for i in 0:4
     if !approx(Insight.item(w, i), Insight.item(ref, i), atol=0.1)
-        hann_match = false; break
+        local hann_match = false; break
     end
 end
 check("get_window_hann", hann_match)

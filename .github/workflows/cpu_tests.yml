@@ -28,7 +28,7 @@ jobs:
   # Job 1: Full dependencies (OpenBLAS + FFTW3)
   full:
     name: Full (OpenBLAS + FFTW3)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,7 +77,7 @@ jobs:
   # Job 2: No FFTW3 (fallback to internal implementation)
   no-fftw:
     name: No FFTW3 (internal fallback)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -125,7 +125,7 @@ jobs:
   # Job 3: No OpenBLAS (fallback to internal implementation)
   no-openblas:
     name: No OpenBLAS (internal fallback)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -168,7 +168,7 @@ jobs:
   # Job 4: Minimal dependencies (no FFTW3, no OpenBLAS)
   minimal:
     name: Minimal (no FFTW3, no OpenBLAS)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:

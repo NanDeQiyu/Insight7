@@ -50,8 +50,8 @@ print("\n[1/6] 生成 LFM 信号...")
 local t_arr = {}
 local s_tx_r, s_tx_i = {}, {}
 local sig_power = 0
-for i = 0, N - 1 do
-  local ti = i / FS
+for i = 1, N do
+  local ti = (i - 1) / FS
   t_arr[i] = ti
   if ti < TAU then
     local phase = math.pi * (B / TAU) * ti * ti
@@ -71,10 +71,10 @@ print("[2/6] 模拟回波信号...")
 local s_rx_r = {}
 local s_rx_i = {}
 
-for p = 0, N_PULSES - 1 do
-  local slow_time = p * T_PRF
+for p = 1, N_PULSES do
+  local slow_time = (p - 1) * T_PRF
   local pr, pi_ = {}, {}
-  for i = 0, N - 1 do
+  for i = 1, N do
     pr[i] = 0.0
     pi_[i] = 0.0
   end
@@ -83,17 +83,17 @@ for p = 0, N_PULSES - 1 do
     local ds = math.floor(TARGET_DELAYS[tgt] * FS)
     local doppler = TARGET_DOPPLERS[tgt]
     local tr, ti_ = {}, {}
-    for i = 0, N - 1 do
+    for i = 1, N do
       tr[i] = 0.0
       ti_[i] = 0.0
     end
     if ds < N then
-      for i = ds, N - 1 do
+      for i = ds + 1, N do
         tr[i] = s_tx_r[i - ds]
         ti_[i] = s_tx_i[i - ds]
       end
     end
-    for i = 0, N - 1 do
+    for i = 1, N do
       local phase = 2 * math.pi * doppler * t_arr[i]
       local c, s = math.cos(phase), math.sin(phase)
       local nr = tr[i] * c - ti_[i] * s
@@ -102,18 +102,18 @@ for p = 0, N_PULSES - 1 do
     end
     local sph = 2 * math.pi * doppler * slow_time
     local sc, ss = math.cos(sph), math.sin(sph)
-    for i = 0, N - 1 do
+    for i = 1, N do
       local nr = tr[i] * sc - ti_[i] * ss
       local ni = tr[i] * ss + ti_[i] * sc
       tr[i], ti_[i] = nr, ni
     end
-    for i = 0, N - 1 do
+    for i = 1, N do
       pr[i] = pr[i] + tr[i]
       pi_[i] = pi_[i] + ti_[i]
     end
   end
 
-  for i = 0, N - 1 do
+  for i = 1, N do
     pr[i] = pr[i] + noise_sigma * randn()
     pi_[i] = pi_[i] + noise_sigma * randn()
   end
@@ -126,9 +126,9 @@ print("[3/6] 脉冲压缩...")
 local t0 = os.clock()
 
 local mf_r, mf_i = {}, {}
-for i = 0, N - 1 do
-  mf_r[i] = s_tx_r[N - 1 - i]
-  mf_i[i] = -s_tx_i[N - 1 - i]
+for i = 1, N do
+  mf_r[i] = s_tx_r[N + 1 - i]
+  mf_i[i] = -s_tx_i[N + 1 - i]
 end
 
 local mf_r_arr = ins.from_table(mf_r)
@@ -137,7 +137,7 @@ local mf_i_arr = ins.from_table(mf_i)
 local pc_r = {}
 local pc_i = {}
 
-for p = 0, N_PULSES - 1 do
+for p = 1, N_PULSES do
   local pulse_r_arr = ins.from_table(s_rx_r[p])
   local pulse_i_arr = ins.from_table(s_rx_i[p])
 
@@ -151,8 +151,8 @@ for p = 0, N_PULSES - 1 do
 
   pc_r[p] = {}
   pc_i[p] = {}
-  for i = 0, N - 1 do
-    local idx = start + i
+  for i = 1, N do
+    local idx = start + (i - 1)
     pc_r[p][i] = rr:get(idx) - ii:get(idx)
     pc_i[p][i] = ri:get(idx) + ir:get(idx)
   end
@@ -166,15 +166,15 @@ t0 = os.clock()
 
 local doppler_r = {}
 local doppler_i = {}
-for i = 0, N - 1 do
+for i = 1, N do
   doppler_r[i] = {}
   doppler_i[i] = {}
 end
 
-for i = 0, N - 1 do
+for i = 1, N do
   local col_r = {}
   local col_i = {}
-  for p = 0, N_PULSES - 1 do
+  for p = 1, N_PULSES do
     col_r[p] = pc_r[p][i]
     col_i[p] = pc_i[p][i]
   end
@@ -184,10 +184,10 @@ for i = 0, N - 1 do
   local fft_r = ins.fft(col_r_arr, N_PULSES)
   local fft_i = ins.fft(col_i_arr, N_PULSES)
 
-  for p = 0, N_PULSES - 1 do
-    local shifted = (p + math.floor(N_PULSES / 2)) % N_PULSES
-    doppler_r[i][shifted] = fft_r:get(p)
-    doppler_i[i][shifted] = fft_i:get(p)
+  for p = 1, N_PULSES do
+    local shifted = ((p - 1) + math.floor(N_PULSES / 2)) % N_PULSES + 1
+    doppler_r[i][shifted] = fft_r:get(p - 1)
+    doppler_i[i][shifted] = fft_i:get(p - 1)
   end
 end
 
@@ -198,10 +198,10 @@ print("[5/6] CFAR 目标检测...")
 t0 = os.clock()
 
 local energy_2d = {}
-for p = 0, N_PULSES - 1 do
-  energy_2d[p + 1] = {}
-  for i = 0, N - 1 do
-    energy_2d[p + 1][i + 1] = math.sqrt(doppler_r[i][p] ^ 2 + doppler_i[i][p] ^ 2)
+for p = 1, N_PULSES do
+  energy_2d[p] = {}
+  for i = 1, N do
+    energy_2d[p][i] = math.sqrt(doppler_r[i][p] ^ 2 + doppler_i[i][p] ^ 2)
   end
 end
 local energy_arr = ins.from_table(energy_2d)
@@ -210,7 +210,7 @@ local threshold, detections = ins.signal.ca_cfar(energy_arr, { 2, 2 }, { 4, 4 },
 
 local det = {}
 for idx = 0, detections.numel - 1 do
-  det[idx] = detections:get(idx) ~= 0
+  det[idx + 1] = detections:get(idx) ~= 0
 end
 
 print(string.format("  耗时: %.2f 秒", os.clock() - t0))
@@ -218,10 +218,10 @@ print(string.format("  耗时: %.2f 秒", os.clock() - t0))
 -- ========== 6. 目标聚类 ==========
 print("[6/6] 聚类目标...")
 local target_indices = {}
-for idx = 0, N_PULSES * N - 1 do
+for idx = 1, N_PULSES * N do
   if det[idx] then
-    local d = math.floor(idx / N)
-    local r = idx % N
+    local d = math.floor((idx - 1) / N)
+    local r = (idx - 1) % N
     target_indices[#target_indices + 1] = { d, r }
   end
 end
@@ -260,8 +260,8 @@ end
 
 -- ========== 输出 ==========
 local doppler_bins = {}
-for i = 0, N_PULSES - 1 do
-  doppler_bins[i] = (i - math.floor(N_PULSES / 2)) * (1.0 / (N_PULSES * T_PRF))
+for i = 1, N_PULSES do
+  doppler_bins[i] = ((i - 1) - math.floor(N_PULSES / 2)) * (1.0 / (N_PULSES * T_PRF))
 end
 
 print(string.format("\n[检测结果]"))
@@ -270,7 +270,7 @@ print(string.format("  原始检测点数: %d, 聚类后: %d", raw_count, #targe
 for _, tgt in ipairs(targets) do
   local d_idx, r_idx = tgt[1], tgt[2]
   local range_m = (r_idx - PC_OFFSET) * RANGE_PER_BIN
-  local doppler_hz = doppler_bins[d_idx] or 0
+  local doppler_hz = doppler_bins[d_idx + 1] or 0
   print(string.format("    → 距离: %7.2f 米, 多普勒: %8.1f Hz", range_m, doppler_hz))
 end
 

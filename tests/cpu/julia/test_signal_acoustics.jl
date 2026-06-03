@@ -49,7 +49,7 @@ mel_ok = length(orig_data) == length(back_data)
 if mel_ok
     for i in eachindex(orig_data)
         if !approx(orig_data[i], back_data[i], atol=1.0)
-            mel_ok = false; break
+            local mel_ok = false; break
         end
     end
 end
@@ -83,7 +83,7 @@ bark_ok = length(orig_data) == length(back_data)
 if bark_ok
     for i in eachindex(orig_data)
         if !approx(orig_data[i], back_data[i], atol=10.0)
-            bark_ok = false; break
+            local bark_ok = false; break
         end
     end
 end

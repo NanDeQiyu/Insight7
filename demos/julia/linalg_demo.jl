@@ -59,7 +59,7 @@ function run_cpu_linalg()
     # SVD
     try
         D = Insight.from_data(reshape([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], 3, 3), Insight.float64)
-        U, S, VT = Insight.svd(D, false)
+        U, S, VT = Insight.svd(D)
         println("SVD singular values: $S")
     catch
         println("SVD: skipped (requires OpenBLAS)")
@@ -111,7 +111,7 @@ function run_gpu_linalg()
     D_gpu = Insight.cast(D, Insight.float32)
     D_gpu = Insight.to(D_gpu, 1)
     try
-        U, S, VT = Insight.svd(D_gpu, false)
+        U, S, VT = Insight.svd(D_gpu)
         println("GPU SVD singular values (F32): $(Insight.to(S, 0))")
     catch
         println("GPU SVD: skipped (requires OpenBLAS)")

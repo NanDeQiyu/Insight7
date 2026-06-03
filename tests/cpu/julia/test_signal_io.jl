@@ -94,7 +94,7 @@ integrity_ok = length(back) == length(orig)
 if integrity_ok
     for i in eachindex(orig)
         if !approx(orig[i], back[i])
-            integrity_ok = false; break
+            local integrity_ok = false; break
         end
     end
 end

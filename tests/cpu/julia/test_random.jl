@@ -40,7 +40,7 @@ d_b = Insight.to_array(b)
 seed_ok = true
 for i in eachindex(d_a)
     if d_a[i] != d_b[i]
-        seed_ok = false; break
+        local seed_ok = false; break
     end
 end
 check("seed_determinism", seed_ok)

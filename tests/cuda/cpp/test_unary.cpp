@@ -428,3 +428,40 @@ TEST_F(UnaryTestGPU, IsFiniteComplex) {
                                 false, true,  false, true};
   expect_bool_equal_gpu(c, expected);
 }
+
+// ============================================================================
+// Angle tests
+// ============================================================================
+
+TEST_F(UnaryTestGPU, AngleReal) {
+  Array a_cpu({5}, DType::F32, CPUPlace());
+  float *a_data = a_cpu.data<float>();
+  a_data[0] = -2.0f;
+  a_data[1] = -1.0f;
+  a_data[2] = 0.0f;
+  a_data[3] = 1.0f;
+  a_data[4] = 2.0f;
+  Array a = a_cpu.to(GPUPlace(0));
+  Array c = angle(a);
+  ASSERT_EQ(c.dtype(), DType::F32);
+  expect_float_equal_gpu<float>(
+      c, {static_cast<float>(M_PI), static_cast<float>(M_PI), 0.0f, 0.0f, 0.0f},
+      1e-5f);
+}
+
+TEST_F(UnaryTestGPU, AngleComplex) {
+  Array a_cpu({4}, DType::C32, CPUPlace());
+  std::complex<float> *a_data = a_cpu.data<std::complex<float>>();
+  a_data[0] = std::complex<float>(1.0f, 0.0f);  // angle = 0
+  a_data[1] = std::complex<float>(0.0f, 1.0f);  // angle = pi/2
+  a_data[2] = std::complex<float>(-1.0f, 0.0f); // angle = pi
+  a_data[3] = std::complex<float>(0.0f, -1.0f); // angle = -pi/2
+  Array a = a_cpu.to(GPUPlace(0));
+  Array c = angle(a);
+  ASSERT_EQ(c.dtype(), DType::F32);
+  expect_float_equal_gpu<float>(c,
+                                {0.0f, static_cast<float>(M_PI / 2.0),
+                                 static_cast<float>(M_PI),
+                                 static_cast<float>(-M_PI / 2.0)},
+                                1e-5f);
+}

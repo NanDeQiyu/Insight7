@@ -143,7 +143,7 @@ check("less", Insight.numel(c) == 3)
 a_bool = Insight.from_data([1, 1, 0], Insight.bool)
 b_bool = Insight.from_data([1, 0, 0], Insight.bool)
 try
-    c = Insight.logical_and(a_bool, b_bool)
+    local c = Insight.logical_and(a_bool, b_bool)
     check("logical_and", Insight.numel(c) == 3)
 catch e
     println("SKIP: logical_and (not exposed in binding)")
@@ -165,7 +165,7 @@ check("transpose", Insight.numel(b) == 6)
 
 a = Insight.zeros(Int64[1, 3, 1], Insight.float64)
 try
-    b = Insight.squeeze(a)
+    local b = Insight.squeeze(a)
     check("squeeze", Insight.numel(b) == 3)
 catch e
     println("SKIP: squeeze (not exposed in binding)")
@@ -186,14 +186,14 @@ check("matmul", Insight.numel(c) == 4)
 
 # det/inv may fail without OpenBLAS
 try
-    d = Insight.det(a)
+    local d = Insight.det(a)
     check("det", Insight.numel(d) == 1)
 catch e
     println("SKIP: det (requires OpenBLAS)")
 end
 
 try
-    b = Insight.inv(a)
+    local b = Insight.inv(a)
     check("inv", Insight.numel(b) == 4)
 catch e
     println("SKIP: inv (requires OpenBLAS)")

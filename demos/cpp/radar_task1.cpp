@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <numeric>
@@ -344,6 +345,14 @@ static void save_plots(const Task1Result &result, const char *prefix) {
 #endif // INSIGHT_USE_MATPLOT
 
 int main() {
+#ifdef SIGPIPE
+  // Ignore SIGPIPE to prevent process crash when gnuplot is unavailable.
+  // matplotplusplus spawns gnuplot via popen; if gnuplot is not installed
+  // the pipe breaks and SIGPIPE would kill the process (not catchable by
+  // try/catch since it is a signal, not a C++ exception).
+  std::signal(SIGPIPE, SIG_IGN);
+#endif
+
   ins::init({"cpu"});
   bool has_gpu = false;
   try {

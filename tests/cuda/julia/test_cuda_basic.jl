@@ -189,14 +189,14 @@ c = Insight.matmul(a, b)
 check("matmul", Insight.numel(c) == 4)
 
 try
-    d = Insight.det(a)
+    local d = Insight.det(a)
     check("det", Insight.numel(d) == 1)
 catch e
     println("SKIP: det (requires cuBLAS)")
 end
 
 try
-    b = Insight.inv(a)
+    local b = Insight.inv(a)
     check("inv", Insight.numel(b) == 4)
 catch e
     println("SKIP: inv (requires cuBLAS)")

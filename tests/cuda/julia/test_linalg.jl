@@ -60,7 +60,7 @@ check("trace", Insight.numel(t) == 1)
 
 # det
 try
-    d = Insight.det(a)
+    local d = Insight.det(a)
     check("det", Insight.numel(d) == 1)
 catch e
     println("SKIP: det ($e)")
@@ -68,7 +68,7 @@ end
 
 # inv
 try
-    a_inv = Insight.inv(a)
+    local a_inv = Insight.inv(a)
     check("inv", Insight.numel(a_inv) == 4)
 catch e
     println("SKIP: inv ($e)")
@@ -79,7 +79,7 @@ try
     a2 = Insight.to_array(Insight.from_data([3.0, 1.0, 1.0, 2.0]), Insight.GPUPlace(0))
     a2 = Insight.reshape(a2, [2, 2])
     b2 = Insight.to_array(Insight.from_data([9.0, 8.0]), Insight.GPUPlace(0))
-    x = Insight.solve(a2, b2)
+    local x = Insight.solve(a2, b2)
     check("solve", Insight.numel(x) == 2)
 catch e
     println("SKIP: solve ($e)")
@@ -89,7 +89,7 @@ end
 try
     a3 = Insight.to_array(Insight.from_data([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), Insight.GPUPlace(0))
     a3 = Insight.reshape(a3, [3, 2])
-    u, s, vt = Insight.svd(a3)
+    local u, s, vt = Insight.svd(a3)
     check("svd", Insight.numel(s) == 2)
 catch e
     println("SKIP: svd ($e)")
@@ -99,7 +99,7 @@ end
 try
     a4 = Insight.to_array(Insight.from_data([4.0, 2.0, 2.0, 3.0]), Insight.GPUPlace(0))
     a4 = Insight.reshape(a4, [2, 2])
-    l = Insight.cholesky(a4)
+    local l = Insight.cholesky(a4)
     check("cholesky", Insight.numel(l) == 4)
 catch e
     println("SKIP: cholesky ($e)")
@@ -107,7 +107,7 @@ end
 
 # matrix_power
 try
-    mp = Insight.matrix_power(a, 2)
+    local mp = Insight.matrix_power(a, 2)
     check("matrix_power", Insight.numel(mp) == 4)
 catch e
     println("SKIP: matrix_power ($e)")
@@ -115,7 +115,7 @@ end
 
 # slogdet
 try
-    s, ld = Insight.slogdet(a)
+    local s, ld = Insight.slogdet(a)
     check("slogdet", Insight.numel(s) == 1 && Insight.numel(ld) == 1)
 catch e
     println("SKIP: slogdet ($e)")
@@ -123,7 +123,7 @@ end
 
 # eigvalsh
 try
-    w = Insight.eigvalsh(a)
+    local w = Insight.eigvalsh(a)
     check("eigvalsh", Insight.numel(w) == 2)
 catch e
     println("SKIP: eigvalsh ($e)")
@@ -133,7 +133,7 @@ end
 try
     a6 = Insight.to_array(Insight.from_data([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), Insight.GPUPlace(0))
     a6 = Insight.reshape(a6, [3, 2])
-    pi = Insight.pinv(a6)
+    local pi = Insight.pinv(a6)
     check("pinv", Insight.numel(pi) == 6)
 catch e
     println("SKIP: pinv ($e)")
@@ -144,7 +144,7 @@ try
     a7 = Insight.to_array(Insight.from_data([1.0, 1.0, 1.0, 2.0, 1.0, 3.0]), Insight.GPUPlace(0))
     a7 = Insight.reshape(a7, [3, 2])
     b7 = Insight.to_array(Insight.from_data([1.0, 2.0, 2.0]), Insight.GPUPlace(0))
-    x = Insight.lstsq(a7, b7)
+    local x = Insight.lstsq(a7, b7)
     check("lstsq", Insight.numel(x) == 2)
 catch e
     println("SKIP: lstsq ($e)")
@@ -152,7 +152,7 @@ end
 
 # cond
 try
-    c = Insight.cond_fn(a)
+    local c = Insight.cond_fn(a)
     check("cond", Insight.numel(c) == 1)
 catch e
     println("SKIP: cond ($e)")
@@ -160,7 +160,7 @@ end
 
 # matrix_rank
 try
-    r = Insight.matrix_rank(a)
+    local r = Insight.matrix_rank(a)
     check("matrix_rank", Insight.numel(r) == 1)
 catch e
     println("SKIP: matrix_rank ($e)")

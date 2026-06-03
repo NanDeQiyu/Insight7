@@ -63,7 +63,7 @@ end
 
 # Check if gnuplot is available (required by matplotplusplus for rendering)
 gnuplot_available = try
-    success(`gnuplot --version`)
+    success(pipeline(`gnuplot --version`; stderr=devnull))
 catch
     false
 end

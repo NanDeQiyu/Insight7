@@ -57,7 +57,7 @@ c2 = Insight.signal.fftconvolve(b, a, mode="full")
 comm_ok = Insight.numel(c1) == Insight.numel(c2)
 for i in 0:Insight.numel(c1)-1
     if !approx(Insight.item(c1, i), Insight.item(c2, i))
-        comm_ok = false; break
+        local comm_ok = false; break
     end
 end
 check("fftconvolve_commutative", comm_ok)
@@ -68,7 +68,7 @@ c = Insight.signal.fftconvolve(a, b, mode="full")
 imp_ok = Insight.numel(c) == 5
 for i in 0:4
     if !approx(Insight.item(c, i), Float64(i + 1))
-        imp_ok = false; break
+        local imp_ok = false; break
     end
 end
 check("fftconvolve_impulse", imp_ok)

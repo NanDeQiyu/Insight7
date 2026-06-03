@@ -88,7 +88,7 @@ println("=== Convolve ===")
 try
     a = Insight.from_data([1.0, 2.0, 3.0])
     v = Insight.from_data([1.0, 1.0])
-    c = Insight.convolve(a, v, "full")
+    local c = Insight.convolve(a, v, "full")
     check("convolve_full_numel", Insight.numel(c) == 4)
     check("convolve_full_0", approx(Insight.item(c, 0), 1.0, atol=1e-5))
     check("convolve_full_1", approx(Insight.item(c, 1), 3.0, atol=1e-5))
@@ -109,7 +109,7 @@ println("=== Correlate ===")
 try
     a = Insight.from_data([1.0, 2.0, 3.0])
     b = Insight.from_data([1.0, 1.0])
-    c = Insight.signal.correlate(a, b, "full")
+    local c = Insight.signal.correlate(a, b, "full")
     check("correlate_full", Insight.numel(c) == 4)
 catch e
     println("SKIP: correlate (requires FFTW3): $e")
