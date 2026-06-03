@@ -66,16 +66,16 @@ def run_task1(device="cpu"):
         pc[p, :] = c[start : start + N]
     t_pc = time.time() - t0
 
-    # 4. 多普勒 FFT
+    # 4. 多普勒 FFT (使用 Insight FFT，与 C++ 对齐)
     t0 = time.time()
     doppler_fft = ins.fft(ins.from_numpy(pc), N_PULSES, 0)
-    doppler_np = np.fft.fftshift(doppler_fft.numpy(), axes=0)
+    doppler_shifted = ins.fftshift(doppler_fft, 0)
     t_doppler = time.time() - t0
 
-    # 5. CA-CFAR
-    energy = np.abs(doppler_np)
+    # 5. CA-CFAR (使用 Insight 计算能量)
+    energy_arr = ins.abs(doppler_shifted)
     t0 = time.time()
-    _, det = ins.signal.ca_cfar(ins.from_numpy(energy), [2, 2], [4, 4], 1e-5)
+    _, det = ins.signal.ca_cfar(energy_arr, [2, 2], [4, 4], 1e-5)
     det_np = det.numpy().astype(bool)
     t_cfar = time.time() - t0
 
@@ -110,7 +110,7 @@ def run_task1(device="cpu"):
         "cfar_ms": t_cfar * 1000,
         "doppler_bins": doppler_bins,
         "range_bins": range_bins,
-        "energy": energy,
+        "energy": energy_arr,
         "device": device,
     }
 
@@ -122,12 +122,13 @@ def print_result(r):
         f"(PC: {r['pc_ms']:.1f}, Doppler: {r['doppler_ms']:.1f}, CFAR: {r['cfar_ms']:.1f})"
     )
     print(f"  原始检测点数: {r['raw_count']}, 聚类后: {len(r['targets'])}")
+    energy_np = r["energy"].numpy()
     for d, rr in r["targets"]:
         if 0 <= d < len(r["doppler_bins"]) and 0 <= rr < len(r["range_bins"]):
             print(
                 f"    → 距离: {r['range_bins'][rr]:7.2f} 米, "
                 f"多普勒: {r['doppler_bins'][d]:8.1f} Hz, "
-                f"强度: {r['energy'][d, rr]:.3f}"
+                f"强度: {energy_np[d, rr]:.3f}"
             )
 
 
@@ -136,7 +137,8 @@ def save_plots(r, prefix):
     try:
         import insight.plot as plt
 
-        db = 20 * np.log10(r["energy"] + 1e-8)
+        energy_np = r["energy"].numpy()
+        db = 20 * np.log10(energy_np + 1e-8)
 
         # Figure 1: Range-Doppler Map
         plt.figure()
@@ -149,9 +151,9 @@ def save_plots(r, prefix):
         print(f"  已保存: {prefix}_range_doppler.png")
 
         # Figure 2: Doppler Spectrum (max range bin)
-        max_r = int(np.argmax(np.max(r["energy"], axis=0)))
+        max_r = int(np.argmax(np.max(energy_np, axis=0)))
         doppler_arr = ins.from_numpy(r["doppler_bins"].astype(np.float64))
-        ds_arr = ins.from_numpy(r["energy"][:, max_r].astype(np.float64))
+        ds_arr = ins.from_numpy(energy_np[:, max_r].astype(np.float64))
         plt.figure()
         plt.plot(doppler_arr, ds_arr)
         plt.title(f"Doppler Spectrum (range bin {max_r})")
@@ -162,9 +164,9 @@ def save_plots(r, prefix):
         print(f"  已保存: {prefix}_doppler_slice.png")
 
         # Figure 3: Range Profile (max doppler bin)
-        max_d = int(np.argmax(np.max(r["energy"], axis=1)))
+        max_d = int(np.argmax(np.max(energy_np, axis=1)))
         range_arr = ins.from_numpy(r["range_bins"].astype(np.float64))
-        rp_arr = ins.from_numpy(r["energy"][max_d, :].astype(np.float64))
+        rp_arr = ins.from_numpy(energy_np[max_d, :].astype(np.float64))
         plt.figure()
         plt.plot(range_arr, rp_arr)
         plt.title(f"Range Profile (doppler bin {max_d})")

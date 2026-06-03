@@ -373,6 +373,14 @@ extern "C" int luaopen__insight(lua_State *L) {
       return (double)cpu.data<int64_t>()[idx];
     case DType::I32:
       return (double)cpu.data<int32_t>()[idx];
+    case DType::I16:
+      return (double)cpu.data<int16_t>()[idx];
+    case DType::I8:
+      return (double)cpu.data<int8_t>()[idx];
+    case DType::U8:
+      return (double)cpu.data<uint8_t>()[idx];
+    case DType::BOOL:
+      return cpu.data<bool>()[idx] ? 1.0 : 0.0;
     default:
       return 0.0;
     }

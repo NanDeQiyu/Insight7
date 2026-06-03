@@ -1,11 +1,11 @@
 -- demos/radar_task1.lua
 -- 雷达目标检测与多普勒分析 — 比赛任务1 (Insight7 Lua 完整版)
--- 与 C++ / Python / Julia 版本功能完全对齐
+-- 与 C++ / Python / Julia 版本算法完全对齐：使用 Insight FFT 处理复数信号
 
 local ins = require("insight")
 ins.init({ "cpu" })
 
--- ========== 参数 ==========
+-- ========== 参数 (与 C++ 完全一致) ==========
 local FS = 10e6
 local T_PRF = 1e-4
 local N = 1000
@@ -23,7 +23,7 @@ print("=" .. string.rep("=", 59))
 print("  雷达目标检测与多普勒分析 (Insight7 Lua)")
 print("=" .. string.rep("=", 59))
 
-print(string.format("\n[配置信息]"))
+print("\n[配置信息]")
 print(string.format("  采样率: %.1f MHz, 带宽: %.1f MHz", FS / 1e6, B / 1e6))
 print(string.format("  单脉冲采样点数: %d, 脉冲串数量: %d", N, N_PULSES))
 print(string.format("  距离分辨率: %.2f 米, 距离门: %.2f 米", RANGE_RES, RANGE_PER_BIN))
@@ -34,15 +34,6 @@ local function randn()
   local u1 = math.random()
   local u2 = math.random()
   return math.sqrt(-2 * math.log(u1 + 1e-15)) * math.cos(2 * math.pi * u2)
-end
-
--- ========== 辅助：从 Insight 数组读取数据到 table ==========
-local function read_array(arr)
-  local t = {}
-  for i = 0, arr.numel - 1 do
-    t[i] = arr:get(i)
-  end
-  return t
 end
 
 -- ========== 1. LFM 发射信号 ==========
@@ -121,75 +112,60 @@ for p = 1, N_PULSES do
   s_rx_i[p] = pi_
 end
 
--- ========== 3. 脉冲压缩 ==========
+-- ========== 3. 脉冲压缩 (使用复数 fftconvolve) ==========
 print("[3/6] 脉冲压缩...")
 local t0 = os.clock()
 
+-- 匹配滤波器 (复数共轭反转)
 local mf_r, mf_i = {}, {}
 for i = 1, N do
   mf_r[i] = s_tx_r[N + 1 - i]
   mf_i[i] = -s_tx_i[N + 1 - i]
 end
+local mf_c = ins.to_complex(ins.from_table(mf_r), ins.from_table(mf_i))
 
-local mf_r_arr = ins.from_table(mf_r)
-local mf_i_arr = ins.from_table(mf_i)
+local full_len = 2 * N - 1
+local start = math.floor((full_len - N) / 2)
 
 local pc_r = {}
 local pc_i = {}
 
 for p = 1, N_PULSES do
-  local pulse_r_arr = ins.from_table(s_rx_r[p])
-  local pulse_i_arr = ins.from_table(s_rx_i[p])
-
-  local rr = ins.signal.fftconvolve(pulse_r_arr, mf_r_arr, "full")
-  local ii = ins.signal.fftconvolve(pulse_i_arr, mf_i_arr, "full")
-  local ri = ins.signal.fftconvolve(pulse_r_arr, mf_i_arr, "full")
-  local ir = ins.signal.fftconvolve(pulse_i_arr, mf_r_arr, "full")
-
-  local full_len = 2 * N - 1
-  local start = math.floor((full_len - N) / 2)
+  local pulse_c = ins.to_complex(ins.from_table(s_rx_r[p]), ins.from_table(s_rx_i[p]))
+  local conv = ins.signal.fftconvolve(pulse_c, mf_c, "full")
+  local conv_r = ins.real(conv)
+  local conv_i = ins.imag(conv)
 
   pc_r[p] = {}
   pc_i[p] = {}
   for i = 1, N do
-    local idx = start + (i - 1)
-    pc_r[p][i] = rr:get(idx) - ii:get(idx)
-    pc_i[p][i] = ri:get(idx) + ir:get(idx)
+    pc_r[p][i] = conv_r:get(start + (i - 1))
+    pc_i[p][i] = conv_i:get(start + (i - 1))
   end
 end
 
 print(string.format("  耗时: %.2f 秒", os.clock() - t0))
 
--- ========== 4. 多普勒 FFT ==========
+-- ========== 4. 多普勒 FFT (使用 Insight 批量 FFT) ==========
 print("[4/6] 多普勒处理...")
 t0 = os.clock()
 
-local doppler_r = {}
-local doppler_i = {}
-for i = 1, N do
-  doppler_r[i] = {}
-  doppler_i[i] = {}
+-- 构建 2D 复数数组 [N_PULSES, N]
+local pc_r_2d = {}
+local pc_i_2d = {}
+for p = 1, N_PULSES do
+  pc_r_2d[p] = pc_r[p]
+  pc_i_2d[p] = pc_i[p]
 end
+local pc_c = ins.to_complex(ins.from_table(pc_r_2d), ins.from_table(pc_i_2d))
 
-for i = 1, N do
-  local col_r = {}
-  local col_i = {}
-  for p = 1, N_PULSES do
-    col_r[p] = pc_r[p][i]
-    col_i[p] = pc_i[p][i]
-  end
+-- 沿 axis 0 (脉冲维) 做 FFT，然后 fftshift
+local doppler_fft = ins.fftshift(ins.fft(pc_c, N_PULSES, 0), 0)
 
-  local col_r_arr = ins.from_table(col_r)
-  local col_i_arr = ins.from_table(col_i)
-  local fft_r = ins.fft(col_r_arr, N_PULSES)
-  local fft_i = ins.fft(col_i_arr, N_PULSES)
-
-  for p = 1, N_PULSES do
-    local shifted = ((p - 1) + math.floor(N_PULSES / 2)) % N_PULSES + 1
-    doppler_r[i][shifted] = fft_r:get(p - 1)
-    doppler_i[i][shifted] = fft_i:get(p - 1)
-  end
-end
+-- 提取实部和虚部，计算能量
+local dr = ins.real(doppler_fft)
+local di = ins.imag(doppler_fft)
+local energy_arr = ins.sqrt(ins.add(ins.mul(dr, dr), ins.mul(di, di)))
 
 print(string.format("  耗时: %.2f 秒", os.clock() - t0))
 
@@ -197,17 +173,7 @@ print(string.format("  耗时: %.2f 秒", os.clock() - t0))
 print("[5/6] CFAR 目标检测...")
 t0 = os.clock()
 
-local energy_2d = {}
-for p = 1, N_PULSES do
-  energy_2d[p] = {}
-  for i = 1, N do
-    energy_2d[p][i] = math.sqrt(doppler_r[i][p] ^ 2 + doppler_i[i][p] ^ 2)
-  end
-end
-local energy_arr = ins.from_table(energy_2d)
-
 local cfar_result = ins.signal.ca_cfar(energy_arr, { 2, 2 }, { 4, 4 }, 1e-5)
-local threshold = cfar_result[1]
 local detections = cfar_result[2]
 
 local det = {}
@@ -266,7 +232,7 @@ for i = 1, N_PULSES do
   doppler_bins[i] = ((i - 1) - math.floor(N_PULSES / 2)) * (1.0 / (N_PULSES * T_PRF))
 end
 
-print(string.format("\n[检测结果]"))
+print("\n[检测结果]")
 print(string.format("  原始检测点数: %d, 聚类后: %d", raw_count, #targets))
 
 for _, tgt in ipairs(targets) do

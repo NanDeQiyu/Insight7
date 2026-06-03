@@ -32,12 +32,14 @@ try:
 except (AttributeError, ImportError):
     pytest.skip("ins.plot not available (INSIGHT_USE_MATPLOT not enabled)", allow_module_level=True)
 
-# Skip if gnuplot is not installed (required by matplotplusplus for rendering)
+# Skip if gnuplot binary is not available (matplotplusplus needs it for rendering)
+import subprocess as _sp
+
 try:
-    _gnuplot_result = subprocess.run(["gnuplot", "--version"], capture_output=True, timeout=5)
-    if _gnuplot_result.returncode != 0:
+    _gnuplot_check = _sp.run(["gnuplot", "--version"], capture_output=True, timeout=5)
+    if _gnuplot_check.returncode != 0:
         pytest.skip("gnuplot not installed, skipping plot tests", allow_module_level=True)
-except (FileNotFoundError, subprocess.TimeoutExpired):
+except (FileNotFoundError, _sp.TimeoutExpired):
     pytest.skip("gnuplot not installed, skipping plot tests", allow_module_level=True)
 
 
