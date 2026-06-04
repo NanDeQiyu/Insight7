@@ -293,4 +293,21 @@ describe("CPU Binding Tests", function()
     assert.is_not_nil(w)
     assert.are.equal(16, w.numel)
   end)
+
+  -- ========================================================================
+  -- GPU not available: must throw
+  -- ========================================================================
+
+  it("gpu_throws_without_backend", function()
+    local a = ins.ones({ 3 }, ins.float32)
+    assert.has_error(function()
+      a:to(ins.GPUPlace(0))
+    end)
+  end)
+
+  it("set_device_gpu_throws", function()
+    assert.has_error(function()
+      ins.set_device(ins.GPUPlace(0))
+    end)
+  end)
 end)

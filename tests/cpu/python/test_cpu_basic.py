@@ -294,6 +294,21 @@ class TestSignal:
         assert w.numpy()[0] == pytest.approx(0.0, abs=1e-5)
         assert w.numpy()[8] == pytest.approx(1.0, abs=1e-1)
 
+    # ========================================================================
+    # GPU not available: must throw
+    # ========================================================================
+
+    def test_gpu_throws_without_backend(self):
+        """Only CPU backend loaded — .to(GPUPlace(0)) must throw."""
+        a = ins.ones(ins.Shape([3]), ins.float32)
+        with pytest.raises(Exception):
+            a.to(ins.GPUPlace(0))
+
+    def test_set_device_gpu_throws(self):
+        """set_device(GPUPlace(0)) must throw without GPU backend."""
+        with pytest.raises(Exception):
+            ins.set_device(ins.GPUPlace(0))
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

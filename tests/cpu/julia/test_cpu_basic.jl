@@ -220,6 +220,24 @@ w = Insight.signal.hann(16)
 check("hann", Insight.numel(w) == 16)
 
 # ============================================================================
+# GPU not available: must throw
+# ============================================================================
+a = Insight.ones(Int64[3], Insight.float32)
+try
+    Insight.to(a, 1)  # GPUPlace(0) = 1
+    check("gpu_throws_without_backend", false)
+catch
+    check("gpu_throws_without_backend", true)
+end
+
+try
+    Insight.set_device(1)  # GPUPlace(0) = 1
+    check("set_device_gpu_throws", false)
+catch
+    check("set_device_gpu_throws", true)
+end
+
+# ============================================================================
 # Results
 # ============================================================================
 println("\n" * "="^40)

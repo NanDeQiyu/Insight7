@@ -69,26 +69,44 @@ function(apply_patch SOURCE_DIR PATCH_FILE)
 endfunction()
 ```
 
-### 3. Use in CMakeLists.txt
+### 3. Use in CMakeLists.txt — PaddlePaddle style
+
+**CRITICAL**: Patches must be applied BEFORE `add_subdirectory`, not after.
+This matches PaddlePaddle's `ExternalProject_Add` + `PATCH_COMMAND` pattern.
 
 ```cmake
 include(cmake/ApplyPatch.cmake)
 
 # Inside the local/FetchContent branches — NOT after endif()!
 if(EXISTS "${LOCAL_MATPLOT}/CMakeLists.txt")
-    add_subdirectory("${LOCAL_MATPLOT}" ...)
-    apply_patch("${LOCAL_MATPLOT}"              # ← local path
+    # Local: patch FIRST, then add_subdirectory
+    apply_patch("${LOCAL_MATPLOT}"
         "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gcc-compat.patch")
+    apply_patch("${LOCAL_MATPLOT}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gnuplot-unknown-terminal.patch")
+    add_subdirectory("${LOCAL_MATPLOT}" "${CMAKE_CURRENT_BINARY_DIR}/matplotplusplus")
 else()
-    FetchContent_MakeAvailable(matplotplusplus)
-    apply_patch("${matplotplusplus_SOURCE_DIR}"  # ← FetchContent _deps/ path
+    # FetchContent: Populate → patch → add_subdirectory (NOT MakeAvailable!)
+    FetchContent_Declare(matplotplusplus
+        GIT_REPOSITORY "https://github.com/alandefreitas/matplotplusplus"
+        GIT_TAG        "v1.2.1"
+        GIT_SHALLOW    TRUE
+    )
+    set(MATPLOTPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_Populate(matplotplusplus)          # Step 1: Download only
+    apply_patch("${matplotplusplus_SOURCE_DIR}" ... # Step 2: Apply patches
         "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gcc-compat.patch")
+    add_subdirectory("${matplotplusplus_SOURCE_DIR}" # Step 3: Process patched source
+        "${matplotplusplus_BINARY_DIR}")
 endif()
 ```
 
-> **⚠️ Critical**: `apply_patch` must be INSIDE each branch, not after `endif()`.
-> `LOCAL_MATPLOT` always points to `third_party/`, but FetchContent downloads to `_deps/<name>-src/`.
-> If called after `endif()` with only the LOCAL path, FetchContent builds silently skip the patch.
+> **Why NOT `FetchContent_MakeAvailable`**: It calls `add_subdirectory` immediately,
+> registering targets BEFORE patches are applied. The patches modify source files
+> but cmake's internal state may cache the unpatched timestamps.
+>
+> **`FetchContent_Populate`** downloads source only. You then apply patches and
+> call `add_subdirectory` manually — same as PaddlePaddle's `PATCH_COMMAND`.
 
 ### 4. Directory structure
 

@@ -56,6 +56,36 @@ static std::vector<std::string> discover_backends() {
 On Linux: `opendir(".")` + `readdir` matching `libinsight_*_backend.so`
 On Windows: `FindFirstFileA("insight_*_backend.dll")`
 
+### GPU auto-discover fallback
+
+`discover_backends()` only scans the current directory (`.`). When running demos
+from `build/bin/demos/`, the .so files are in `build/backends/cuda/` — not found.
+
+**Fix**: After the scan, try `dlopen` for common GPU backend names directly.
+`dlopen` uses `LD_LIBRARY_PATH`, so it finds .so files in any directory:
+
+```cpp
+// 2. Scan current directory for other backends
+auto available = discover_backends();
+for (const auto &name : available) {
+    if (name == "cpu") continue;
+    if (try_load_backend(DeviceKind::GPU,
+                         ("insight_" + name + "_backend").c_str())) {
+        break;
+    }
+}
+// 3. If no GPU backend found via scan, try common names directly
+//    (dlopen uses LD_LIBRARY_PATH, works when .so is in another directory)
+if (!get_device_interface(DeviceKind::GPU)) {
+    try_load_backend(DeviceKind::GPU, "insight_cuda_backend");
+}
+```
+
+**Why:** Users run demos from various directories. `LD_LIBRARY_PATH` is the
+standard way to locate shared libraries. The scan is a convenience for the
+common case (running from the build directory), but the fallback ensures
+GPU is found regardless of working directory.
+
 ### Dynamic loading only
 
 Remove all static backend support:

@@ -405,9 +405,24 @@ extern "C" int luaopen__insight(lua_State *L) {
 
   // Device/type conversion
   array_type["to"] = sol::overload(
-      [](const Array &a, const Place &p) { return a.to(p); },
+      [](const Array &a, const Place &p, sol::this_state ts) -> Array {
+        try {
+          return a.to(p);
+        } catch (const std::exception &e) {
+          luaL_error(ts, "%s", e.what());
+          return Array();
+        }
+      },
       [](const Array &a, DType dt) { return a.to(dt); },
-      [](const Array &a, const Place &p, DType dt) { return a.to(p, dt); });
+      [](const Array &a, const Place &p, DType dt,
+         sol::this_state ts) -> Array {
+        try {
+          return a.to(p, dt);
+        } catch (const std::exception &e) {
+          luaL_error(ts, "%s", e.what());
+          return Array();
+        }
+      });
   array_type["copy"] = &Array::copy;
 
   // String slicing: a[":,1:-1"] (Lua 1-based → auto-convert to 0-based)
