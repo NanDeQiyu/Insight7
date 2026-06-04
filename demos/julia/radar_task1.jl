@@ -164,7 +164,10 @@ if Insight.load_backend("cuda")
     println("\n" * "=" ^ 60)
     println("  GPU 信息")
     println("=" ^ 60)
-    println("  设备: $(Insight.device_name("gpu"))")
+    dev = Insight.device_name(0)
+    if !isempty(dev)
+        println("  设备: $dev")
+    end
 end
 
 println("\n完成！")

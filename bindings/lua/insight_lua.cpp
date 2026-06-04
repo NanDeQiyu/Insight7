@@ -237,13 +237,17 @@ extern "C" int luaopen__insight(lua_State *L) {
     ins::init();
   }
 
-  // Manual init
-  m["init"] = [](sol::table backends) {
-    std::vector<std::string> be;
-    for (size_t i = 1; i <= backends.size(); i++) {
-      be.push_back(backends.get<std::string>(i));
+  // Manual init — supports no args (auto-discover) or table of backend names
+  m["init"] = [](sol::optional<sol::table> backends) {
+    if (!backends.has_value()) {
+      ins::init(); // auto-discover: CPU + first GPU if available
+    } else {
+      std::vector<std::string> be;
+      for (size_t i = 1; i <= backends->size(); i++) {
+        be.push_back(backends->get<std::string>(i));
+      }
+      ins::init(be);
     }
-    ins::init(be);
   };
 
   // Load additional backend after init

@@ -31,15 +31,22 @@ try:
 except (AttributeError, ImportError):
     pytest.skip("ins.plot not available (INSIGHT_USE_MATPLOT not enabled)", allow_module_level=True)
 
-# Ensure gnuplot is findable (check PATH and common local install)
+# Ensure gnuplot is findable AND actually runnable
 import shutil as _shutil
+import subprocess as _subprocess
 
 if _shutil.which("gnuplot") is None:
     _local_gp = os.path.expanduser("~/public/gnuplot/bin/gnuplot")
     if os.path.isfile(_local_gp) and os.access(_local_gp, os.X_OK):
         os.environ["PATH"] = os.path.dirname(_local_gp) + os.pathsep + os.environ.get("PATH", "")
-    else:
-        pytest.skip("gnuplot not installed, skipping plot tests", allow_module_level=True)
+
+# Verify gnuplot can actually execute (not just binary exists)
+try:
+    _gp_check = _subprocess.run(["gnuplot", "--version"], capture_output=True, timeout=5)
+    if _gp_check.returncode != 0:
+        pytest.skip("gnuplot installed but not runnable (missing libs?)", allow_module_level=True)
+except (FileNotFoundError, _subprocess.TimeoutExpired, OSError):
+    pytest.skip("gnuplot not installed, skipping plot tests", allow_module_level=True)
 
 # Ensure libgd is findable for gnuplot
 _ld_lib = os.path.expanduser("~/public/gnuplot/usr/lib/x86_64-linux-gnu")

@@ -299,6 +299,27 @@ insight_jl_take, insight_jl_nonzero, insight_jl_sort, insight_jl_concat,
 insight_jl_reshape, insight_jl_transpose, insight_jl_copy, insight_jl_squeeze,
 and any other function that calls C++ operations that may throw.
 
+### Julia side: check for C_NULL after ccall
+
+When the C++ wrapper returns `nullptr` on exception, the Julia side must check:
+
+```julia
+function to(x::InsightArray, device_type::Int)::InsightArray
+    ptr = ccall((:insight_jl_to_device, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(device_type))
+    if ptr == C_NULL
+        error("Insight: device transfer failed (GPU backend not available?)")
+    end
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+```
+
+**Why**: Without the null check, `InsightArray(C_NULL)` creates a broken object
+that segfaults on any subsequent operation. With the check, Julia's `try/catch`
+can properly catch the error.
+
 ## 15. Julia demo pattern
 
 ```julia
