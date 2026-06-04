@@ -71,46 +71,54 @@ class TestPlotCPU:
         """Redirect gnuplot output to file before any rendering."""
         ins.plot.save(_TMP_PNG)
 
-    def _run_plot_safe(self, fn):
-        """Run a plot function in a child process to isolate gnuplot crashes."""
-        pid = os.fork()
-        if pid == 0:
-            try:
-                self._save_first()
-                fn()
-                ins.plot.clf()
-            except Exception:
-                pass
-            os._exit(0)
-        elif pid > 0:
-            _, status = os.waitpid(pid, 0)
-            # Child may crash (gnuplot segfault) — that's OK, file is saved
-
     def test_plot_basic(self):
         """Test 1: plot y-data without crashing."""
         y = ins.from_numpy(np.array([1.0, 3.0, 2.0, 4.0]))
-        self._run_plot_safe(lambda: ins.plot.plot(y))
+        self._save_first()
+        ins.plot.plot(y)
+        ins.plot.clf()
 
     def test_scatter_basic(self):
         """Test 2: scatter without crashing."""
         x = ins.from_numpy(np.array([1.0, 2.0, 3.0]))
         y = ins.from_numpy(np.array([4.0, 5.0, 6.0]))
-        self._run_plot_safe(lambda: ins.plot.scatter(x, y))
+        self._save_first()
+        ins.plot.scatter(x, y)
+        ins.plot.clf()
 
     def test_bar_basic(self):
         """Test 3: bar chart without crashing."""
         y = ins.from_numpy(np.array([3.0, 1.0, 4.0, 1.0, 5.0]))
-        self._run_plot_safe(lambda: ins.plot.bar(y))
+        self._save_first()
+        ins.plot.bar(y)
+        ins.plot.clf()
 
     def test_hist_basic(self):
         """Test 4: histogram without crashing."""
         data = ins.from_numpy(np.random.randn(100))
-        self._run_plot_safe(lambda: ins.plot.hist(data, bins=10))
+        self._save_first()
+        ins.plot.hist(data, bins=10)
+        ins.plot.clf()
+
+    def _run_in_subprocess(self, target):
+        """Run a plot function in a subprocess (portable crash isolation)."""
+        from multiprocessing import Process
+
+        p = Process(target=target)
+        p.start()
+        p.join()
+        # Subprocess may crash (matplotplusplus/cairo bug) — that's OK
 
     def test_imshow_basic(self):
         """Test 5: imshow without crashing."""
         data = ins.from_numpy(np.random.rand(5, 5))
-        self._run_plot_safe(lambda: ins.plot.imshow(data))
+
+        def do():
+            ins.plot.save(_TMP_PNG)
+            ins.plot.imshow(data)
+            ins.plot.clf()
+
+        self._run_in_subprocess(do)
 
     def test_contour_basic(self):
         """Test 6: contour plot without crashing."""
@@ -121,33 +129,45 @@ class TestPlotCPU:
         X = ins.from_numpy(xx)
         Y = ins.from_numpy(yy)
         Z = ins.from_numpy(zz)
-        self._run_plot_safe(lambda: ins.plot.contour(X, Y, Z))
+
+        def do():
+            ins.plot.save(_TMP_PNG)
+            ins.plot.contour(X, Y, Z)
+            ins.plot.clf()
+
+        self._run_in_subprocess(do)
 
     def test_subplot_basic(self):
         """Test 7: subplot without crashing."""
-        self._run_plot_safe(lambda: ins.plot.subplot(2, 1, 1))
+        self._save_first()
+        ins.plot.subplot(2, 1, 1)
+        ins.plot.clf()
 
     def test_title_basic(self):
         """Test 8: title without crashing."""
-        self._run_plot_safe(lambda: ins.plot.title("Test Title"))
+        self._save_first()
+        ins.plot.title("Test Title")
+        ins.plot.clf()
 
     def test_xlabel_basic(self):
         """Test 9: xlabel without crashing."""
-        self._run_plot_safe(lambda: ins.plot.xlabel("X Axis"))
+        self._save_first()
+        ins.plot.xlabel("X Axis")
+        ins.plot.clf()
 
     def test_ylabel_basic(self):
         """Test 10: ylabel without crashing."""
-        self._run_plot_safe(lambda: ins.plot.ylabel("Y Axis"))
+        self._save_first()
+        ins.plot.ylabel("Y Axis")
+        ins.plot.clf()
 
     def test_legend_basic(self):
         """Test 11: legend without crashing."""
         y = ins.from_numpy(np.array([1.0, 2.0, 3.0]))
-
-        def do():
-            ins.plot.plot(y)
-            ins.plot.legend(["data"])
-
-        self._run_plot_safe(do)
+        self._save_first()
+        ins.plot.plot(y)
+        ins.plot.legend(["data"])
+        ins.plot.clf()
 
     def test_savefig_basic(self):
         """Test 12: save figure to file without crashing."""
@@ -155,15 +175,10 @@ class TestPlotCPU:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             tmpfile = f.name
         try:
-            pid = os.fork()
-            if pid == 0:
-                ins.plot.plot(y)
-                ins.plot.save(tmpfile)
-                ins.plot.clf()
-                os._exit(0)
-            elif pid > 0:
-                os.waitpid(pid, 0)
+            ins.plot.plot(y)
+            ins.plot.save(tmpfile)
         finally:
+            ins.plot.clf()
             if os.path.exists(tmpfile):
                 os.unlink(tmpfile)
 

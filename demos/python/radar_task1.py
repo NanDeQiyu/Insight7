@@ -137,26 +137,26 @@ def print_result(r):
 
 
 def save_plots(r, prefix):
-    """Save radar analysis plots using Insight7 plot API (no matplotlib)."""
+    """Save radar analysis plots using Insight7 plot API (no matplotlib).
+    Gnuplot stdout is redirected to /dev/null at C++ level (gnuplot.cpp patch).
+    """
     try:
-        plt = ins.plot  # insight.plot is an attribute, not a submodule
-
+        plt = ins.plot
         energy_np = r["energy"].numpy()
         if energy_np.dtype.kind == "c":
             energy_np = np.abs(energy_np)
         db = 20 * np.log10(energy_np + 1e-8)
 
-        # Figure 1: Range-Doppler Map
         plt.figure()
-        plt.imshow(ins.from_numpy(db.astype(np.float64)))
-        plt.colorbar()
+        # Use contour instead of imshow — imshow crashes in headless environments
+        range_arr = ins.from_numpy(r["range_bins"].astype(np.float64))
+        doppler_arr = ins.from_numpy(r["doppler_bins"].astype(np.float64))
+        plt.contour(range_arr, doppler_arr, ins.from_numpy(db.astype(np.float64)))
         plt.title("Range-Doppler Map")
-        plt.xlabel("Range Bin")
-        plt.ylabel("Doppler Bin")
+        plt.xlabel("Range [m]")
+        plt.ylabel("Doppler [Hz]")
         plt.save(f"{prefix}_range_doppler.png")
-        print(f"  已保存: {prefix}_range_doppler.png")
 
-        # Figure 2: Doppler Spectrum (max range bin)
         max_r = int(np.argmax(np.max(energy_np, axis=0)))
         doppler_arr = ins.from_numpy(r["doppler_bins"].astype(np.float64))
         ds_arr = ins.from_numpy(energy_np[:, max_r].astype(np.float64))
@@ -167,9 +167,7 @@ def save_plots(r, prefix):
         plt.ylabel("Amplitude")
         plt.grid(True)
         plt.save(f"{prefix}_doppler_slice.png")
-        print(f"  已保存: {prefix}_doppler_slice.png")
 
-        # Figure 3: Range Profile (max doppler bin)
         max_d = int(np.argmax(np.max(energy_np, axis=1)))
         range_arr = ins.from_numpy(r["range_bins"].astype(np.float64))
         rp_arr = ins.from_numpy(energy_np[max_d, :].astype(np.float64))
@@ -180,8 +178,8 @@ def save_plots(r, prefix):
         plt.ylabel("Amplitude")
         plt.grid(True)
         plt.save(f"{prefix}_range_profile.png")
-        print(f"  已保存: {prefix}_range_profile.png")
 
+        print(f"  已保存: {prefix}_*.png")
     except Exception as e:
         print(f"  绘图失败: {e}")
 

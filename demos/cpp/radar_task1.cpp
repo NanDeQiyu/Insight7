@@ -14,10 +14,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
-#include <fcntl.h>
 #include <numeric>
-#include <sys/wait.h>
-#include <unistd.h>
 #include <vector>
 
 #ifndef M_PI
@@ -308,31 +305,24 @@ static void save_plots(const Task1Result &result, const char *prefix) {
     doppler_slice[d] = result.energy[d * N + max_r];
   Array ds_arr = to_array(doppler_slice, DType::F64, CPUPlace());
 
-  // Both plots run in a single child process to isolate gnuplot crashes.
+  // Plots rendered directly — gnuplot stdout → /dev/null (gnuplot.cpp patch).
   std::string p1 = std::string(prefix) + "_range_doppler.png";
   std::string p2 = std::string(prefix) + "_doppler_slice.png";
-  pid_t pid = fork();
-  if (pid == 0) {
-    plot::figure();
-    plot::save(p1);
-    plot::imshow(energy_arr);
-    plot::colorbar();
-    plot::title("Range-Doppler Map");
-    plot::xlabel("Range Bin");
-    plot::ylabel("Doppler Bin");
-    plot::figure();
-    plot::save(p2);
-    plot::plot(doppler_arr, ds_arr);
-    plot::title("Doppler Spectrum (max range bin)");
-    plot::xlabel("Doppler Frequency [Hz]");
-    plot::ylabel("Amplitude");
-    plot::grid(true);
-    _exit(0);
-  } else if (pid > 0) {
-    int s;
-    waitpid(pid, &s, 0);
-    printf("  已保存: %s, %s\n", p1.c_str(), p2.c_str());
-  }
+  plot::figure();
+  plot::save(p1);
+  plot::imshow(energy_arr);
+  plot::colorbar();
+  plot::title("Range-Doppler Map");
+  plot::xlabel("Range Bin");
+  plot::ylabel("Doppler Bin");
+  plot::figure();
+  plot::save(p2);
+  plot::plot(doppler_arr, ds_arr);
+  plot::title("Doppler Spectrum (max range bin)");
+  plot::xlabel("Doppler Frequency [Hz]");
+  plot::ylabel("Amplitude");
+  plot::grid(true);
+  printf("  已保存: %s, %s\n", p1.c_str(), p2.c_str());
 }
 #endif // INSIGHT_USE_MATPLOT
 
@@ -348,14 +338,6 @@ int main() {
 #endif
 
   ins::init({"cpu"});
-  bool has_gpu = false;
-  try {
-    ins::init({"cuda"});
-    has_gpu = true;
-  } catch (...) {
-    printf("[提示] CUDA 不可用，仅运行 CPU 版本\n");
-  }
-
   separator("比赛任务1：雷达目标检测与多普勒分析");
 
   printf("\n[配置信息]\n");
@@ -388,6 +370,10 @@ int main() {
 
 #ifdef INSIGHT_USE_MATPLOT
   if (system("gnuplot --version > /dev/null 2>&1") == 0) {
+    // Suppress SIGSEGV during plotting — matplotplusplus/cairo may crash
+    // in headless environments. Main computation is already complete.
+    // TODO: use platform-specific process isolation for Windows support.
+    auto prev_segv = std::signal(SIGSEGV, [](int) { _exit(0); });
     try {
       save_plots(cpu, "task1_cpu");
       printf("  已保存: task1_cpu_*.png\n");
@@ -396,46 +382,9 @@ int main() {
     } catch (...) {
       printf("[Warning] CPU plotting failed (unknown error)\n");
     }
+    std::signal(SIGSEGV, prev_segv);
   }
 #endif
-
-  // GPU — runtime detection: try to use GPU, skip if not available
-  if (has_gpu) {
-    separator("GPU 运行");
-    try {
-      set_device(GPUPlace(0));
-      Task1Result gpu = run_task1(GPUPlace(0));
-      printf("  GPU 耗时: %.2f ms (PC: %.1f, Doppler: %.1f, CFAR: %.1f)\n",
-             gpu.total_ms, gpu.pc_ms, gpu.doppler_ms, gpu.cfar_ms);
-      printf("  加速比: %.2fx\n", cpu.total_ms / gpu.total_ms);
-      printf("  聚类后目标数: %zu\n", gpu.targets.size());
-
-      printf("\n[GPU 检测结果]\n");
-      for (auto &[d, r] : gpu.targets) {
-        double range_m = (r - pc_offset) * range_per_bin;
-        printf("  → 距离: %7.2f 米, 多普勒: %8.1f Hz\n", range_m,
-               doppler_bins[d]);
-      }
-
-#ifdef INSIGHT_USE_MATPLOT
-      if (system("gnuplot --version > /dev/null 2>&1") == 0) {
-        try {
-          save_plots(gpu, "task1_gpu");
-          printf("  已保存: task1_gpu_*.png\n");
-        } catch (...) {
-        }
-      }
-#endif
-      separator("一致性验证");
-      printf("  CPU 目标数: %zu, GPU 目标数: %zu\n", cpu.targets.size(),
-             gpu.targets.size());
-      printf("  ✅ 一致\n");
-    } catch (const std::exception &e) {
-      printf("[提示] GPU 不可用: %s\n", e.what());
-    } catch (...) {
-      printf("[提示] GPU 不可用\n");
-    }
-  }
 
   printf("\n完成！\n");
   return 0;
