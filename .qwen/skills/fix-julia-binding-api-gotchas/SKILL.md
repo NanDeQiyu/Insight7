@@ -1,8 +1,8 @@
 ---
 name: fix-julia-binding-api-gotchas
-description: Common Julia binding API issues — from_data, getindex, Base.abs shadowing, load_backend, complex dtypes
+description: Common Julia binding API issues — from_data column-major, getindex, Base.abs shadowing, load_backend, complex dtypes, axis reversal
 source: auto-skill
-extracted_at: '2026-06-03T13:33:39.611Z'
+extracted_at: '2026-06-04T03:57:53.684Z'
 ---
 
 # Julia Binding API Gotchas
@@ -175,7 +175,72 @@ freqs = Insight.fftfreq(n, d)      # frequency bins
 shifted = Insight.fftshift(fftout)  # shift zero-freq to center
 ```
 
-## 13. Julia demo pattern
+## 13. Column-major layout: `from_data` reverses dims
+
+Julia is column-major, Insight is row-major. `from_data` automatically reverses
+dims when creating Insight Arrays from Julia data:
+
+```julia
+# Julia (2, 3) column-major → Insight (3, 2) row-major
+a = reshape([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2, 3)
+arr = Insight.from_data(a)
+Insight.shape(arr)  # [3, 2] — reversed from Julia (2, 3)
+Insight.to_data(arr) == a  # true — roundtrip preserves data
+```
+
+`shape()` returns the reversed dims (Julia convention). `to_data()` reshapes
+with the reversed dims, so the roundtrip is correct.
+
+### Axis reversal: `_julia_axis(arr, k) = ndim - k`
+
+All functions that take axis parameters use `_julia_axis` to convert Julia's
+1-based axis to Insight's 0-based axis (reversed due to dim reversal):
+
+```julia
+# Julia axis 1 = Insight axis (ndim-1)
+# Julia axis 2 = Insight axis (ndim-2)
+# axis <= 0 means "all axes" — pass through unchanged
+
+Insight.sum(arr, axis=1)  # sums along Julia's first dimension
+Insight.sum(arr, axis=2)  # sums along Julia's second dimension
+Insight.fft(x, axis=1)    # FFT along Julia's first dimension
+```
+
+### When adding new axis-taking functions
+
+Always use `_julia_axis(x, axis)` in the Julia binding:
+
+```julia
+function my_func(x::InsightArray; axis::Int=-1)::InsightArray
+    ptr = ccall((:insight_jl_my_func, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(_julia_axis(x, axis)))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+```
+
+### 2D data with `permutedims` for Insight operations
+
+For operations that need correct 2D semantics (like CFAR), use `permutedims`
+before `from_data` and after `to_data`:
+
+```julia
+# Julia (N_PULSES, N) → permutedims → (N, N_PULSES) → from_data → Insight (N_PULSES, N)
+energy_ins = Insight.from_data(Base.permutedims(energy))
+det = Insight.signal.ca_cfar(energy_ins, ...)
+det_jl = Base.permutedims(Base.reshape(Insight.to_data(det), N, N_PULSES))
+```
+
+### 1D noise arrays avoid layout issues
+
+For radar/signal demos, generate 1D noise arrays and use linear indexing:
+
+```julia
+Insight.seed(42)
+noise_flat = Insight.to_data(Insight.randn(Int64[N_PULSES * N], Insight.float64) * sigma)
+# Access: noise_flat[(p-1)*N+1 : p*N] for pulse p
+```
+
+## 14. Julia demo pattern
 
 ```julia
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "bindings", "julia"))

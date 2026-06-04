@@ -36,6 +36,42 @@ Available comparison functions:
 - `arr:item()` — returns double for 0-dimensional scalar arrays ONLY. Takes NO arguments. Returns nil for multi-element arrays.
 - `arr:get(idx)` — returns double for element at 0-based index. Works on any array.
 
+### `get()` must handle ALL dtypes (CRITICAL BUG FIX)
+
+The `get()` method in `insight_lua.cpp` originally only handled F64/F32/I64/I32.
+Missing BOOL/I8/I16/U8 cases caused `default: return 0.0` — **CFAR detections
+always returned 0** because the bool detection array was read as all-zeros.
+
+```cpp
+// ❌ ORIGINAL — BOOL falls through to default → always 0
+switch (cpu.dtype()) {
+case DType::F64: return cpu.data<double>()[idx];
+case DType::F32: return (double)cpu.data<float>()[idx];
+case DType::I64: return (double)cpu.data<int64_t>()[idx];
+case DType::I32: return (double)cpu.data<int32_t>()[idx];
+default: return 0.0;  // BOOL, I8, I16, U8 all hit this!
+}
+
+// ✅ CORRECT — handle all dtypes
+switch (cpu.dtype()) {
+case DType::F64: return cpu.data<double>()[idx];
+case DType::F32: return (double)cpu.data<float>()[idx];
+case DType::I64: return (double)cpu.data<int64_t>()[idx];
+case DType::I32: return (double)cpu.data<int32_t>()[idx];
+case DType::I16: return (double)cpu.data<int16_t>()[idx];
+case DType::I8:  return (double)cpu.data<int8_t>()[idx];
+case DType::U8:  return (double)cpu.data<uint8_t>()[idx];
+case DType::BOOL: return cpu.data<bool>()[idx] ? 1.0 : 0.0;
+default: return 0.0;
+}
+```
+
+**Symptom**: `ca_cfar` returns threshold correctly but detections are all 0.
+`tostring(detections)` shows `true` values but `detections:get(idx)` returns 0.
+
+**Why:** sol2's `get<int64_t>()` on a bool array reads 8 bytes from a 1-byte-per-element
+array, causing garbage values or zeros.
+
 ```lua
 -- ❌ WRONG — item(idx) doesn't work, item() only for scalars
 local sum_val = ins.sum(arr)

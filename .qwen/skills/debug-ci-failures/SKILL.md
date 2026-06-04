@@ -46,6 +46,12 @@ Group errors across jobs. Common patterns in Insight7:
 | Lua demo: `bad argument #2 to 'format' (number expected, got userdata)` | `string.format("%.3f", arr)` fails when arr is Insight Array userdata; use `ins.item(arr, 0)` to extract scalar | debug-ci-failures |
 | Demo CI shows WARN but passes | `|| echo "WARN: ..."` masks failures; remove to let demos fail loudly | debug-ci-failures |
 | `[insight] Failed to load library 'libinsight_cuda_backend.so'` in demos | Demos call `init({"cpu","cuda"})` which tries CUDA; change to `init({"cpu"})` for CPU-only CI | debug-ci-failures |
+| Segfault in C++/Lua/Julia demos after `set terminal unknown font` gnuplot warning | matplotplusplus `unknown` terminal not in font blacklist; apply gnuplot.cpp fix with "dumb" fallback | wrap-external-plot-library |
+| Python plot tests segfault in pytest | pytest stdout capture conflicts with gnuplot binary output; use `--capture=no` for plot tests | wrap-external-plot-library |
+| C++ demo segfault when stdout piped | "dumb" terminal output crashes when redirected; add `setbuf(stdout,NULL)` + `isatty()` check | wrap-external-plot-library |
+| Lua CFAR detections all 0 despite correct threshold | `get()` method missing BOOL dtype → returns 0 for bool arrays | fix-lua-binding-api-gotchas |
+| Lua radar demo 0 targets | RNG overflow (double can't store LCG integers) → NaN → all zero detections | fix-cross-language-demo-gotchas |
+| Python `ValueError: could not convert string to float: 'Array(shape=...'` | `float(str(ins.sum(arr)))` fails because Array __repr__ includes metadata; use `.numpy()` | fix-cross-language-demo-gotchas |
 | Language binding CI not triggered on PR | `pull_request.paths` missing `backends/**`; must match `push.paths` | fix-ci-workflow-path-triggers |
 
 ## Step 3: Fix in dependency order
