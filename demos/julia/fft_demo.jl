@@ -105,11 +105,8 @@ run_fft_cpu()
 if gpu_available()
     try
         run_fft_gpu()
-    catch e
-        println("\n[GPU not available: $e]")
+    catch
     end
-else
-    println("\n[GPU not available, skipping GPU FFT demo]")
 end
 
 println("\nDone!")

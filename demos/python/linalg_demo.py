@@ -128,10 +128,8 @@ def main():
     if gpu_available():
         try:
             run_gpu_linalg()
-        except Exception as e:
-            print(f"\n[GPU not available: {e}]")
-    else:
-        print("\n[GPU not available, skipping GPU linalg demo]")
+        except Exception:
+            pass
 
     print("\nDone!")
 

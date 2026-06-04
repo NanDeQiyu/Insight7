@@ -47,14 +47,19 @@ energy = float(ins.sum(arr).numpy())  # ✅ CORRECT
 energy = float(str(ins.sum(arr)))  # ValueError: could not convert string
 ```
 
-### Init with CPU only
+### Init — use auto-discover for future hardware support
 ```python
-# ❌ WRONG — tries to load CUDA, prints warning
-ins.init(["cpu", "cuda"])
+# ✅ CORRECT — auto-discover: CPU + first GPU if available
+# On new hardware (Ascend, Cambricon, etc.), init() will find libinsight_*_backend.so
+ins.init()
 
-# ✅ CORRECT — CPU only, no warning
+# Also OK but limits to CPU only:
 ins.init(["cpu"])
 ```
+
+**Why auto-discover**: After CI passes, the project will run on national hardware.
+`init()` scans for `libinsight_*_backend.so` and loads whatever is available.
+GPU sections in demos must have try-catch since GPU may not be present.
 
 ## Lua demos
 

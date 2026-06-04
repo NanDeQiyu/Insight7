@@ -67,18 +67,13 @@ jobs:
 
       - name: Force recompile matplotplusplus
         run: |
-          # Apply patches to FetchContent source (idempotent)
-          GP_DIR=$(find build/_deps -name gnuplot.cpp -exec dirname {} \; 2>/dev/null | head -1)
-          MATP_DIR=$(echo "$GP_DIR" | sed 's|/source/matplot/backend||')
-          if [ -n "$MATP_DIR" ] && [ -f patches/matplotplusplus/gcc-compat.patch ]; then
-            cd "$MATP_DIR" && (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gcc-compat.patch" 2>/dev/null || true)
-            (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gnuplot-unknown-terminal.patch" 2>/dev/null || true)
-            cd "$GITHUB_WORKSPACE"
-          fi
+          # Patches are applied by cmake during configure. Touch to force recompile.
           find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           find build/_deps -name axes_type.h -exec touch {} + 2>/dev/null || true
           [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
             touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+          [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+            touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
 
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
@@ -132,18 +127,13 @@ jobs:
 
       - name: Force recompile matplotplusplus
         run: |
-          # Apply patches to FetchContent source (idempotent)
-          GP_DIR=$(find build/_deps -name gnuplot.cpp -exec dirname {} \; 2>/dev/null | head -1)
-          MATP_DIR=$(echo "$GP_DIR" | sed 's|/source/matplot/backend||')
-          if [ -n "$MATP_DIR" ] && [ -f patches/matplotplusplus/gcc-compat.patch ]; then
-            cd "$MATP_DIR" && (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gcc-compat.patch" 2>/dev/null || true)
-            (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gnuplot-unknown-terminal.patch" 2>/dev/null || true)
-            cd "$GITHUB_WORKSPACE"
-          fi
+          # Patches are applied by cmake during configure. Touch to force recompile.
           find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           find build/_deps -name axes_type.h -exec touch {} + 2>/dev/null || true
           [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
             touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+          [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+            touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
 
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
@@ -198,18 +188,13 @@ jobs:
 
       - name: Force recompile matplotplusplus
         run: |
-          # Apply patches to FetchContent source (idempotent)
-          GP_DIR=$(find build/_deps -name gnuplot.cpp -exec dirname {} \; 2>/dev/null | head -1)
-          MATP_DIR=$(echo "$GP_DIR" | sed 's|/source/matplot/backend||')
-          if [ -n "$MATP_DIR" ] && [ -f patches/matplotplusplus/gcc-compat.patch ]; then
-            cd "$MATP_DIR" && (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gcc-compat.patch" 2>/dev/null || true)
-            (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gnuplot-unknown-terminal.patch" 2>/dev/null || true)
-            cd "$GITHUB_WORKSPACE"
-          fi
+          # Patches are applied by cmake during configure. Touch to force recompile.
           find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           find build/_deps -name axes_type.h -exec touch {} + 2>/dev/null || true
           [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
             touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+          [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+            touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
 
       - name: Build
         run: cd build && cmake --build . -j$(nproc) --target insight_lua --target insight_cpu_backend
@@ -264,18 +249,13 @@ jobs:
 
       - name: Force recompile matplotplusplus
         run: |
-          # Apply patches to FetchContent source (idempotent)
-          GP_DIR=$(find build/_deps -name gnuplot.cpp -exec dirname {} \; 2>/dev/null | head -1)
-          MATP_DIR=$(echo "$GP_DIR" | sed 's|/source/matplot/backend||')
-          if [ -n "$MATP_DIR" ] && [ -f patches/matplotplusplus/gcc-compat.patch ]; then
-            cd "$MATP_DIR" && (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gcc-compat.patch" 2>/dev/null || true)
-            (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gnuplot-unknown-terminal.patch" 2>/dev/null || true)
-            cd "$GITHUB_WORKSPACE"
-          fi
+          # Patches are applied by cmake during configure. Touch to force recompile.
           find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           find build/_deps -name axes_type.h -exec touch {} + 2>/dev/null || true
           [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
             touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+          [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+            touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
 
       - name: Build
         run: cd build && cmake --build . -j$(nproc)

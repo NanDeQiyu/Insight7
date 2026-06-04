@@ -62,14 +62,11 @@ jobs:
 
     - name: Force recompile matplotplusplus
       run: |
-        # Apply patches to local source (idempotent)
-        if [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ]; then
-          cd third_party/matplotplusplus && (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gcc-compat.patch" 2>/dev/null || true)
-          (patch -p1 --forward < "$GITHUB_WORKSPACE/patches/matplotplusplus/gnuplot-unknown-terminal.patch" 2>/dev/null || true)
-          cd "$GITHUB_WORKSPACE"
-          touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp
-          touch third_party/matplotplusplus/source/matplot/core/axes_type.h
-        fi
+        # Patches are applied by cmake during configure. Touch to force recompile.
+        [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+          touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+        [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+          touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
 
     - name: Configure
       run: |

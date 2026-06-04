@@ -169,8 +169,6 @@ int main() {
 
   if (gpu_available()) {
     run_gpu_linalg();
-  } else {
-    printf("\n[GPU not available, skipping GPU linalg demo]\n");
   }
 
   printf("\nDone!\n");

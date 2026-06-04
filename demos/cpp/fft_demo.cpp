@@ -147,8 +147,6 @@ int main() {
 
   if (gpu_available()) {
     run_fft_gpu();
-  } else {
-    printf("\n[GPU not available, skipping GPU FFT demo]\n");
   }
 
   printf("\nDone!\n");

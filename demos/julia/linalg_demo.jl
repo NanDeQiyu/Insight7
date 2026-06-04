@@ -125,11 +125,8 @@ run_cpu_linalg()
 if gpu_available()
     try
         run_gpu_linalg()
-    catch e
-        println("\n[GPU not available: $e]")
+    catch
     end
-else
-    println("\n[GPU not available, skipping GPU linalg demo]")
 end
 
 println("\nDone!")

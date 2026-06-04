@@ -178,16 +178,20 @@ void init(std::optional<std::vector<std::string>> backends) {
     if (!try_load_backend(DeviceKind::CPU, "insight_cpu_backend")) {
       INS_THROW("Failed to load CPU backend");
     }
-    // 2. Scan for other backends
+    // 2. Scan current directory for other backends
     auto available = discover_backends();
     for (const auto &name : available) {
       if (name == "cpu")
-        continue; // already loaded
-      // Try to load as GPU backend (first one wins)
+        continue;
       if (try_load_backend(DeviceKind::GPU,
                            ("insight_" + name + "_backend").c_str())) {
-        break; // load only the first non-CPU backend
+        break;
       }
+    }
+    // 3. If no GPU backend found via scan, try common names directly
+    //    (dlopen uses LD_LIBRARY_PATH, works when .so is in another directory)
+    if (!get_device_interface(DeviceKind::GPU)) {
+      try_load_backend(DeviceKind::GPU, "insight_cuda_backend");
     }
   } else if (backends->empty()) {
     // === Empty vector: load nothing ===

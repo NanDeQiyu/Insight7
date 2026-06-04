@@ -137,12 +137,7 @@ print("Insight7 FFT Demo (Lua)")
 run_fft_cpu()
 
 if gpu_available() then
-  local ok, err = pcall(run_fft_gpu)
-  if not ok then
-    print("\n[GPU not available: " .. tostring(err) .. "]")
-  end
-else
-  print("\n[GPU not available, skipping GPU FFT demo]")
+  pcall(run_fft_gpu)
 end
 
 print("\nDone!")
