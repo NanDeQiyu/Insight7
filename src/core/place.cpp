@@ -213,9 +213,6 @@ Place CPUPlace(int device_id) { return Place(DeviceKind::CPU, device_id); }
 Place GPUPlace(int device_id) {
   INS_CHECK(is_device_available(DeviceKind::GPU),
             "GPUPlace: GPU backend is not available");
-  INS_CHECK(device_id >= 0 &&
-                static_cast<size_t>(device_id) < device_count(DeviceKind::GPU),
-            "GPUPlace: device_id ", device_id, " is out of range");
   return Place(DeviceKind::GPU, device_id);
 }
 

@@ -37,6 +37,36 @@ __global__ void mul_kernel(const T *a, const T *b, T *out,
       meta->out_offset + elementwise_offset(linear, meta, meta->out_strides);
   out[out_off] = a[a_off] * b[b_off];
 }
+
+// Half-precision specializations (use hmul() to avoid ambiguous * on CUDA 11.8)
+__global__ void mul_f16_kernel(const __half *a, const __half *b, __half *out,
+                               const ElementwiseMetadata *meta) {
+  int64_t linear = blockIdx.x * blockDim.x + threadIdx.x;
+  if (linear >= meta->numel)
+    return;
+  int64_t a_off =
+      meta->a_offset + elementwise_offset(linear, meta, meta->a_strides);
+  int64_t b_off =
+      meta->b_offset + elementwise_offset(linear, meta, meta->b_strides);
+  int64_t out_off =
+      meta->out_offset + elementwise_offset(linear, meta, meta->out_strides);
+  out[out_off] = hmul(a[a_off], b[b_off]);
+}
+__global__ void mul_bf16_kernel(const __nv_bfloat16 *a, const __nv_bfloat16 *b,
+                                __nv_bfloat16 *out,
+                                const ElementwiseMetadata *meta) {
+  int64_t linear = blockIdx.x * blockDim.x + threadIdx.x;
+  if (linear >= meta->numel)
+    return;
+  int64_t a_off =
+      meta->a_offset + elementwise_offset(linear, meta, meta->a_strides);
+  int64_t b_off =
+      meta->b_offset + elementwise_offset(linear, meta, meta->b_strides);
+  int64_t out_off =
+      meta->out_offset + elementwise_offset(linear, meta, meta->out_strides);
+  out[out_off] = hmul(a[a_off], b[b_off]);
+}
+
 __global__ void mul_c32_kernel(const cuFloatComplex *a, const cuFloatComplex *b,
                                cuFloatComplex *out,
                                const ElementwiseMetadata *meta) {
@@ -140,13 +170,13 @@ C_Status mul_kernel_gpu(void **inputs, void **outputs) {
                                         (cuDoubleComplex *)out->data, meta);
     break;
   case INSIGHT_DTYPE_F16:
-    mul_kernel<__half><<<blocks, threads>>>(
-        (__half *)a->data, (__half *)b->data, (__half *)out->data, meta);
+    mul_f16_kernel<<<blocks, threads>>>((__half *)a->data, (__half *)b->data,
+                                        (__half *)out->data, meta);
     break;
   case INSIGHT_DTYPE_BF16:
-    mul_kernel<__nv_bfloat16><<<blocks, threads>>>(
-        (__nv_bfloat16 *)a->data, (__nv_bfloat16 *)b->data,
-        (__nv_bfloat16 *)out->data, meta);
+    mul_bf16_kernel<<<blocks, threads>>>((__nv_bfloat16 *)a->data,
+                                         (__nv_bfloat16 *)b->data,
+                                         (__nv_bfloat16 *)out->data, meta);
     break;
   default:
     free_elementwise_metadata(meta);

@@ -7,6 +7,8 @@
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
 #include <cmath>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 template <typename T>
@@ -15,6 +17,26 @@ __global__ void exponential_kernel(T *out, int64_t M, T inv_tau, T center) {
   if (i >= M)
     return;
   out[i] = exp(-fabs(T(i) - center) * inv_tau);
+}
+
+__global__ void exponential_kernel_f16(uint16_t *out, int64_t M, float inv_tau,
+                                       float center) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float result = expf(-fabsf((float)i - center) * inv_tau);
+  __half res = __float2half(result);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void exponential_kernel_bf16(uint16_t *out, int64_t M, float inv_tau,
+                                        float center) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= M)
+    return;
+  float result = expf(-fabsf((float)i - center) * inv_tau);
+  __nv_bfloat16 res = __float2bfloat16(result);
+  out[i] = *(uint16_t *)&res;
 }
 
 extern "C" {
@@ -54,8 +76,21 @@ C_Status signal_exponential_kernel_gpu(void **inputs, void **outputs) {
     exponential_kernel<double>
         <<<blocks, threads>>>((double *)out->data, M, inv_tau, center_host);
     break;
+  case INSIGHT_DTYPE_F32:
+    exponential_kernel<float><<<blocks, threads>>>(
+        (float *)out->data, M, (float)inv_tau, (float)center_host);
+    break;
+  case INSIGHT_DTYPE_F16:
+    exponential_kernel_f16<<<blocks, threads>>>(
+        (uint16_t *)out->data, M, (float)inv_tau, (float)center_host);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    exponential_kernel_bf16<<<blocks, threads>>>(
+        (uint16_t *)out->data, M, (float)inv_tau, (float)center_host);
+    break;
   default:
-    gpu_set_last_error("exponential: only F64 dtype supported");
+    gpu_set_last_error(
+        "exponential: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -70,4 +105,10 @@ C_Status signal_exponential_kernel_gpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_GPU_KERNEL(signal_exponential, INSIGHT_DTYPE_F64,
+                    signal_exponential_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_exponential, INSIGHT_DTYPE_F32,
+                    signal_exponential_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_exponential, INSIGHT_DTYPE_F16,
+                    signal_exponential_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_exponential, INSIGHT_DTYPE_BF16,
                     signal_exponential_kernel_gpu);

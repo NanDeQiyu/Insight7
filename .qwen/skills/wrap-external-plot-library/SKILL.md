@@ -2,7 +2,7 @@
 name: wrap-external-plot-library
 description: Wrapping an external C++ library (matplotplusplus) with Array conversion, conditional compilation, and separate CI
 source: auto-skill
-extracted_at: '2026-05-30T19:00:00.000Z'
+extracted_at: '2026-06-03T15:00:00.000Z'
 ---
 
 # Wrap External Plot Library (matplotplusplus)
@@ -176,4 +176,239 @@ cmake .. -DINSIGHT_USE_MATPLOT=ON && make -j$(nproc)
 # Build without MATPLOT (should still work)
 cmake .. -DINSIGHT_USE_MATPLOT=OFF && make -j$(nproc)
 ./tests/insight_tests_cpu  # All tests pass, plot tests skipped
+```
+
+## gnuplot `unknown` terminal font crash (COMPREHENSIVE FIX)
+
+**Root cause**: matplotplusplus's `terminal_has_font_option()` blacklist did NOT
+include `"unknown"`. When CI runs headless (no display), gnuplot defaults to the
+`unknown` terminal. The code sent `set terminal unknown font "Helvetica,10"`,
+gnuplot rejected it, and pipe closure caused SIGPIPE → segfault.
+
+This was the #1 recurring CI failure across 6 rounds of CI fixes.
+
+**Fix (in `third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp`)**:
+
+1. Add `"unknown"` to font blacklist (~line 454):
+```cpp
+SV_CONSTEXPR std::string_view blacklist[] = {
+    "dxf", "eepic", ..., "pdf", "unknown"};  // ← add "unknown"
+```
+
+2. Fallback from "unknown" to "pngcairo" terminal (supports full features):
+```cpp
+// pngcairo supports pm3d/image rendering (required for imshow/contour).
+// "png" (libgd) lacks pm3d support — crashes on imshow.
+if (terminal_ == "unknown") {
+    if (terminal_is_available("pngcairo")) {
+        terminal_ = "pngcairo";
+    } else if (terminal_is_available("png")) {
+        terminal_ = "png";
+    } else {
+        terminal_ = "dumb";
+    }
+}
+```
+
+**Why pngcairo first**: "png" uses libgd which does NOT support `set pm3d map`
+(required by imshow/contour). Using "png" causes SIGSEGV on image rendering.
+
+3. **Redirect gnuplot stdout to /dev/null (CRITICAL — fixes binary output leak)**:
+```cpp
+// gnuplot.cpp constructor:
+pipe_ = POPEN("gnuplot >/dev/null 2>&1", "w");
+```
+This prevents gnuplot from writing binary PNG data to the parent's stdout.
+When `save()` sends `set output "filename"`, gnuplot writes to the file.
+Any other output goes to /dev/null. **All languages benefit from this.**
+
+4. Check gnuplot binary exists before opening pipe:
+```cpp
+if (system("gnuplot --version > /dev/null 2>&1") != 0) {
+    pipe_ = nullptr;
+    return;
+}
+```
+
+5. Graceful pipe operations with ferror/EOF checks:
+```cpp
+// In flush_commands():
+if (!pipe_) { return false; }
+if (ferror(pipe_)) { PCLOSE(pipe_); pipe_ = nullptr; return false; }
+if (fputs("\n", pipe_) == EOF || fflush(pipe_) == EOF) {
+    PCLOSE(pipe_); pipe_ = nullptr; return false;
+}
+
+// In run_command():
+if (!pipe_) { return; }
+if (ferror(pipe_)) { PCLOSE(pipe_); pipe_ = nullptr; return; }
+if (fputs(command.c_str(), pipe_) == EOF) {
+    PCLOSE(pipe_); pipe_ = nullptr; return;
+}
+
+// In destructor:
+if (!pipe_) return;
+errno = 0;
+if (fputs("set output\nexit\n", pipe_) != EOF) { fflush(pipe_); }
+PCLOSE(pipe_);
+pipe_ = nullptr;
+```
+
+**Why pngcairo, not dumb**: pngcairo supports `save()` to PNG files (essential for
+batch plotting). "dumb" only outputs text to console, which is useless for the
+competition's 1000-frame batch processing workflow.
+
+**Patch management**: Save as `patches/matplotplusplus/gnuplot-unknown-terminal.patch`
+and register in CMakeLists.txt for both local and FetchContent builds.
+
+## Python plot tests: imshow/contour run directly (no subprocess)
+
+**Problem**: `ins.plot.imshow()` crashed with SIGSEGV in all environments.
+
+**Root cause**: `plot::imshow()` in `src/ops/plot.cpp` called `mp::imshow(to_matrix(data))`.
+But matplotplusplus's `axes_type::imshow()` template is designed for `unsigned char`
+grayscale images, NOT `double` matrices. When called with `vector_2d` (double),
+`to_vector_2d` is a no-op, causing infinite recursion → stack overflow → SIGSEGV.
+
+**Fix**: Use `mp::image()` instead of `mp::imshow()`. The `image()` function correctly
+accepts `std::vector<std::vector<double>>`. This is a matplotplusplus API design issue —
+`imshow()` should SFINAE out for non-unsigned-char types.
+
+```cpp
+// ❌ WRONG — infinite recursion for double data
+void imshow(const Array &data) { mp::imshow(to_matrix(data)); }
+
+// ✅ CORRECT — image() accepts double matrices
+void imshow(const Array &data) { mp::image(to_matrix(data)); }
+```
+
+**Note**: `mp::imshow()` works correctly with `std::vector<std::vector<unsigned char>>`
+(grayscale images). Only the double overload is broken.
+
+With this fix, imshow/contour run directly in the test (no subprocess isolation needed):
+
+```python
+def test_imshow_basic(self):
+    data = ins.from_numpy(np.random.rand(5, 5))
+    self._save_first()
+    ins.plot.imshow(data)
+    ins.plot.clf()
+
+def test_contour_basic(self):
+    X = ins.from_numpy(xx)
+    Y = ins.from_numpy(yy)
+    Z = ins.from_numpy(zz)
+    self._save_first()
+    ins.plot.contour(X, Y, Z)
+    ins.plot.clf()
+```
+
+**Why NOT subprocess isolation**: Subprocess (fork) inherits the parent's gnuplot
+pipe state, causing pipe corruption. Even with `spawn`, subprocess isolation hides
+crashes — the test shows "PASSED" while the subprocess segfaults. Direct execution
+is honest: if it crashes, the test fails.
+
+**CI workflow**: No special handling needed. Plot tests pass directly.
+
+## Plot to PNG files (not console)
+
+**Requirement**: Competition needs batch processing 1000 frames → save each frame
+as PNG file for later analysis. Plotting must save to files, not dump to console.
+
+**Pattern**: Call `save()` AFTER `figure()` but BEFORE any plot commands:
+
+```cpp
+// C++ — save() after figure() ensures output goes to file
+plot::figure();
+plot::save("output.png");  // sets gnuplot's "set output"
+plot::imshow(data);
+plot::colorbar();
+plot::title("Range-Doppler Map");
+```
+
+```python
+# Python — same pattern
+ins.plot.figure()
+ins.plot.save("output.png")
+ins.plot.imshow(data)
+ins.plot.title("Range-Doppler Map")
+```
+
+**C++ fork isolation for demos**: Since gnuplot pipe cleanup can segfault even
+with pngcairo terminal, run plot operations in a child process:
+
+```cpp
+static void save_plots(const Result &result, const char *prefix) {
+    // Pre-compute data in parent
+    Array energy_arr = to_array(result.energy, ...);
+
+    // Fork: child does plotting, parent waits
+    pid_t pid = fork();
+    if (pid == 0) {
+        plot::figure(); plot::save(std::string(prefix) + ".png");
+        plot::imshow(energy_arr);
+        _exit(0);  // child exits after plotting
+    } else if (pid > 0) {
+        int s; waitpid(pid, &s, 0);
+        printf("已保存: %s.png\n", prefix);
+    }
+}
+```
+
+**Why fork()**: The gnuplot pipe cleanup in the destructor can segfault.
+`SIG_IGN` for SIGSEGV is unreliable on Linux. `fork()` is the only reliable
+isolation mechanism — the child's crash doesn't affect the parent.
+
+## C++ demo GPU crash isolation
+
+**Problem**: `ins::init({"cuda"})` may succeed (loads library) but `set_device(GPUPlace(0))`
+fails because no physical GPU exists. This causes an unhandled exception → crash.
+
+**Fix**: Wrap the entire GPU section in try-catch:
+
+```cpp
+if (has_gpu) {
+    try {
+        set_device(GPUPlace(0));
+        auto gpu = run_task1(GPUPlace(0));
+        // ... print results ...
+    } catch (const std::exception &e) {
+        printf("[提示] GPU 不可用: %s\n", e.what());
+    } catch (...) {
+        printf("[提示] GPU 不可用\n");
+    }
+}
+```
+
+**Why not check `has_device()`**: The `init({"cuda"})` call may succeed even
+without a physical GPU (it just loads the shared library). The actual GPU
+availability is only known when trying to use it.
+
+## SIGPIPE handling for plot functions
+
+matplotplusplus spawns gnuplot as a subprocess. If gnuplot crashes or the pipe
+breaks, SIGPIPE kills the process. This is NOT a C++ exception — try/catch
+won't help.
+
+**Fix:** Add `signal(SIGPIPE, SIG_IGN)` before any plot calls:
+
+```cpp
+// C++ demo main()
+#include <csignal>
+#ifdef SIGPIPE
+std::signal(SIGPIPE, SIG_IGN);
+#endif
+```
+
+## C++ radar demo plot crash pattern
+
+The radar demo generates detection results THEN plots. If plotting crashes,
+all the computation is lost. Wrap plot calls in try/catch:
+
+```cpp
+try {
+    save_plots(cpu_result, "task1_cpu");
+} catch (const std::exception &e) {
+    printf("[Warning] Plotting failed: %s\n", e.what());
+}
 ```

@@ -294,3 +294,17 @@ TEST_F(CreationTest, OnesLike) {
     EXPECT_FLOAT_EQ(data[i], 1.0f);
   }
 }
+
+// ========== GPU not available: must throw ==========
+
+TEST_F(CreationTest, GpuThrowsWithoutBackend) {
+  // Only CPU backend is loaded (init() in SetUpTestSuite).
+  // Attempting to use GPU must throw an exception.
+  Array a = ones({3}, DType::F32, CPUPlace());
+  EXPECT_THROW(a.to(GPUPlace(0)), std::exception);
+}
+
+TEST_F(CreationTest, SetDeviceGpuThrowsWithoutBackend) {
+  Array a = ones({3}, DType::F32, CPUPlace());
+  EXPECT_THROW(a.to(GPUPlace(0)), std::exception);
+}

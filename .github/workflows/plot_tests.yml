@@ -22,7 +22,7 @@ on:
 
 jobs:
   plot-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
@@ -35,7 +35,8 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           cmake g++ libopenblas-dev liblapacke-dev libfftw3-dev libsndfile1-dev \
-          gnuplot-nox
+          gnuplot-nox \
+          fonts-dejavu-core
         # gnuplot-nox for headless rendering (no X11)
 
     - name: Clone third_party sources
@@ -59,6 +60,14 @@ jobs:
         if [ ! -d libsndfile ]; then
           git clone --depth 1 --branch 1.2.2 https://github.com/libsndfile/libsndfile.git
         fi
+
+    - name: Force recompile matplotplusplus
+      run: |
+        # Patches are applied by cmake during configure. Touch to force recompile.
+        [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+          touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+        [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+          touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
 
     - name: Configure
       run: |

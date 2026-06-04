@@ -19,22 +19,25 @@ class TestSignalRadarCPU:
     """Radar signal processing — signal_radar CPU tests."""
 
     def test_pulse_compression(self):
-        n = 64
-        template = np.random.randn(n).astype(np.float64)
-        signal = np.zeros(2 * n, dtype=np.float64)
-        signal[:n] += template
-        x = ins.from_numpy(signal)
+        n_pulses = 4
+        n_samples = 64
+        template = np.random.randn(n_samples).astype(np.float64)
+        # pulse_compression expects 2D input [num_pulses, samples_per_pulse]
+        data = np.zeros((n_pulses, n_samples), dtype=np.float64)
+        data[0, :n_samples] += template
+        x = ins.from_numpy(data)
         tpl = ins.from_numpy(template)
         result = ins.signal.pulse_compression(x, tpl)
         assert result is not None
         assert result.numel() > 0
 
     def test_pulse_compression_normalized(self):
-        n = 64
-        template = np.random.randn(n).astype(np.float64)
-        signal = np.zeros(2 * n, dtype=np.float64)
-        signal[:n] += template
-        x = ins.from_numpy(signal)
+        n_pulses = 4
+        n_samples = 64
+        template = np.random.randn(n_samples).astype(np.float64)
+        data = np.zeros((n_pulses, n_samples), dtype=np.float64)
+        data[0, :n_samples] += template
+        x = ins.from_numpy(data)
         tpl = ins.from_numpy(template)
         result = ins.signal.pulse_compression(x, tpl, normalize=True)
         assert result is not None
@@ -66,7 +69,9 @@ class TestSignalRadarCPU:
         x = ins.from_numpy(data)
         result = ins.signal.ca_cfar(x, [2], [10], pfa=1e-2)
         assert result is not None
-        assert result.numel() == 100
+        # ca_cfar returns a tuple (threshold, detections)
+        assert len(result) == 2
+        assert result[0].numel() == 100
 
     def test_mvdr(self):
         n_elements = 4
@@ -88,18 +93,18 @@ class TestSignalRadarCPU:
         assert result.numel() > 0
 
     def test_ambgfun_delay_cut(self):
-        n = 64
+        n = 32
         x_np = np.random.randn(n).astype(np.float64)
         x = ins.from_numpy(x_np)
-        result = ins.signal.ambgfun(x, fs=1000.0, prf=100.0, cut="delay", cutValue=0.0)
+        result = ins.signal.ambgfun(x, fs=1000.0, prf=100.0, cut="delay", cutValue=0)
         assert result is not None
         assert result.numel() > 0
 
     def test_ambgfun_doppler_cut(self):
-        n = 64
+        n = 32
         x_np = np.random.randn(n).astype(np.float64)
         x = ins.from_numpy(x_np)
-        result = ins.signal.ambgfun(x, fs=1000.0, prf=100.0, cut="doppler", cutValue=0.0)
+        result = ins.signal.ambgfun(x, fs=1000.0, prf=100.0, cut="doppler", cutValue=0)
         assert result is not None
         assert result.numel() > 0
 

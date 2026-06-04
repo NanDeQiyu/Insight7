@@ -50,38 +50,75 @@ C_Status signal_firwin_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
-  if (out->dtype != INSIGHT_DTYPE_F64) {
-    cpu_set_last_error("signal_firwin: only F64 dtype supported");
+  if (out->dtype == INSIGHT_DTYPE_F64) {
+    double *data = (double *)out->data;
+    double half = (double)(M_len - 1) / 2.0;
+
+#ifdef _OPENMP
+    if (M_len > 1000) {
+#pragma omp parallel for
+      for (int64_t i = 0; i < M_len; ++i) {
+        double n_centered = (double)i - half;
+        // sinc kernel
+        double h = sinc_func(2.0 * fc * n_centered);
+        // Hann window: 0.5 * (1 - cos(2*pi*n/(M-1)))
+        double win =
+            0.5 *
+            (1.0 - std::cos(2.0 * M_PI * (double)i / (double)(M_len - 1)));
+        data[i] = h * win;
+      }
+    } else {
+#endif
+      for (int64_t i = 0; i < M_len; ++i) {
+        double n_centered = (double)i - half;
+        double h = sinc_func(2.0 * fc * n_centered);
+        double win =
+            0.5 *
+            (1.0 - std::cos(2.0 * M_PI * (double)i / (double)(M_len - 1)));
+        data[i] = h * win;
+      }
+#ifdef _OPENMP
+    }
+#endif
+  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    float *data = (float *)out->data;
+    float half = (float)(M_len - 1) / 2.0f;
+    float fc_f = (float)fc;
+
+#ifdef _OPENMP
+    if (M_len > 1000) {
+#pragma omp parallel for
+      for (int64_t i = 0; i < M_len; ++i) {
+        float n_centered = (float)i - half;
+        // sinc kernel (use float sinf)
+        float arg = 2.0f * fc_f * n_centered;
+        float h = (std::abs(arg) < 1e-15f)
+                      ? 1.0f
+                      : std::sin((float)M_PI * arg) / ((float)M_PI * arg);
+        // Hann window
+        float win = 0.5f * (1.0f - std::cos(2.0f * (float)M_PI * (float)i /
+                                            (float)(M_len - 1)));
+        data[i] = h * win;
+      }
+    } else {
+#endif
+      for (int64_t i = 0; i < M_len; ++i) {
+        float n_centered = (float)i - half;
+        float arg = 2.0f * fc_f * n_centered;
+        float h = (std::abs(arg) < 1e-15f)
+                      ? 1.0f
+                      : std::sin((float)M_PI * arg) / ((float)M_PI * arg);
+        float win = 0.5f * (1.0f - std::cos(2.0f * (float)M_PI * (float)i /
+                                            (float)(M_len - 1)));
+        data[i] = h * win;
+      }
+#ifdef _OPENMP
+    }
+#endif
+  } else {
+    cpu_set_last_error("signal_firwin: unsupported dtype, need F32 or F64");
     return C_FAILED;
   }
-
-  double *data = (double *)out->data;
-  double half = (double)(M_len - 1) / 2.0;
-
-#ifdef _OPENMP
-  if (M_len > 1000) {
-#pragma omp parallel for
-    for (int64_t i = 0; i < M_len; ++i) {
-      double n_centered = (double)i - half;
-      // sinc kernel
-      double h = sinc_func(2.0 * fc * n_centered);
-      // Hann window: 0.5 * (1 - cos(2*pi*n/(M-1)))
-      double win =
-          0.5 * (1.0 - std::cos(2.0 * M_PI * (double)i / (double)(M_len - 1)));
-      data[i] = h * win;
-    }
-  } else {
-#endif
-    for (int64_t i = 0; i < M_len; ++i) {
-      double n_centered = (double)i - half;
-      double h = sinc_func(2.0 * fc * n_centered);
-      double win =
-          0.5 * (1.0 - std::cos(2.0 * M_PI * (double)i / (double)(M_len - 1)));
-      data[i] = h * win;
-    }
-#ifdef _OPENMP
-  }
-#endif
 
   return C_SUCCESS;
 }
@@ -89,3 +126,4 @@ C_Status signal_firwin_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(signal_firwin, INSIGHT_DTYPE_F64, signal_firwin_kernel_cpu);
+REGISTER_CPU_KERNEL(signal_firwin, INSIGHT_DTYPE_F32, signal_firwin_kernel_cpu);

@@ -300,6 +300,8 @@ __all__ = [
     "trunc",
     "deg2rad",
     "rad2deg",
+    "conj",
+    "angle",
     "where",
     # Reduction
     "sum",

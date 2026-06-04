@@ -8,7 +8,7 @@ Functions:
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
 from insight._insight import Array, DType, Place, Shape  # noqa: F401
 from insight._insight import (
@@ -28,6 +28,13 @@ from insight._insight import (
     binomial as _native_binomial,
     poisson as _native_poisson,
 )
+
+
+def _to_shape(s: Union[list, tuple, Shape]) -> Shape:
+    """Convert a list/tuple to Shape if needed."""
+    if isinstance(s, Shape):
+        return s
+    return Shape(s)
 
 
 def seed(base_seed: int) -> None:
@@ -71,7 +78,7 @@ def rand(
         dtype = _f32
     if place is None:
         place = _cpu()
-    return _native_rand(shape, dtype, place)
+    return _native_rand(_to_shape(shape), dtype, place)
 
 
 def randn(
@@ -98,7 +105,7 @@ def randn(
         dtype = _f32
     if place is None:
         place = _cpu()
-    return _native_randn(shape, dtype, place)
+    return _native_randn(_to_shape(shape), dtype, place)
 
 
 def randint(
@@ -126,7 +133,7 @@ def randint(
         dtype = _i64
     if place is None:
         place = _cpu()
-    return _native_randint(low, high, shape, dtype, place)
+    return _native_randint(low, high, _to_shape(shape), dtype, place)
 
 
 def normal(
@@ -156,7 +163,7 @@ def normal(
         dtype = _f32
     if place is None:
         place = _cpu()
-    return _native_normal(mean, std, shape, dtype, place)
+    return _native_normal(mean, std, _to_shape(shape), dtype, place)
 
 
 def uniform(
@@ -186,7 +193,7 @@ def uniform(
         dtype = _f32
     if place is None:
         place = _cpu()
-    return _native_uniform(low, high, shape, dtype, place)
+    return _native_uniform(low, high, _to_shape(shape), dtype, place)
 
 
 def randperm(
@@ -272,7 +279,7 @@ def exponential(
         dtype = _f32
     if place is None:
         place = _cpu()
-    return _native_exponential(scale, shape, dtype, place)
+    return _native_exponential(scale, _to_shape(shape), dtype, place)
 
 
 def gamma(
@@ -300,7 +307,7 @@ def gamma(
         dtype = _f32
     if place is None:
         place = _cpu()
-    return _native_gamma(shape, rate, out_shape, dtype, place)
+    return _native_gamma(shape, rate, _to_shape(out_shape), dtype, place)
 
 
 def beta(
@@ -328,7 +335,7 @@ def beta(
         dtype = _f32
     if place is None:
         place = _cpu()
-    return _native_beta(a, b, shape, dtype, place)
+    return _native_beta(a, b, _to_shape(shape), dtype, place)
 
 
 def binomial(
@@ -356,7 +363,7 @@ def binomial(
         dtype = _i64
     if place is None:
         place = _cpu()
-    return _native_binomial(n, p, shape, dtype, place)
+    return _native_binomial(n, p, _to_shape(shape), dtype, place)
 
 
 def poisson(
@@ -382,7 +389,7 @@ def poisson(
         dtype = _i64
     if place is None:
         place = _cpu()
-    return _native_poisson(lam, shape, dtype, place)
+    return _native_poisson(lam, _to_shape(shape), dtype, place)
 
 
 __all__ = [

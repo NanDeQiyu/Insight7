@@ -57,7 +57,13 @@ class TestSignalWaveletsCPU:
         x_np = np.sin(2 * np.pi * 5 * np.arange(256) / 256.0).astype(np.float64)
         x = ins.from_numpy(x_np)
         widths = [1, 3, 5, 10, 20]
-        result = ins.signal.cwt(x, ins.signal.ricker, widths)
+
+        # cwt expects std::function<Array(int64_t, double)> for wavelet.
+        # Wrap the bound C++ function in a Python lambda for pybind11 conversion.
+        def wavelet_fn(points, a):
+            return ins.signal.ricker(points, a)
+
+        result = ins.signal.cwt(x, wavelet_fn, widths)
         assert result is not None
         assert result.numel() > 0
 

@@ -137,4 +137,36 @@ TEST_F(PlotTestCPU, AllFunctionsLink) {
   EXPECT_EQ(plot::to_matrix(m).size(), 2);
 }
 
+// ============================================================================
+// Actual rendering tests (require gnuplot)
+// ============================================================================
+
+TEST_F(PlotTestCPU, PlotLineBasic) {
+  auto y = to_array(std::vector<double>{1.0, 3.0, 2.0, 4.0});
+  plot::figure();
+  plot::save("/tmp/insight_test_plot_line.png");
+  plot::plot(y);
+  // If we get here without crashing, the test passes
+  SUCCEED();
+}
+
+TEST_F(PlotTestCPU, ImshowBasic) {
+  // Use simple integer data to rule out NaN/Inf issues
+  std::vector<double> data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  auto m = to_array(data, {3, 3});
+  plot::figure();
+  plot::save("/tmp/insight_test_imshow.png");
+  plot::imshow(m);
+  SUCCEED();
+}
+
+TEST_F(PlotTestCPU, ImshowNoSave) {
+  // Test imshow without save — does it crash even without file output?
+  std::vector<double> data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  auto m = to_array(data, {3, 3});
+  plot::figure();
+  plot::imshow(m);
+  SUCCEED();
+}
+
 #endif // INSIGHT_USE_MATPLOT

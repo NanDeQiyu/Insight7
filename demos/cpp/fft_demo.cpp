@@ -17,15 +17,6 @@ static void separator(const char *title) {
   printf("========================================\n");
 }
 
-static bool gpu_available() {
-  try {
-    set_device(GPUPlace(0));
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
 static void run_fft_cpu() {
   separator("CPU FFT");
 
@@ -83,14 +74,12 @@ static void run_fft_cpu() {
 
   // next_fast_len
   separator("FFT Length Optimization");
-  printf("next_fast_len(64)  = %ld\n", fft::next_fast_len(64));
-  printf("next_fast_len(100) = %ld\n", fft::next_fast_len(100));
-  printf("next_fast_len(127) = %ld\n", fft::next_fast_len(127));
+  printf("next_fast_len(64)  = %d\n", fft::next_fast_len(64));
+  printf("next_fast_len(100) = %d\n", fft::next_fast_len(100));
+  printf("next_fast_len(127) = %d\n", fft::next_fast_len(127));
 }
 
 static void run_fft_gpu() {
-  separator("GPU FFT");
-
   int n = 64;
   std::vector<float> signal(n);
   for (int i = 0; i < n; ++i) {
@@ -138,21 +127,16 @@ static void run_fft_gpu() {
 }
 
 int main() {
-  try {
-    ins::init({"cpu", "cuda"});
-  } catch (...) {
-    ins::init({"cpu"});
-  }
+  ins::init();
 
   printf("Insight7 FFT Demo\n");
   printf("FFTW3: %s\n", is_compiled_with_fftw3() ? "yes" : "no");
 
   run_fft_cpu();
 
-  if (gpu_available()) {
+  if (ins::has_device(DeviceKind::GPU)) {
+    separator("GPU FFT");
     run_fft_gpu();
-  } else {
-    printf("\n[GPU not available, skipping GPU FFT demo]\n");
   }
 
   printf("\nDone!\n");

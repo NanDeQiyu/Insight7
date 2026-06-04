@@ -2,47 +2,104 @@
 # Idempotent patch application for third-party dependencies.
 # Usage: apply_patch(<source_dir> <patch_file>)
 #
-# Applies a git patch to a source directory. Skips if already applied.
-# Inspired by PaddlePaddle's patch mechanism.
+# Tries multiple methods:
+#   1. git apply --ignore-whitespace (most tolerant)
+#   2. patch -p1 (works without git)
+#   3. Reverse check (already applied)
+#
+# FATAL_ERROR if all methods fail — patches MUST apply.
 
 function(apply_patch SOURCE_DIR PATCH_FILE)
     if(NOT EXISTS "${PATCH_FILE}")
-        message(WARNING "Patch file not found: ${PATCH_FILE}")
-        return()
+        message(FATAL_ERROR "Patch file not found: ${PATCH_FILE}")
+    endif()
+
+    if(NOT EXISTS "${SOURCE_DIR}")
+        message(FATAL_ERROR "Source dir not found: ${SOURCE_DIR}")
     endif()
 
     get_filename_component(PATCH_NAME "${PATCH_FILE}" NAME_WE)
     set(PATCH_STAMP "${SOURCE_DIR}/.patch_applied_${PATCH_NAME}")
 
     if(EXISTS "${PATCH_STAMP}")
-        message(STATUS "Patch ${PATCH_NAME} already applied to ${SOURCE_DIR}")
+        message(STATUS "[patch] ${PATCH_NAME}: already applied (stamp exists)")
         return()
     endif()
 
-    message(STATUS "Applying patch ${PATCH_NAME} to ${SOURCE_DIR}")
-    execute_process(
-        COMMAND git apply --check "${PATCH_FILE}"
-        WORKING_DIRECTORY "${SOURCE_DIR}"
-        RESULT_VARIABLE CHECK_RESULT
-        OUTPUT_QUIET
-        ERROR_QUIET
-    )
+    message(STATUS "[patch] ${PATCH_NAME}: applying to ${SOURCE_DIR} ...")
 
-    if(CHECK_RESULT EQUAL 0)
+    # Method 1: git apply (preferred)
+    execute_process(
+        COMMAND git apply --check --ignore-whitespace "${PATCH_FILE}"
+        WORKING_DIRECTORY "${SOURCE_DIR}"
+        RESULT_VARIABLE R1
+        OUTPUT_VARIABLE O1 ERROR_VARIABLE E1
+    )
+    message(STATUS "[patch] ${PATCH_NAME}: git apply --check result=${R1}")
+    if(R1 EQUAL 0)
         execute_process(
-            COMMAND git apply "${PATCH_FILE}"
+            COMMAND git apply --ignore-whitespace "${PATCH_FILE}"
             WORKING_DIRECTORY "${SOURCE_DIR}"
-            RESULT_VARIABLE APPLY_RESULT
+            RESULT_VARIABLE R1A
+            ERROR_VARIABLE E1A
         )
-        if(APPLY_RESULT EQUAL 0)
-            file(WRITE "${PATCH_STAMP}" "Applied on ${CMAKE_CURRENT_LIST_LINE}")
-            message(STATUS "Patch ${PATCH_NAME} applied successfully")
-        else()
-            message(WARNING "Failed to apply patch ${PATCH_NAME}")
+        if(R1A EQUAL 0)
+            file(WRITE "${PATCH_STAMP}" "Applied via git apply")
+            message(STATUS "[patch] ${PATCH_NAME}: OK (git apply)")
+            return()
         endif()
+        message(STATUS "[patch] ${PATCH_NAME}: git apply failed: ${E1A}")
     else()
-        # Patch may already be applied (e.g. from local clone)
-        message(STATUS "Patch ${PATCH_NAME} check failed (may already be applied)")
-        file(WRITE "${PATCH_STAMP}" "Skipped (already applied or incompatible)")
+        message(STATUS "[patch] ${PATCH_NAME}: git apply --check failed: ${E1}")
     endif()
+
+    # Method 2: patch -p1
+    execute_process(
+        COMMAND patch -p1 --forward --dry-run
+        INPUT_FILE "${PATCH_FILE}"
+        WORKING_DIRECTORY "${SOURCE_DIR}"
+        RESULT_VARIABLE R2
+        OUTPUT_VARIABLE O2 ERROR_VARIABLE E2
+    )
+    message(STATUS "[patch] ${PATCH_NAME}: patch -p1 --dry-run result=${R2}")
+    if(R2 EQUAL 0)
+        execute_process(
+            COMMAND patch -p1 --forward
+            INPUT_FILE "${PATCH_FILE}"
+            WORKING_DIRECTORY "${SOURCE_DIR}"
+            RESULT_VARIABLE R2A
+            ERROR_VARIABLE E2A
+        )
+        if(R2A EQUAL 0)
+            file(WRITE "${PATCH_STAMP}" "Applied via patch -p1")
+            message(STATUS "[patch] ${PATCH_NAME}: OK (patch -p1)")
+            return()
+        endif()
+        message(STATUS "[patch] ${PATCH_NAME}: patch -p1 failed: ${E2A}")
+    else()
+        message(STATUS "[patch] ${PATCH_NAME}: patch dry-run failed: ${E2}")
+    endif()
+
+    # Method 3: Already applied?
+    execute_process(
+        COMMAND patch -p1 --reverse --dry-run
+        INPUT_FILE "${PATCH_FILE}"
+        WORKING_DIRECTORY "${SOURCE_DIR}"
+        RESULT_VARIABLE R3
+        OUTPUT_QUIET ERROR_QUIET
+    )
+    if(R3 EQUAL 0)
+        file(WRITE "${PATCH_STAMP}" "Already applied")
+        message(STATUS "[patch] ${PATCH_NAME}: OK (already applied)")
+        return()
+    endif()
+
+    # All methods failed — this is a build-breaking error
+    message(FATAL_ERROR
+        "[patch] ${PATCH_NAME}: FAILED to apply!\n"
+        "  Source: ${SOURCE_DIR}\n"
+        "  Patch:  ${PATCH_FILE}\n"
+        "  git apply error: ${E1}\n"
+        "  patch -p1 error: ${E2}\n"
+        "  This must be fixed — the patch is required for headless CI.")
 endfunction()

@@ -37,7 +37,13 @@ Insight.seed(UInt64(42))
 b = Insight.rand(Int64[5], Insight.float64)
 d_a = Insight.to_array(a)
 d_b = Insight.to_array(b)
-check("seed_determinism", d_a == d_b)
+seed_ok = true
+for i in eachindex(d_a)
+    if d_a[i] != d_b[i]
+        local seed_ok = false; break
+    end
+end
+check("seed_determinism", seed_ok)
 
 # get_seed
 Insight.seed(UInt64(12345))

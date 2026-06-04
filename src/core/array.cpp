@@ -10,6 +10,7 @@
 #include "insight/core/shape.h"
 #include "insight/core/slice.h"
 #include "insight/core/strides.h"
+#include "insight/io/print.h"
 #include "insight/ops/cast.h"
 #include "insight/ops/manipulation.h"
 #include "insight/ops/reduction.h"
@@ -177,6 +178,24 @@ int insight_array_is_contiguous(const InsightArray *array) {
     expected_stride *= array->dims[i];
   }
   return 1;
+}
+
+char *insight_array_tostring(const InsightArray *array) {
+  if (!array || !array->data)
+    return nullptr;
+  try {
+    // Build a non-const copy so to_string can copy-to-CPU
+    InsightArray tmp = *array;
+    ins::Array cpp_arr(&tmp);
+    std::string s = ins::to_string(cpp_arr);
+    char *result = static_cast<char *>(std::malloc(s.size() + 1));
+    if (!result)
+      return nullptr;
+    std::memcpy(result, s.c_str(), s.size() + 1);
+    return result;
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 } // extern "C"

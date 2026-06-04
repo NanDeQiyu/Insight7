@@ -7,6 +7,7 @@ Functions:
     isnan, isinf, isfinite, where
     exp2, expm1, log1p, cbrt, reciprocal
     asinh, acosh, atanh, trunc, deg2rad, rad2deg
+    conj, angle
 """
 
 from __future__ import annotations
@@ -49,6 +50,8 @@ from insight._insight import (
     trunc as _native_trunc,
     deg2rad as _native_deg2rad,
     rad2deg as _native_rad2deg,
+    conj as _native_conj,
+    angle as _native_angle,
 )
 
 
@@ -568,6 +571,36 @@ def rad2deg(x: "Array") -> "Array":
     return _native_rad2deg(x)
 
 
+def conj(x: "Array") -> "Array":
+    """Element-wise complex conjugate.
+
+    Computes the complex conjugate of each element. For real arrays,
+    returns a copy unchanged.
+
+    Args:
+        x: Input array (real or complex).
+
+    Returns:
+        Array of the same shape containing the conjugate of each element.
+    """
+    return _native_conj(x)
+
+
+def angle(x: "Array") -> "Array":
+    """Element-wise angle (phase) of complex or real numbers.
+
+    For complex input, returns the angle in radians in [-pi, pi].
+    For real input, returns 0 for non-negative values and pi for negative.
+
+    Args:
+        x: Input array (real or complex).
+
+    Returns:
+        Float array of the same shape containing the angle of each element.
+    """
+    return _native_angle(x)
+
+
 __all__ = [
     "abs",
     "negative",
@@ -605,4 +638,6 @@ __all__ = [
     "trunc",
     "deg2rad",
     "rad2deg",
+    "conj",
+    "angle",
 ]

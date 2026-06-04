@@ -25,7 +25,7 @@ cd third_party/matplotplusplus
 git diff > patches/matplotplusplus/gcc-compat.patch
 ```
 
-### 2. Create `cmake/ApplyPatch.cmake`
+### 2. Create `cmake/ApplyPatch.cmake` — 3 fallback methods
 
 ```cmake
 function(apply_patch SOURCE_DIR PATCH_FILE)
@@ -43,52 +43,116 @@ function(apply_patch SOURCE_DIR PATCH_FILE)
     endif()
 
     message(STATUS "Applying patch ${PATCH_NAME} to ${SOURCE_DIR}")
+
+    # Method 1: git apply (preferred for git repos)
     execute_process(
         COMMAND git apply --check "${PATCH_FILE}"
         WORKING_DIRECTORY "${SOURCE_DIR}"
-        RESULT_VARIABLE CHECK_RESULT
-        OUTPUT_QUIET ERROR_QUIET
+        RESULT_VARIABLE GIT_CHECK OUTPUT_QUIET ERROR_QUIET
     )
-
-    if(CHECK_RESULT EQUAL 0)
+    if(GIT_CHECK EQUAL 0)
         execute_process(
             COMMAND git apply "${PATCH_FILE}"
             WORKING_DIRECTORY "${SOURCE_DIR}"
-            RESULT_VARIABLE APPLY_RESULT
+            RESULT_VARIABLE GIT_APPLY ERROR_VARIABLE GIT_ERROR
         )
-        if(APPLY_RESULT EQUAL 0)
-            file(WRITE "${PATCH_STAMP}" "Applied")
-            message(STATUS "Patch ${PATCH_NAME} applied successfully")
-        else()
-            message(WARNING "Failed to apply patch ${PATCH_NAME}")
+        if(GIT_APPLY EQUAL 0)
+            file(WRITE "${PATCH_STAMP}" "Applied via git apply")
+            message(STATUS "Patch ${PATCH_NAME} applied successfully (git apply)")
+            return()
         endif()
-    else()
-        message(STATUS "Patch ${PATCH_NAME} check failed (may already be applied)")
-        file(WRITE "${PATCH_STAMP}" "Skipped")
     endif()
+
+    # Method 2: patch -p1 (fallback, works without git)
+    execute_process(
+        COMMAND patch -p1 --forward --dry-run
+        INPUT_FILE "${PATCH_FILE}"
+        WORKING_DIRECTORY "${SOURCE_DIR}"
+        RESULT_VARIABLE PATCH_CHECK OUTPUT_QUIET ERROR_QUIET
+    )
+    if(PATCH_CHECK EQUAL 0)
+        execute_process(
+            COMMAND patch -p1 --forward
+            INPUT_FILE "${PATCH_FILE}"
+            WORKING_DIRECTORY "${SOURCE_DIR}"
+            RESULT_VARIABLE PATCH_APPLY ERROR_VARIABLE PATCH_ERROR
+        )
+        if(PATCH_APPLY EQUAL 0)
+            file(WRITE "${PATCH_STAMP}" "Applied via patch -p1")
+            message(STATUS "Patch ${PATCH_NAME} applied successfully (patch -p1)")
+            return()
+        endif()
+    endif()
+
+    # Method 3: Check if already applied (reverse dry-run)
+    execute_process(
+        COMMAND patch -p1 --forward -R --dry-run
+        INPUT_FILE "${PATCH_FILE}"
+        WORKING_DIRECTORY "${SOURCE_DIR}"
+        RESULT_VARIABLE REVERSE_CHECK OUTPUT_QUIET ERROR_QUIET
+    )
+    if(REVERSE_CHECK EQUAL 0)
+        file(WRITE "${PATCH_STAMP}" "Already applied")
+        message(STATUS "Patch ${PATCH_NAME} already applied (detected via reverse check)")
+        return()
+    endif()
+
+    # All methods failed — FATAL_ERROR stops the build (patch is required)
+    message(FATAL_ERROR
+        "[patch] ${PATCH_NAME}: FAILED to apply!\n"
+        "  Source: ${SOURCE_DIR}\n"
+        "  Patch:  ${PATCH_FILE}\n"
+        "  git apply error: ${E1}\n"
+        "  patch -p1 error: ${E2}\n"
+        "  This must be fixed — the patch is required for headless CI.")
 endfunction()
 ```
 
-### 3. Use in CMakeLists.txt
+**Why 3 methods**: `git apply` fails on some FetchContent shallow clones.
+`patch -p1` works without git. Reverse check detects already-applied patches.
+
+**Why FATAL_ERROR**: If a patch fails silently, the build continues with unpatched
+source, causing runtime crashes (e.g., gnuplot segfault in headless CI). A loud
+cmake error is always better than a silent runtime crash.
+
+### 3. Use in CMakeLists.txt — PaddlePaddle style
+
+**CRITICAL**: Patches must be applied BEFORE `add_subdirectory`, not after.
+This matches PaddlePaddle's `ExternalProject_Add` + `PATCH_COMMAND` pattern.
 
 ```cmake
 include(cmake/ApplyPatch.cmake)
 
 # Inside the local/FetchContent branches — NOT after endif()!
 if(EXISTS "${LOCAL_MATPLOT}/CMakeLists.txt")
-    add_subdirectory("${LOCAL_MATPLOT}" ...)
-    apply_patch("${LOCAL_MATPLOT}"              # ← local path
+    # Local: patch FIRST, then add_subdirectory
+    apply_patch("${LOCAL_MATPLOT}"
         "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gcc-compat.patch")
+    apply_patch("${LOCAL_MATPLOT}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gnuplot-unknown-terminal.patch")
+    add_subdirectory("${LOCAL_MATPLOT}" "${CMAKE_CURRENT_BINARY_DIR}/matplotplusplus")
 else()
-    FetchContent_MakeAvailable(matplotplusplus)
-    apply_patch("${matplotplusplus_SOURCE_DIR}"  # ← FetchContent _deps/ path
+    # FetchContent: Populate → patch → add_subdirectory (NOT MakeAvailable!)
+    FetchContent_Declare(matplotplusplus
+        GIT_REPOSITORY "https://github.com/alandefreitas/matplotplusplus"
+        GIT_TAG        "v1.2.1"
+        GIT_SHALLOW    TRUE
+    )
+    set(MATPLOTPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_Populate(matplotplusplus)          # Step 1: Download only
+    apply_patch("${matplotplusplus_SOURCE_DIR}" ... # Step 2: Apply patches
         "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gcc-compat.patch")
+    add_subdirectory("${matplotplusplus_SOURCE_DIR}" # Step 3: Process patched source
+        "${matplotplusplus_BINARY_DIR}")
 endif()
 ```
 
-> **⚠️ Critical**: `apply_patch` must be INSIDE each branch, not after `endif()`.
-> `LOCAL_MATPLOT` always points to `third_party/`, but FetchContent downloads to `_deps/<name>-src/`.
-> If called after `endif()` with only the LOCAL path, FetchContent builds silently skip the patch.
+> **Why NOT `FetchContent_MakeAvailable`**: It calls `add_subdirectory` immediately,
+> registering targets BEFORE patches are applied. The patches modify source files
+> but cmake's internal state may cache the unpatched timestamps.
+>
+> **`FetchContent_Populate`** downloads source only. You then apply patches and
+> call `add_subdirectory` manually — same as PaddlePaddle's `PATCH_COMMAND`.
 
 ### 4. Directory structure
 
@@ -156,3 +220,27 @@ When a third-party library has a build error:
 6. Verify: `cmake ..` shows "applied successfully"
 7. Verify idempotency: second `cmake ..` shows "already applied"
 8. Verify clean: reset library (`git checkout -- .`) and re-run cmake
+
+## CRITICAL: Never edit patch files by hand
+
+Patch files have strict format requirements (hunk headers with exact line counts,
+context lines with correct indentation). Editing by hand almost always produces
+a corrupt patch that `git apply` rejects with `corrupt patch at line N`.
+
+**Correct way to update a patch**:
+1. Reset source to original: `cd third_party/<lib> && git checkout -- <file>`
+2. Apply changes to the source file directly (edit the .cpp/.h)
+3. Generate patch: `cd third_party/<lib> && git diff -- <file> > patches/<lib>/<name>.patch`
+4. Verify: `git apply --check patches/<lib>/<name>.patch` must print nothing
+5. Verify reverse: `cd third_party/<lib> && git checkout -- <file> && patch -p1 --dry-run < patches/<lib>/<name>.patch`
+
+**Symptom of corrupt patch**: `git apply --check` prints `error: corrupt patch at line N`.
+The patch silently fails in CI (stamp is written, error is swallowed).
+
+## ApplyPatch.cmake must NOT write stamp on failure
+
+The stamp mechanism must be:
+- `git apply --check` succeeds → apply → write stamp
+- `git apply --check` fails → try reverse check (`git apply --check -R`)
+  - Reverse succeeds → patch already applied → write stamp
+  - Reverse fails → **do NOT write stamp** (allow retry on next configure)

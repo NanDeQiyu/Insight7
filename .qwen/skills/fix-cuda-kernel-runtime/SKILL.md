@@ -3,17 +3,52 @@ name: fix-cuda-kernel-runtime
 description: Fix CUDA kernel runtime bugs discovered through test alignment (missing dtypes, wrong dims, incorrect parameter reading).
 source: auto-skill
 extracted_at: '2026-05-29T10:24:53.502Z'
+updated: '2026-06-01'
 ---
 
 # Fix CUDA Kernel Runtime Bugs
 
 When aligning CUDA tests with CPU tests, several categories of runtime bugs commonly appear. This skill covers the systematic approach to finding and fixing them.
 
+## 0. Signal Kernel Patterns (2026-06-01)
+
+All 14 signal submodules have backend kernels with these conventions:
+- **Naming**: `signal_` prefix on all kernel names (e.g., `signal_morlet`, `signal_lombscargle`)
+- **CPU dtype**: F64, F32 — with OpenMP `#pragma omp parallel for if (numel > 1000)`
+- **CUDA dtype**: F64, F32, F16, BF16 — 256 threads/block
+- **Kernel files**: `backends/cpu/kernels/signal/<module>/<op>.cpp` and `backends/cuda/kernels/signal/<module>/<op>.cu`
+- **Registration**: `REGISTER_CPU_KERNEL(signal_<op>, dtype, func)` / `REGISTER_GPU_KERNEL(signal_<op>, dtype, func)`
+- **Window/waveform kernels**: These generate data (no input array). Output is `outputs[0]`. Scalar params come via `inputs[]` as 1-element arrays.
+
+When fixing signal CUDA kernel bugs, verify the `signal_` prefix is used consistently
+in both `REGISTER_GPU_KERNEL` name and the frontend's `ops().launch("signal_<op>", ...)` call.
+
 ## 1. Missing Dtype Registration
 
 **Symptom**: Test fails with `kernel not found for operator '<op>', device_type=1, dtype=<N>`.
 
 **Cause**: The CUDA kernel's `switch(dtype)` block and `REGISTER_GPU_KERNEL` macros don't cover all dtypes that the CPU version supports. Common missing dtypes: `BOOL`, `U8`, `I8`.
+
+## 1b. Premature GPU Transfer Back (CmplxSort pattern)
+
+**Symptom**: CUDA test segfaults on `data<T>()` access, but CPU test passes.
+
+**Cause**: A function transfers input to CPU, does computation there, then transfers result back to GPU with `sorted.to(p.place())`. The test then calls `sorted.data<double>()` which dereferences a device pointer on the host.
+
+**Fix**: Remove the transfer-back. If computation is CPU-only, return CPU result:
+```cpp
+// ❌ WRONG — transfers back to GPU, test dereferences device pointer
+Array sorted = take(p_cpu, sort_idx);
+if (p.place().kind() != DeviceKind::CPU)
+  sorted = sorted.to(p.place());
+return sorted;
+
+// ✅ CORRECT — return CPU result
+Array sorted = take(p_cpu, sort_idx);
+return sorted;
+```
+
+**Why**: The caller (test or frontend) handles device placement. The function should return results on the device where they were computed.
 
 **Fix**:
 1. Check CPU kernel registrations: `grep "REGISTER_CPU_KERNEL" backends/cpu/kernels/<module>/<op>.cpp`

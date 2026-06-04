@@ -144,6 +144,10 @@ Array isfinite(const Array &x);
 /** @brief Elementwise complex conjugate. */
 Array conj(const Array &x);
 
+/** @brief Elementwise angle/phase of complex or real numbers. Returns F32/F64.
+ */
+Array angle(const Array &x);
+
 // ============================================================================
 // Conversion
 // ============================================================================

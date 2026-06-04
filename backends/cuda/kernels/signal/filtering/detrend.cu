@@ -12,7 +12,10 @@
 #include "insight/c_api/array.h"
 #include <cmath>
 #include <cstring>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#include <vector>
 
 template <typename T>
 __global__ void signal_detrend_kernel(T *out, const T *x, int64_t n, T a, T b) {
@@ -20,6 +23,28 @@ __global__ void signal_detrend_kernel(T *out, const T *x, int64_t n, T a, T b) {
   if (i >= n)
     return;
   out[i] = x[i] - (a + b * (T)i);
+}
+
+__global__ void signal_detrend_kernel_f16(uint16_t *out, const uint16_t *in,
+                                          int64_t n, float a, float b) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+  float val = __half2float(*(const __half *)&in[i]);
+  float result = val - (a + b * (float)i);
+  __half res = __float2half(result);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void signal_detrend_kernel_bf16(uint16_t *out, const uint16_t *in,
+                                           int64_t n, float a, float b) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+  float val = __bfloat162float(*(const __nv_bfloat16 *)&in[i]);
+  float result = val - (a + b * (float)i);
+  __nv_bfloat16 res = __float2bfloat16(result);
+  out[i] = *(uint16_t *)&res;
 }
 
 extern "C" {
@@ -99,8 +124,59 @@ C_Status signal_detrend_kernel_gpu(void **inputs, void **outputs) {
                               n, (float)a, (float)b);
     break;
   }
+  case INSIGHT_DTYPE_F16: {
+    std::vector<uint16_t> host_x(n);
+    cudaMemcpy(host_x.data(), x_arr->data, n * sizeof(uint16_t),
+               cudaMemcpyDeviceToHost);
+    for (int64_t i = 0; i < n; ++i) {
+      float val = __half2float(*(const __half *)&host_x[i]);
+      sum_y += (double)val;
+      sum_xy += (double)i * (double)val;
+    }
+
+    double a = 0.0, b = 0.0;
+    if (std::abs(denom) > 1e-30) {
+      a = (sum_y * sum_x2 - sum_x * sum_xy) / denom;
+      b = (nd * sum_xy - sum_x * sum_y) / denom;
+    } else {
+      a = sum_y / nd;
+    }
+
+    int threads = 256;
+    int blocks = (int)((n + threads - 1) / threads);
+    signal_detrend_kernel_f16<<<blocks, threads>>>(
+        (uint16_t *)y_arr->data, (const uint16_t *)x_arr->data, n, (float)a,
+        (float)b);
+    break;
+  }
+  case INSIGHT_DTYPE_BF16: {
+    std::vector<uint16_t> host_x(n);
+    cudaMemcpy(host_x.data(), x_arr->data, n * sizeof(uint16_t),
+               cudaMemcpyDeviceToHost);
+    for (int64_t i = 0; i < n; ++i) {
+      float val = __bfloat162float(*(const __nv_bfloat16 *)&host_x[i]);
+      sum_y += (double)val;
+      sum_xy += (double)i * (double)val;
+    }
+
+    double a = 0.0, b = 0.0;
+    if (std::abs(denom) > 1e-30) {
+      a = (sum_y * sum_x2 - sum_x * sum_xy) / denom;
+      b = (nd * sum_xy - sum_x * sum_y) / denom;
+    } else {
+      a = sum_y / nd;
+    }
+
+    int threads = 256;
+    int blocks = (int)((n + threads - 1) / threads);
+    signal_detrend_kernel_bf16<<<blocks, threads>>>(
+        (uint16_t *)y_arr->data, (const uint16_t *)x_arr->data, n, (float)a,
+        (float)b);
+    break;
+  }
   default:
-    gpu_set_last_error("signal_detrend: unsupported dtype, need F32 or F64");
+    gpu_set_last_error(
+        "signal_detrend: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -117,4 +193,8 @@ C_Status signal_detrend_kernel_gpu(void **inputs, void **outputs) {
 REGISTER_GPU_KERNEL(signal_detrend, INSIGHT_DTYPE_F64,
                     signal_detrend_kernel_gpu);
 REGISTER_GPU_KERNEL(signal_detrend, INSIGHT_DTYPE_F32,
+                    signal_detrend_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_detrend, INSIGHT_DTYPE_F16,
+                    signal_detrend_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_detrend, INSIGHT_DTYPE_BF16,
                     signal_detrend_kernel_gpu);

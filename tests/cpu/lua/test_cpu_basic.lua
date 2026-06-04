@@ -250,12 +250,19 @@ describe("CPU Binding Tests", function()
     assert.are.equal(4, c.numel)
   end)
 
-  -- det/inv skipped: require OpenBLAS (not available in this build)
-  it("det (skipped: needs OpenBLAS)", function()
-    pending("needs OpenBLAS")
+  it("det", function()
+    local a = ins.from_table({ { 1.0, 2.0 }, { 3.0, 4.0 } })
+    local d = ins.det(a)
+    assert.is_not_nil(d)
+    assert.are.equal(1, d.numel)
+    assert.near(-2.0, d:item(), 1e-6)
   end)
-  it("inv (skipped: needs OpenBLAS)", function()
-    pending("needs OpenBLAS")
+
+  it("inv", function()
+    local a = ins.from_table({ { 1.0, 2.0 }, { 3.0, 4.0 } })
+    local b = ins.inv(a)
+    assert.is_not_nil(b)
+    assert.are.equal(4, b.numel)
   end)
 
   -- ========================================================================
@@ -285,5 +292,22 @@ describe("CPU Binding Tests", function()
     local w = ins.signal.hann(16)
     assert.is_not_nil(w)
     assert.are.equal(16, w.numel)
+  end)
+
+  -- ========================================================================
+  -- GPU not available: must throw
+  -- ========================================================================
+
+  it("gpu_throws_without_backend", function()
+    local a = ins.ones({ 3 }, ins.float32)
+    assert.has_error(function()
+      a:to(ins.GPUPlace(0))
+    end)
+  end)
+
+  it("set_device_gpu_throws", function()
+    assert.has_error(function()
+      ins.set_device(ins.GPUPlace(0))
+    end)
   end)
 end)

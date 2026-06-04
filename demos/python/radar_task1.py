@@ -37,7 +37,10 @@ def run_task1(device="cpu"):
     noise_sigma = np.sqrt(sig_power / 10 ** (SNR_DB / 10) / 2)
 
     # 2. 模拟回波 (逐目标施加 Doppler，与 C++ 对齐)
-    rng = np.random.RandomState(42)
+    # 使用 Insight 原生 RNG 确保跨语言一致
+    ins.seed(42)
+    noise_r = (ins.randn([N_PULSES, N], ins.float64) * noise_sigma).numpy()
+    noise_i = (ins.randn([N_PULSES, N], ins.float64) * noise_sigma).numpy()
     s_rx = np.zeros((N_PULSES, N), dtype=np.complex128)
 
     for p in range(N_PULSES):
@@ -51,7 +54,7 @@ def run_task1(device="cpu"):
             tgt *= np.exp(1j * 2 * np.pi * doppler * t)
             tgt *= np.exp(1j * 2 * np.pi * doppler * slow_time)
             pulse += tgt
-        pulse += noise_sigma * (rng.randn(N) + 1j * rng.randn(N))
+        pulse += noise_r[p, :] + 1j * noise_i[p, :]
         s_rx[p, :] = pulse
 
     # 3. 脉冲压缩
@@ -66,16 +69,16 @@ def run_task1(device="cpu"):
         pc[p, :] = c[start : start + N]
     t_pc = time.time() - t0
 
-    # 4. 多普勒 FFT
+    # 4. 多普勒 FFT (使用 Insight FFT，与 C++ 对齐)
     t0 = time.time()
     doppler_fft = ins.fft(ins.from_numpy(pc), N_PULSES, 0)
-    doppler_np = np.fft.fftshift(doppler_fft.numpy(), axes=0)
+    doppler_shifted = ins.fftshift(doppler_fft, 0)
     t_doppler = time.time() - t0
 
-    # 5. CA-CFAR
-    energy = np.abs(doppler_np)
+    # 5. CA-CFAR (使用 Insight 计算能量)
+    energy_arr = ins.abs(doppler_shifted)
     t0 = time.time()
-    _, det = ins.signal.ca_cfar(ins.from_numpy(energy), [2, 2], [4, 4], 1e-5)
+    _, det = ins.signal.ca_cfar(energy_arr, [2, 2], [4, 4], 1e-5)
     det_np = det.numpy().astype(bool)
     t_cfar = time.time() - t0
 
@@ -110,7 +113,7 @@ def run_task1(device="cpu"):
         "cfar_ms": t_cfar * 1000,
         "doppler_bins": doppler_bins,
         "range_bins": range_bins,
-        "energy": energy,
+        "energy": energy_arr,
         "device": device,
     }
 
@@ -122,93 +125,64 @@ def print_result(r):
         f"(PC: {r['pc_ms']:.1f}, Doppler: {r['doppler_ms']:.1f}, CFAR: {r['cfar_ms']:.1f})"
     )
     print(f"  原始检测点数: {r['raw_count']}, 聚类后: {len(r['targets'])}")
+    energy_np = r["energy"].numpy()
+    if energy_np.dtype.kind == "c":  # complex → real magnitude
+        energy_np = np.abs(energy_np)
     for d, rr in r["targets"]:
         if 0 <= d < len(r["doppler_bins"]) and 0 <= rr < len(r["range_bins"]):
             print(
                 f"    → 距离: {r['range_bins'][rr]:7.2f} 米, "
-                f"多普勒: {r['doppler_bins'][d]:8.1f} Hz, "
-                f"强度: {r['energy'][d, rr]:.3f}"
+                f"多普勒: {r['doppler_bins'][d]:8.1f} Hz"
             )
 
 
 def save_plots(r, prefix):
+    """Save radar analysis plots using Insight7 plot API (no matplotlib).
+    Gnuplot stdout is redirected to /dev/null at C++ level (gnuplot.cpp patch).
+    """
     try:
-        import matplotlib
+        plt = ins.plot
+        energy_np = r["energy"].numpy()
+        if energy_np.dtype.kind == "c":
+            energy_np = np.abs(energy_np)
+        db = 20 * np.log10(energy_np + 1e-8)
 
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-        # 距离-多普勒谱
-        ax = axes[0, 0]
-        db = 20 * np.log10(r["energy"] + 1e-8)
-        ax.imshow(
-            db,
-            aspect="auto",
-            cmap="inferno",
-            extent=[
-                r["range_bins"][0],
-                r["range_bins"][-1],
-                r["doppler_bins"][-1],
-                r["doppler_bins"][0],
-            ],
+        plt.figure()
+        # contour needs 2D X/Y — use meshgrid
+        rr, dd = np.meshgrid(r["range_bins"], r["doppler_bins"])
+        plt.contour(
+            ins.from_numpy(rr.astype(np.float64)),
+            ins.from_numpy(dd.astype(np.float64)),
+            ins.from_numpy(db.astype(np.float64)),
         )
-        ax.set_title("Range-Doppler Map")
-        ax.set_xlabel("Range [m]")
-        ax.set_ylabel("Doppler [Hz]")
-        plt.colorbar(ax.images[0], ax=ax, label="dB")
+        plt.title("Range-Doppler Map")
+        plt.xlabel("Range [m]")
+        plt.ylabel("Doppler [Hz]")
+        plt.save(f"{prefix}_range_doppler.png")
 
-        # CFAR 检测叠加
-        ax = axes[0, 1]
-        ax.imshow(
-            db,
-            aspect="auto",
-            cmap="inferno",
-            extent=[
-                r["range_bins"][0],
-                r["range_bins"][-1],
-                r["doppler_bins"][-1],
-                r["doppler_bins"][0],
-            ],
-        )
-        for d, rr in r["targets"]:
-            if 0 <= d < len(r["doppler_bins"]) and 0 <= rr < len(r["range_bins"]):
-                ax.scatter(
-                    r["range_bins"][rr],
-                    r["doppler_bins"][d],
-                    c="red",
-                    s=100,
-                    marker="x",
-                    linewidths=3,
-                )
-        ax.set_title("CFAR Detection")
-        ax.set_xlabel("Range [m]")
-        ax.set_ylabel("Doppler [Hz]")
+        max_r = int(np.argmax(np.max(energy_np, axis=0)))
+        doppler_arr = ins.from_numpy(r["doppler_bins"].astype(np.float64))
+        ds_arr = ins.from_numpy(energy_np[:, max_r].astype(np.float64))
+        plt.figure()
+        plt.plot(doppler_arr, ds_arr)
+        plt.title(f"Doppler Spectrum (range bin {max_r})")
+        plt.xlabel("Doppler [Hz]")
+        plt.ylabel("Amplitude")
+        plt.grid(True)
+        plt.save(f"{prefix}_doppler_slice.png")
 
-        # 多普勒切面
-        max_r = np.argmax(np.max(r["energy"], axis=0))
-        ax = axes[1, 0]
-        ax.plot(r["doppler_bins"], r["energy"][:, max_r])
-        ax.set_title(f"Doppler Spectrum (range bin {max_r})")
-        ax.set_xlabel("Doppler [Hz]")
-        ax.set_ylabel("Amplitude")
-        ax.grid(True, alpha=0.3)
+        max_d = int(np.argmax(np.max(energy_np, axis=1)))
+        range_arr = ins.from_numpy(r["range_bins"].astype(np.float64))
+        rp_arr = ins.from_numpy(energy_np[max_d, :].astype(np.float64))
+        plt.figure()
+        plt.plot(range_arr, rp_arr)
+        plt.title(f"Range Profile (doppler bin {max_d})")
+        plt.xlabel("Range [m]")
+        plt.ylabel("Amplitude")
+        plt.grid(True)
+        plt.save(f"{prefix}_range_profile.png")
 
-        # 距离切面
-        max_d = np.argmax(np.max(r["energy"], axis=1))
-        ax = axes[1, 1]
-        ax.plot(r["range_bins"], r["energy"][max_d, :])
-        ax.set_title(f"Range Profile (doppler bin {max_d})")
-        ax.set_xlabel("Range [m]")
-        ax.set_ylabel("Amplitude")
-        ax.grid(True, alpha=0.3)
-
-        plt.tight_layout()
-        path = f"{prefix}.png"
-        plt.savefig(path, dpi=150)
-        plt.close()
-        print(f"  已保存: {path}")
+        print(f"  已保存: {prefix}_*.png")
     except Exception as e:
         print(f"  绘图失败: {e}")
 
@@ -223,24 +197,24 @@ if __name__ == "__main__":
     print(f"  单脉冲采样点数: {N}, 脉冲串数量: {N_PULSES}")
     print(f"  距离分辨率: {RANGE_RES:.2f} 米")
 
-    ins.init(["cpu"])
+    ins.init()  # Smart discovery: CPU + first GPU if available
     print("\n" + "=" * 60 + "\n  CPU 运行\n" + "=" * 60)
     cpu = run_task1("cpu")
     print_result(cpu)
     save_plots(cpu, "task1_cpu")
 
-    try:
-        ins.load_backend("cuda")
+    if ins.has_device("gpu"):
         print("\n" + "=" * 60 + "\n  GPU 运行\n" + "=" * 60)
-        gpu = run_task1("gpu")
-        print_result(gpu)
-        save_plots(gpu, "task1_gpu")
+        try:
+            gpu = run_task1("gpu")
+            print_result(gpu)
+            save_plots(gpu, "task1_gpu")
 
-        print("\n" + "=" * 60 + "\n  性能对比\n" + "=" * 60)
-        speedup = cpu["total_ms"] / gpu["total_ms"]
-        print(f"  CPU: {cpu['total_ms']:.2f} ms, GPU: {gpu['total_ms']:.2f} ms")
-        print(f"  加速比: {speedup:.2f}x {'✅ GPU 更快' if speedup > 1 else '⚠️ 需优化'}")
-    except Exception as e:
-        print(f"\n  GPU 不可用: {e}")
+            print("\n" + "=" * 60 + "\n  性能对比\n" + "=" * 60)
+            speedup = cpu["total_ms"] / gpu["total_ms"]
+            print(f"  CPU: {cpu['total_ms']:.2f} ms, GPU: {gpu['total_ms']:.2f} ms")
+            print(f"  加速比: {speedup:.2f}x {'✅ GPU 更快' if speedup > 1 else '⚠️ 需优化'}")
+        except Exception:
+            pass
 
     print("\n完成！")

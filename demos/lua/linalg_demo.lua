@@ -9,13 +9,6 @@ local function separator(title)
   print(string.rep("=", 40))
 end
 
-local function gpu_available()
-  local ok, _ = pcall(function()
-    ins.load_backend("cuda")
-  end)
-  return ok
-end
-
 local function run_cpu_linalg()
   separator("CPU Linear Algebra")
 
@@ -34,11 +27,9 @@ local function run_cpu_linalg()
   print(tostring(C32))
 
   -- Determinant
-  local ok_det, det_val = pcall(function()
-    return ins.det(A)[1]
-  end)
+  local ok_det, det_arr = pcall(ins.det, A)
   if ok_det then
-    print(string.format("det([[1,2],[3,4]]) = %g", det_val))
+    print(string.format("det([[1,2],[3,4]]) = %g", det_arr:item(0)))
   else
     print("det: skipped (requires OpenBLAS)")
   end
@@ -76,8 +67,6 @@ local function run_cpu_linalg()
 end
 
 local function run_gpu_linalg()
-  separator("GPU Linear Algebra")
-
   local A = ins.from_table({ { 1, 2 }, { 3, 4 } }):to(ins.GPUPlace(0))
   local B = ins.from_table({ { 5, 6 }, { 7, 8 } }):to(ins.GPUPlace(0))
   local C = ins.matmul(A, B)
@@ -118,19 +107,15 @@ local function run_gpu_linalg()
   end
 end
 
-local ok = pcall(ins.init, { "cpu", "cuda" })
-if not ok then
-  ins.init({ "cpu" })
-end
+ins.init()
 
 print("Insight7 Linear Algebra Demo (Lua)")
 
 run_cpu_linalg()
 
-if gpu_available() then
-  run_gpu_linalg()
-else
-  print("\n[GPU not available, skipping GPU linalg demo]")
+if ins.has_device("gpu") then
+  separator("GPU Linear Algebra")
+  pcall(run_gpu_linalg)
 end
 
 print("\nDone!")

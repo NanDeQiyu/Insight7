@@ -21,22 +21,13 @@ def separator(title):
     print(f"{'=' * 40}")
 
 
-def gpu_available():
-    try:
-        ins.load_backend("cuda")
-        return True
-    except Exception:
-        return False
-
-
 def main():
-    ins.init(["cpu", "cuda"])
+    ins.init()
+
+    if not ins.has_device("gpu"):
+        return
 
     print("Insight7 GPU Transfer Demo (Python)")
-
-    if not gpu_available():
-        print("GPU not available. This demo requires a CUDA device.")
-        return
 
     # --- CPU to GPU transfer ---
     separator("CPU -> GPU Transfer")

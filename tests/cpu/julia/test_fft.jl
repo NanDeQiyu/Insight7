@@ -47,7 +47,7 @@ y3 = Insight.fft(x3)
 check("fft_long", Insight.numel(y3) == 64)
 
 # fft ones
-x4 = Insight.from_data(ones(8))
+x4 = Insight.from_data(fill(1.0, 8))
 y4 = Insight.fft(x4)
 check("fft_ones", Insight.numel(y4) == 8)
 

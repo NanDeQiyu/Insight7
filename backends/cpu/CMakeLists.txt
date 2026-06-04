@@ -2,22 +2,13 @@ file(GLOB_RECURSE KERNEL_SOURCES "kernels/*.cpp")
 file(GLOB_RECURSE DEVICE_SOURCES "device/*.cpp")
 file(GLOB_RECURSE REGISTRY_SOURCES "registry/*.cpp")
 
-if(INSIGHT_DYNAMIC_CPU_BACKEND)
-    add_library(insight_cpu_backend SHARED
-        ${KERNEL_SOURCES}
-        ${DEVICE_SOURCES}
-        ${REGISTRY_SOURCES}
-    )
-    target_compile_definitions(insight_cpu_backend PRIVATE INSIGHT_CPU_BACKEND_EXPORTS)
-    # DLL needs to link against insight_core for C API symbols
-    target_link_libraries(insight_cpu_backend PRIVATE insight_core)
-else()
-    add_library(insight_cpu_backend STATIC
-        ${KERNEL_SOURCES}
-        ${DEVICE_SOURCES}
-        ${REGISTRY_SOURCES}
-    )
-endif()
+add_library(insight_cpu_backend SHARED
+    ${KERNEL_SOURCES}
+    ${DEVICE_SOURCES}
+    ${REGISTRY_SOURCES}
+)
+target_compile_definitions(insight_cpu_backend PRIVATE INSIGHT_CPU_BACKEND_EXPORTS)
+target_link_libraries(insight_cpu_backend PRIVATE insight_core)
 
 target_include_directories(insight_cpu_backend
     PUBLIC ${CMAKE_SOURCE_DIR}/include

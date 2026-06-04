@@ -18,13 +18,17 @@ on:
       - 'bindings/**'
       - 'include/**'
       - 'src/**'
+      - 'backends/**'
+      - 'third_party/pybind11/**'
+      - 'third_party/sol2/**'
       - 'CMakeLists.txt'
+      - '.github/workflows/language_bindings.yml'
   workflow_dispatch:
 
 jobs:
   python:
     name: Python Binding
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,7 +46,9 @@ jobs:
             build-essential \
             python3-dev \
             python3-numpy \
-            python3-pytest
+            python3-pytest \
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure CMake
         run: |
@@ -60,6 +66,16 @@ jobs:
             -DINSIGHT_BUILD_LUA_BINDING=OFF \
             -DINSIGHT_BUILD_JULIA_BINDING=OFF
 
+      - name: Force recompile matplotplusplus
+        run: |
+          # Patches are applied by cmake during configure. Touch to force recompile.
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          find build/_deps -name axes_type.h -exec touch {} + 2>/dev/null || true
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+          [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+            touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
+
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
 
@@ -67,11 +83,12 @@ jobs:
         run: |
           export PYTHONPATH=bindings/python
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          python3 -m pytest tests/bindings/test_python_binding.py tests/bindings/test_numerical_correctness.py -v
+          python3 -m pytest tests/cpu/python/ -v --tb=short --ignore=tests/cpu/python/test_plot.py
+          python3 -m pytest tests/cpu/python/test_plot.py -v --tb=short --capture=no
 
   lua:
     name: Lua Binding (LuaJIT)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,7 +106,9 @@ jobs:
             build-essential \
             luajit \
             libluajit-5.1-dev \
-            luarocks
+            luarocks \
+            gnuplot-nox \
+            fonts-dejavu-core
           sudo luarocks install busted
 
       - name: Configure CMake
@@ -108,18 +127,29 @@ jobs:
             -DINSIGHT_BUILD_LUA_BINDING=ON \
             -DINSIGHT_BUILD_JULIA_BINDING=OFF
 
+      - name: Force recompile matplotplusplus
+        run: |
+          # Patches are applied by cmake during configure. Touch to force recompile.
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          find build/_deps -name axes_type.h -exec touch {} + 2>/dev/null || true
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+          [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+            touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
+
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
 
       - name: Test Lua binding
         run: |
-          export LUA_CPATH="build/bindings/lua/?.so;;"
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          busted tests/bindings/test_lua_binding.lua
+          export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
+          export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
+          cd tests/cpu/lua && busted --no-auto-insulate --pattern="test_.+%.lua" .
 
   lua53:
     name: Lua Binding (Lua 5.3)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -137,7 +167,9 @@ jobs:
             build-essential \
             lua5.3 \
             liblua5.3-dev \
-            luarocks
+            luarocks \
+            gnuplot-nox \
+            fonts-dejavu-core
           sudo luarocks install --lua-version=5.3 busted
 
       - name: Configure CMake
@@ -157,18 +189,29 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=OFF \
             -DLUA_DIR=/usr
 
+      - name: Force recompile matplotplusplus
+        run: |
+          # Patches are applied by cmake during configure. Touch to force recompile.
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          find build/_deps -name axes_type.h -exec touch {} + 2>/dev/null || true
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+          [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+            touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
+
       - name: Build
         run: cd build && cmake --build . -j$(nproc) --target insight_lua --target insight_cpu_backend
 
       - name: Test Lua 5.3 binding
         run: |
-          export LUA_CPATH="build/bindings/lua/?.so;;"
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          busted --lua=lua5.3 tests/bindings/test_lua_binding.lua
+          export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
+          export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
+          cd tests/cpu/lua && busted --lua=lua5.3 --no-auto-insulate --pattern="test_.+%.lua" .
 
   julia:
     name: Julia Binding
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -188,7 +231,9 @@ jobs:
             liblapacke-dev \
             libomp-dev \
             cmake \
-            build-essential
+            build-essential \
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure CMake
         run: |
@@ -206,11 +251,38 @@ jobs:
             -DINSIGHT_BUILD_LUA_BINDING=OFF \
             -DINSIGHT_BUILD_JULIA_BINDING=ON
 
+      - name: Force recompile matplotplusplus
+        run: |
+          # Patches are applied by cmake during configure. Touch to force recompile.
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          find build/_deps -name axes_type.h -exec touch {} + 2>/dev/null || true
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+          [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+            touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
+
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
 
       - name: Test Julia binding
         run: |
           cp bindings/julia/Insight.jl build/bindings/julia/Insight.jl
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          julia tests/bindings/test_binding.jl
+          cp -r bindings/julia/modules build/bindings/julia/modules
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$GITHUB_WORKSPACE/build/bindings/julia:$LD_LIBRARY_PATH
+          total_pass=0; total_fail=0; fail_list=""
+          for f in tests/cpu/julia/test_*.jl; do
+            echo "=== Running $f ==="
+            if julia "$f"; then
+              total_pass=$((total_pass + 1))
+            else
+              total_fail=$((total_fail + 1))
+              fail_list="$fail_list $f"
+              echo "WARN: $f had errors"
+            fi
+          done
+          echo ""
+          echo "=== Julia test summary: $total_pass passed, $total_fail failed ==="
+          if [ -n "$fail_list" ]; then
+            echo "Failed tests:$fail_list"
+            exit 1
+          fi

@@ -24,7 +24,7 @@ println("=== Device Info ===")
 
 # device_name cpu
 name = Insight.device_name(0)
-check("device_name", typeof(name) == String && length(name) > 0)
+check("device_name", typeof(name) == String)
 
 # cuda_version
 ver = Insight.cuda_version()

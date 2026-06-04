@@ -9,6 +9,7 @@
 #include "insight/core/place.h"
 #include "insight/core/shape.h"
 #include "insight/init.h"
+#include "insight/io/print.h"
 #include "insight/ops/cast.h"
 #include "insight/ops/complex.h"
 #include "insight/ops/creation.h"
@@ -41,9 +42,8 @@ extern "C" {
 
 void insight_jl_init_cpu() {
   if (!ins::is_initialized()) {
-    // Try to load backends — dlopen will search LD_LIBRARY_PATH
     try {
-      ins::init({"cpu"});
+      ins::init(); // Smart discovery: CPU + first GPU if available
     } catch (...) {
       // If dynamic loading fails, the user needs to set LD_LIBRARY_PATH
       fprintf(stderr,
@@ -51,6 +51,23 @@ void insight_jl_init_cpu() {
               "Set LD_LIBRARY_PATH to include the backend directory.\n");
     }
   }
+}
+
+// Load an additional backend (e.g. "cuda"). Returns 1 on success, 0 on failure.
+int32_t insight_jl_load_backend(const char *backend) {
+  try {
+    ins::load_backend(std::string(backend));
+    return 1;
+  } catch (...) {
+    return 0;
+  }
+}
+
+// Check if a device kind is available. 0=cpu, 1=gpu. Returns 1 if available.
+int32_t insight_jl_has_device(int32_t device_type) {
+  return ins::has_device(device_type == 1 ? DeviceKind::GPU : DeviceKind::CPU)
+             ? 1
+             : 0;
 }
 
 // ============================================================================
@@ -84,6 +101,14 @@ int32_t insight_jl_gpu_count() {
 // ============================================================================
 
 // Create a new array. Returns heap-allocated Array*. Caller must free with
+// Helper: reverse dims for Julia column-major → Insight row-major
+static std::vector<int64_t> julia_to_insight_dims(const int64_t *dims,
+                                                  int32_t ndim) {
+  std::vector<int64_t> rdims(dims, dims + ndim);
+  std::reverse(rdims.begin(), rdims.end());
+  return rdims;
+}
+
 // insight_jl_array_free().
 Array *insight_jl_zeros(const int64_t *dims, int32_t ndim, int32_t dtype,
                         int32_t device_type) {
@@ -110,9 +135,13 @@ Array *insight_jl_full(const int64_t *dims, int32_t ndim, double fill_value,
 }
 
 // Create array from raw data (Julia-owned memory, copied into Insight).
+// Julia is column-major, Insight is row-major. Reverse dims to match memory
+// layout.
 Array *insight_jl_from_data(const void *data, const int64_t *dims, int32_t ndim,
                             int32_t dtype, int32_t device_type) {
-  Shape shape(std::vector<int64_t>(dims, dims + ndim));
+  std::vector<int64_t> rdims(dims, dims + ndim);
+  std::reverse(rdims.begin(), rdims.end());
+  Shape shape(rdims);
   DType dt = static_cast<DType>(dtype);
   Place place = device_type == 1 ? GPUPlace(0) : CPUPlace();
   Array *arr = new Array(shape, dt, CPUPlace());
@@ -129,6 +158,14 @@ void insight_jl_to_data(const Array *arr, void *dst) {
   std::memcpy(dst, cpu.data(), cpu.nbytes());
 }
 
+// Return reversed shape (for Julia column-major layout).
+void insight_jl_shape_reversed(const Array *arr, int64_t *out,
+                               int32_t max_ndim) {
+  int nd = arr->shape().ndim();
+  for (int i = 0; i < nd && i < max_ndim; ++i)
+    out[i] = arr->shape().dims()[nd - 1 - i];
+}
+
 void insight_jl_array_free(Array *arr) { delete arr; }
 
 // Metadata queries
@@ -143,6 +180,22 @@ int32_t insight_jl_device_type(const Array *arr) {
 void insight_jl_shape(const Array *arr, int64_t *dims_out) {
   for (int i = 0; i < arr->shape().ndim(); i++) {
     dims_out[i] = arr->shape().dim(i);
+  }
+}
+
+// Get human-readable string representation. Caller must free() the result.
+char *insight_jl_array_tostring(const Array *arr) {
+  if (!arr || !arr->defined())
+    return nullptr;
+  try {
+    std::string s = ins::to_string(*arr);
+    char *result = static_cast<char *>(std::malloc(s.size() + 1));
+    if (!result)
+      return nullptr;
+    std::memcpy(result, s.c_str(), s.size() + 1);
+    return result;
+  } catch (...) {
+    return nullptr;
   }
 }
 
@@ -195,6 +248,16 @@ JL_BINARY_OP(less, less)
 JL_BINARY_OP(greater_equal, greater_equal)
 JL_BINARY_OP(less_equal, less_equal)
 
+// Logical binary ops
+JL_BINARY_OP(logical_and, logical_and)
+JL_BINARY_OP(logical_or, logical_or)
+JL_BINARY_OP(logical_xor, logical_xor)
+
+// Logical unary ops (use ins:: namespace to avoid std::logical_not conflict)
+Array *insight_jl_logical_not(const Array *x) {
+  return new Array(ins::logical_not(*x));
+}
+
 // ============================================================================
 // Unary
 // ============================================================================
@@ -223,6 +286,10 @@ JL_UNARY_OP(floor, floor)
 JL_UNARY_OP(ceil, ceil)
 JL_UNARY_OP(round, rint)
 JL_UNARY_OP(sign, sign)
+
+// Complex unary
+Array *insight_jl_conj(const Array *x) { return new Array(conj(*x)); }
+Array *insight_jl_angle(const Array *x) { return new Array(angle(*x)); }
 
 // ============================================================================
 // Reduction
@@ -299,11 +366,17 @@ void insight_jl_eigh(const Array *x, Array **vals, Array **vecs) {
 Array *insight_jl_fft(const Array *x, int32_t has_n, int64_t n) {
   return new Array(fft::fft(*x, has_n ? n : -1));
 }
+Array *insight_jl_fft_axis(const Array *x, int64_t n, int32_t axis) {
+  return new Array(fft::fft(*x, n, axis));
+}
 Array *insight_jl_ifft(const Array *x, int32_t has_n, int64_t n) {
   return new Array(fft::ifft(*x, has_n ? n : -1));
 }
 Array *insight_jl_rfft(const Array *x, int32_t has_n, int64_t n) {
   return new Array(fft::rfft(*x, has_n ? n : -1));
+}
+Array *insight_jl_irfft(const Array *x, int64_t n) {
+  return new Array(fft::irfft(*x, n));
 }
 Array *insight_jl_fftfreq(int64_t n, double d) {
   return new Array(fft::fftfreq(n, d));
@@ -569,6 +642,18 @@ Array *insight_jl_mvdr(const Array *x, const Array *sv) {
   return new Array(signal::mvdr(*x, *sv));
 }
 
+// ca_cfar returns (threshold, detections) — two arrays
+void insight_jl_ca_cfar(const Array *data, const int32_t *guard_cells,
+                        int32_t gc_len, const int32_t *reference_cells,
+                        int32_t rc_len, double pfa, Array **threshold_out,
+                        Array **detections_out) {
+  std::vector<int> gc(guard_cells, guard_cells + gc_len);
+  std::vector<int> rc(reference_cells, reference_cells + rc_len);
+  auto [thresh, det] = signal::ca_cfar(*data, gc, rc, pfa);
+  *threshold_out = new Array(std::move(thresh));
+  *detections_out = new Array(std::move(det));
+}
+
 Array *insight_jl_general_cosine(int64_t M, const double *a, int32_t a_len,
                                  int32_t sym) {
   std::vector<double> av(a, a + a_len);
@@ -700,12 +785,20 @@ Array *insight_jl_randn(const int64_t *dims, int32_t ndim, int32_t dtype,
 // ============================================================================
 
 Array *insight_jl_cast(const Array *x, int32_t dtype) {
-  return new Array(cast(*x, static_cast<DType>(dtype)));
+  try {
+    return new Array(cast(*x, static_cast<DType>(dtype)));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 Array *insight_jl_to_device(const Array *x, int32_t device_type) {
-  Place place = device_type == 1 ? GPUPlace(0) : CPUPlace();
-  return new Array(x->to(place));
+  try {
+    Place place = device_type == 1 ? GPUPlace(0) : CPUPlace();
+    return new Array(x->to(place));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 // ============================================================================
@@ -714,14 +807,28 @@ Array *insight_jl_to_device(const Array *x, int32_t device_type) {
 
 Array *insight_jl_take(const Array *x, const Array *indices, int32_t has_axis,
                        int32_t axis) {
-  std::optional<int> ax = has_axis ? std::optional<int>(axis) : std::nullopt;
-  return new Array(take(*x, *indices, ax));
+  try {
+    std::optional<int> ax = has_axis ? std::optional<int>(axis) : std::nullopt;
+    return new Array(take(*x, *indices, ax));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
-Array *insight_jl_nonzero(const Array *x) { return new Array(nonzero(*x)); }
+Array *insight_jl_nonzero(const Array *x) {
+  try {
+    return new Array(nonzero(*x));
+  } catch (...) {
+    return nullptr;
+  }
+}
 
 Array *insight_jl_sort(const Array *x, int32_t axis, int32_t descending) {
-  return new Array(sort(*x, axis, descending != 0));
+  try {
+    return new Array(sort(*x, axis, descending != 0));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 // ============================================================================
@@ -729,23 +836,49 @@ Array *insight_jl_sort(const Array *x, int32_t axis, int32_t descending) {
 // ============================================================================
 
 Array *insight_jl_concat(const Array **arrays, int32_t count, int32_t axis) {
-  std::vector<Array> vec;
-  for (int32_t i = 0; i < count; i++) {
-    vec.push_back(*arrays[i]);
+  try {
+    std::vector<Array> vec;
+    for (int32_t i = 0; i < count; i++) {
+      vec.push_back(*arrays[i]);
+    }
+    return new Array(concat(vec, axis));
+  } catch (...) {
+    return nullptr;
   }
-  return new Array(concat(vec, axis));
 }
 
 Array *insight_jl_reshape(const Array *x, const int64_t *dims, int32_t ndim) {
-  Shape shape(std::vector<int64_t>(dims, dims + ndim));
-  return new Array(x->reshape(shape));
+  try {
+    Shape shape(std::vector<int64_t>(dims, dims + ndim));
+    return new Array(x->reshape(shape));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 Array *insight_jl_transpose(const Array *x) {
-  return new Array(x->transpose());
+  try {
+    return new Array(x->transpose());
+  } catch (...) {
+    return nullptr;
+  }
 }
 
-Array *insight_jl_copy(const Array *x) { return new Array(x->copy()); }
+Array *insight_jl_copy(const Array *x) {
+  try {
+    return new Array(x->copy());
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+Array *insight_jl_squeeze(const Array *x) {
+  try {
+    return new Array(squeeze(*x));
+  } catch (...) {
+    return nullptr;
+  }
+}
 
 // ============================================================================
 // Additional Unary (Phase D)
@@ -1061,6 +1194,20 @@ Array *insight_jl_cond(const Array *x, double p) {
 Array *insight_jl_matrix_rank(const Array *x) {
   return new Array(matrix_rank(*x));
 }
+Array *insight_jl_matrix_power(const Array *x, int32_t n) {
+  return new Array(matrix_power(*x, n));
+}
+void insight_jl_slogdet(const Array *x, Array **sign_out, Array **logdet_out) {
+  auto [sign, logdet] = slogdet(*x);
+  *sign_out = new Array(std::move(sign));
+  *logdet_out = new Array(std::move(logdet));
+}
+Array *insight_jl_eigvalsh(const Array *x, const char *uplo) {
+  return new Array(eigvalsh(*x, std::string(uplo)));
+}
+Array *insight_jl_pinv(const Array *x, double rcond) {
+  return new Array(pinv(*x, rcond));
+}
 
 // ============================================================================
 // Spectral analysis (returns decomposed results)
@@ -1208,5 +1355,122 @@ int32_t insight_jl_kf_get_dim_u(void *kf) {
 int32_t insight_jl_kf_get_points(void *kf) {
   return static_cast<signal::KalmanFilter *>(kf)->points;
 }
+
+// ============================================================================
+// Plot (conditionally compiled with INSIGHT_USE_MATPLOT)
+// ============================================================================
+
+#ifdef INSIGHT_USE_MATPLOT
+void insight_jl_plot(const Array *y, const char *format) {
+  try {
+    plot::plot(*y, std::string(format));
+  } catch (...) {
+  }
+}
+void insight_jl_plot_xy(const Array *x, const Array *y, const char *format) {
+  try {
+    plot::plot(*x, *y, std::string(format));
+  } catch (...) {
+  }
+}
+void insight_jl_plot_scatter(const Array *x, const Array *y, double size) {
+  try {
+    plot::scatter(*x, *y, size);
+  } catch (...) {
+  }
+}
+void insight_jl_bar(const Array *y, double width) {
+  try {
+    plot::bar(*y, width);
+  } catch (...) {
+  }
+}
+void insight_jl_bar_xy(const Array *x, const Array *y, double width) {
+  try {
+    plot::bar(*x, *y, width);
+  } catch (...) {
+  }
+}
+void insight_jl_hist(const Array *data, int32_t bins) {
+  try {
+    plot::hist(*data, bins);
+  } catch (...) {
+  }
+}
+void insight_jl_imshow(const Array *data) {
+  try {
+    plot::imshow(*data);
+  } catch (...) {
+  }
+}
+void insight_jl_contour(const Array *X, const Array *Y, const Array *Z,
+                        int32_t levels) {
+  try {
+    plot::contour(*X, *Y, *Z, levels);
+  } catch (...) {
+  }
+}
+void insight_jl_subplot(int32_t rows, int32_t cols, int32_t index) {
+  try {
+    plot::subplot(rows, cols, index);
+  } catch (...) {
+  }
+}
+void insight_jl_title(const char *text) {
+  try {
+    plot::title(std::string(text));
+  } catch (...) {
+  }
+}
+void insight_jl_xlabel(const char *text) {
+  try {
+    plot::xlabel(std::string(text));
+  } catch (...) {
+  }
+}
+void insight_jl_ylabel(const char *text) {
+  try {
+    plot::ylabel(std::string(text));
+  } catch (...) {
+  }
+}
+void insight_jl_legend(const char **labels, int32_t count) {
+  try {
+    std::vector<std::string> v(labels, labels + count);
+    plot::legend(v);
+  } catch (...) {
+  }
+}
+void insight_jl_savefig(const char *filename) {
+  try {
+    plot::save(std::string(filename));
+  } catch (...) {
+  }
+}
+void insight_jl_figure(int32_t number) {
+  try {
+    plot::figure(number);
+  } catch (...) {
+  }
+}
+void insight_jl_clf() {
+  try {
+    plot::clf();
+  } catch (...) {
+  }
+}
+void insight_jl_grid(int32_t on) {
+  try {
+    plot::grid(on != 0);
+  } catch (...) {
+  }
+}
+void insight_jl_close() {
+  try {
+    plot::clf();
+  } catch (...) {
+  }
+}
+#endif
 
 } // extern "C"

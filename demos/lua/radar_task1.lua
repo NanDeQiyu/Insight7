@@ -1,10 +1,11 @@
 -- demos/radar_task1.lua
 -- 雷达目标检测与多普勒分析 — 比赛任务1 (Insight7 Lua 完整版)
--- 与 C++ / Python / Julia 版本功能完全对齐
+-- 与 C++ / Python / Julia 版本算法完全对齐：使用 Insight FFT 处理复数信号
 
 local ins = require("insight")
+-- Auto-init with smart discovery (CPU + first GPU if available)
 
--- ========== 参数 ==========
+-- ========== 参数 (与 C++ 完全一致) ==========
 local FS = 10e6
 local T_PRF = 1e-4
 local N = 1000
@@ -22,35 +23,21 @@ print("=" .. string.rep("=", 59))
 print("  雷达目标检测与多普勒分析 (Insight7 Lua)")
 print("=" .. string.rep("=", 59))
 
-print(string.format("\n[配置信息]"))
+print("\n[配置信息]")
 print(string.format("  采样率: %.1f MHz, 带宽: %.1f MHz", FS / 1e6, B / 1e6))
 print(string.format("  单脉冲采样点数: %d, 脉冲串数量: %d", N, N_PULSES))
 print(string.format("  距离分辨率: %.2f 米, 距离门: %.2f 米", RANGE_RES, RANGE_PER_BIN))
 
--- ========== RNG ==========
-math.randomseed(42)
-local function randn()
-  local u1 = math.random()
-  local u2 = math.random()
-  return math.sqrt(-2 * math.log(u1 + 1e-15)) * math.cos(2 * math.pi * u2)
-end
-
--- ========== 辅助：从 Insight 数组读取数据到 table ==========
-local function read_array(arr)
-  local t = {}
-  for i = 0, arr.numel - 1 do
-    t[i] = arr:get(i)
-  end
-  return t
-end
+-- ========== RNG: 使用 Insight 原生 RNG 确保跨语言一致 ==========
+ins.seed(42)
 
 -- ========== 1. LFM 发射信号 ==========
 print("\n[1/6] 生成 LFM 信号...")
 local t_arr = {}
 local s_tx_r, s_tx_i = {}, {}
 local sig_power = 0
-for i = 0, N - 1 do
-  local ti = i / FS
+for i = 1, N do
+  local ti = (i - 1) / FS
   t_arr[i] = ti
   if ti < TAU then
     local phase = math.pi * (B / TAU) * ti * ti
@@ -67,13 +54,16 @@ local noise_sigma = math.sqrt(sig_power / 10 ^ (SNR_DB / 10) / 2)
 
 -- ========== 2. 模拟回波 ==========
 print("[2/6] 模拟回波信号...")
+-- 生成噪声数组 (Insight 原生 RNG，跨语言一致)
+local noise_r = ins.randn({ N_PULSES, N }, ins.float64) * noise_sigma
+local noise_i = ins.randn({ N_PULSES, N }, ins.float64) * noise_sigma
 local s_rx_r = {}
 local s_rx_i = {}
 
-for p = 0, N_PULSES - 1 do
-  local slow_time = p * T_PRF
+for p = 1, N_PULSES do
+  local slow_time = (p - 1) * T_PRF
   local pr, pi_ = {}, {}
-  for i = 0, N - 1 do
+  for i = 1, N do
     pr[i] = 0.0
     pi_[i] = 0.0
   end
@@ -82,17 +72,17 @@ for p = 0, N_PULSES - 1 do
     local ds = math.floor(TARGET_DELAYS[tgt] * FS)
     local doppler = TARGET_DOPPLERS[tgt]
     local tr, ti_ = {}, {}
-    for i = 0, N - 1 do
+    for i = 1, N do
       tr[i] = 0.0
       ti_[i] = 0.0
     end
     if ds < N then
-      for i = ds, N - 1 do
+      for i = ds + 1, N do
         tr[i] = s_tx_r[i - ds]
         ti_[i] = s_tx_i[i - ds]
       end
     end
-    for i = 0, N - 1 do
+    for i = 1, N do
       local phase = 2 * math.pi * doppler * t_arr[i]
       local c, s = math.cos(phase), math.sin(phase)
       local nr = tr[i] * c - ti_[i] * s
@@ -101,94 +91,79 @@ for p = 0, N_PULSES - 1 do
     end
     local sph = 2 * math.pi * doppler * slow_time
     local sc, ss = math.cos(sph), math.sin(sph)
-    for i = 0, N - 1 do
+    for i = 1, N do
       local nr = tr[i] * sc - ti_[i] * ss
       local ni = tr[i] * ss + ti_[i] * sc
       tr[i], ti_[i] = nr, ni
     end
-    for i = 0, N - 1 do
+    for i = 1, N do
       pr[i] = pr[i] + tr[i]
       pi_[i] = pi_[i] + ti_[i]
     end
   end
 
-  for i = 0, N - 1 do
-    pr[i] = pr[i] + noise_sigma * randn()
-    pi_[i] = pi_[i] + noise_sigma * randn()
+  for i = 1, N do
+    pr[i] = pr[i] + noise_r:get((p - 1) * N + (i - 1))
+    pi_[i] = pi_[i] + noise_i:get((p - 1) * N + (i - 1))
   end
   s_rx_r[p] = pr
   s_rx_i[p] = pi_
 end
 
--- ========== 3. 脉冲压缩 ==========
+-- ========== 3. 脉冲压缩 (使用复数 fftconvolve) ==========
 print("[3/6] 脉冲压缩...")
 local t0 = os.clock()
 
+-- 匹配滤波器 (复数共轭反转)
 local mf_r, mf_i = {}, {}
-for i = 0, N - 1 do
-  mf_r[i] = s_tx_r[N - 1 - i]
-  mf_i[i] = -s_tx_i[N - 1 - i]
+for i = 1, N do
+  mf_r[i] = s_tx_r[N + 1 - i]
+  mf_i[i] = -s_tx_i[N + 1 - i]
 end
+local mf_c = ins.to_complex(ins.from_table(mf_r), ins.from_table(mf_i))
 
-local mf_r_arr = ins.from_table(mf_r)
-local mf_i_arr = ins.from_table(mf_i)
+local full_len = 2 * N - 1
+local start = math.floor((full_len - N) / 2)
 
 local pc_r = {}
 local pc_i = {}
 
-for p = 0, N_PULSES - 1 do
-  local pulse_r_arr = ins.from_table(s_rx_r[p])
-  local pulse_i_arr = ins.from_table(s_rx_i[p])
-
-  local rr = ins.signal.fftconvolve(pulse_r_arr, mf_r_arr, "full")
-  local ii = ins.signal.fftconvolve(pulse_i_arr, mf_i_arr, "full")
-  local ri = ins.signal.fftconvolve(pulse_r_arr, mf_i_arr, "full")
-  local ir = ins.signal.fftconvolve(pulse_i_arr, mf_r_arr, "full")
-
-  local full_len = 2 * N - 1
-  local start = math.floor((full_len - N) / 2)
+for p = 1, N_PULSES do
+  local pulse_c = ins.to_complex(ins.from_table(s_rx_r[p]), ins.from_table(s_rx_i[p]))
+  local conv = ins.signal.fftconvolve(pulse_c, mf_c, "full")
+  local conv_r = ins.real(conv)
+  local conv_i = ins.imag(conv)
 
   pc_r[p] = {}
   pc_i[p] = {}
-  for i = 0, N - 1 do
-    local idx = start + i
-    pc_r[p][i] = rr:get(idx) - ii:get(idx)
-    pc_i[p][i] = ri:get(idx) + ir:get(idx)
+  for i = 1, N do
+    pc_r[p][i] = conv_r:get(start + (i - 1))
+    pc_i[p][i] = conv_i:get(start + (i - 1))
   end
 end
 
 print(string.format("  耗时: %.2f 秒", os.clock() - t0))
 
--- ========== 4. 多普勒 FFT ==========
+-- ========== 4. 多普勒 FFT (使用 Insight 批量 FFT) ==========
 print("[4/6] 多普勒处理...")
 t0 = os.clock()
 
-local doppler_r = {}
-local doppler_i = {}
-for i = 0, N - 1 do
-  doppler_r[i] = {}
-  doppler_i[i] = {}
+-- 构建 2D 复数数组 [N_PULSES, N]
+local pc_r_2d = {}
+local pc_i_2d = {}
+for p = 1, N_PULSES do
+  pc_r_2d[p] = pc_r[p]
+  pc_i_2d[p] = pc_i[p]
 end
+local pc_c = ins.to_complex(ins.from_table(pc_r_2d), ins.from_table(pc_i_2d))
 
-for i = 0, N - 1 do
-  local col_r = {}
-  local col_i = {}
-  for p = 0, N_PULSES - 1 do
-    col_r[p] = pc_r[p][i]
-    col_i[p] = pc_i[p][i]
-  end
+-- 沿 axis 0 (脉冲维) 做 FFT，然后 fftshift
+local doppler_fft = ins.fftshift(ins.fft(pc_c, N_PULSES, 0), 0)
 
-  local col_r_arr = ins.from_table(col_r)
-  local col_i_arr = ins.from_table(col_i)
-  local fft_r = ins.fft(col_r_arr, N_PULSES)
-  local fft_i = ins.fft(col_i_arr, N_PULSES)
-
-  for p = 0, N_PULSES - 1 do
-    local shifted = (p + math.floor(N_PULSES / 2)) % N_PULSES
-    doppler_r[i][shifted] = fft_r:get(p)
-    doppler_i[i][shifted] = fft_i:get(p)
-  end
-end
+-- 提取实部和虚部，计算能量
+local dr = ins.real(doppler_fft)
+local di = ins.imag(doppler_fft)
+local energy_arr = ins.sqrt(ins.add(ins.mul(dr, dr), ins.mul(di, di)))
 
 print(string.format("  耗时: %.2f 秒", os.clock() - t0))
 
@@ -196,19 +171,12 @@ print(string.format("  耗时: %.2f 秒", os.clock() - t0))
 print("[5/6] CFAR 目标检测...")
 t0 = os.clock()
 
-local energy_flat = {}
-for p = 0, N_PULSES - 1 do
-  for i = 0, N - 1 do
-    energy_flat[p * N + i + 1] = math.sqrt(doppler_r[i][p] ^ 2 + doppler_i[i][p] ^ 2)
-  end
-end
-local energy_arr = ins.from_table(energy_flat)
-
-local threshold, detections = ins.signal.ca_cfar(energy_arr, { 2, 2 }, { 4, 4 }, 1e-5)
+local cfar_result = ins.signal.ca_cfar(energy_arr, { 2, 2 }, { 4, 4 }, 1e-5)
+local detections = cfar_result[2]
 
 local det = {}
 for idx = 0, detections.numel - 1 do
-  det[idx] = detections:get(idx) ~= 0
+  det[idx + 1] = detections:get(idx) ~= 0
 end
 
 print(string.format("  耗时: %.2f 秒", os.clock() - t0))
@@ -216,10 +184,10 @@ print(string.format("  耗时: %.2f 秒", os.clock() - t0))
 -- ========== 6. 目标聚类 ==========
 print("[6/6] 聚类目标...")
 local target_indices = {}
-for idx = 0, N_PULSES * N - 1 do
+for idx = 1, N_PULSES * N do
   if det[idx] then
-    local d = math.floor(idx / N)
-    local r = idx % N
+    local d = math.floor((idx - 1) / N)
+    local r = (idx - 1) % N
     target_indices[#target_indices + 1] = { d, r }
   end
 end
@@ -258,17 +226,17 @@ end
 
 -- ========== 输出 ==========
 local doppler_bins = {}
-for i = 0, N_PULSES - 1 do
-  doppler_bins[i] = (i - math.floor(N_PULSES / 2)) * (1.0 / (N_PULSES * T_PRF))
+for i = 1, N_PULSES do
+  doppler_bins[i] = ((i - 1) - math.floor(N_PULSES / 2)) * (1.0 / (N_PULSES * T_PRF))
 end
 
-print(string.format("\n[检测结果]"))
+print("\n[检测结果]")
 print(string.format("  原始检测点数: %d, 聚类后: %d", raw_count, #targets))
 
 for _, tgt in ipairs(targets) do
   local d_idx, r_idx = tgt[1], tgt[2]
   local range_m = (r_idx - PC_OFFSET) * RANGE_PER_BIN
-  local doppler_hz = doppler_bins[d_idx] or 0
+  local doppler_hz = doppler_bins[d_idx + 1] or 0
   print(string.format("    → 距离: %7.2f 米, 多普勒: %8.1f Hz", range_m, doppler_hz))
 end
 

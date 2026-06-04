@@ -12,21 +12,12 @@ function separator(title)
     println("="^40)
 end
 
-function gpu_available()
-    try
-        Insight.load_backend("cuda")
-        return true
-    catch
-        return false
-    end
-end
-
 function run_cpu_linalg()
     separator("CPU Linear Algebra")
 
     # MatMul F64
-    A = Insight.from_data([1.0, 2.0, 3.0, 4.0], [2, 2])
-    B = Insight.from_data([5.0, 6.0, 7.0, 8.0], [2, 2])
+    A = Insight.from_data(reshape([1.0, 2.0, 3.0, 4.0], 2, 2), Insight.float64)
+    B = Insight.from_data(reshape([5.0, 6.0, 7.0, 8.0], 2, 2), Insight.float64)
     C = Insight.matmul(A, B)
     println("MatMul F64:")
     println(C)
@@ -59,8 +50,8 @@ function run_cpu_linalg()
 
     # SVD
     try
-        D = Insight.from_data([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], [3, 3])
-        U, S, VT = Insight.svd(D, false)
+        D = Insight.from_data(reshape([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], 3, 3), Insight.float64)
+        U, S, VT = Insight.svd(D)
         println("SVD singular values: $S")
     catch
         println("SVD: skipped (requires OpenBLAS)")
@@ -68,8 +59,8 @@ function run_cpu_linalg()
 
     # Solve linear system
     try
-        A3 = Insight.from_data([3.0, 2.0, -1.0, 2.0, -2.0, 4.0, -1.0, 0.5, -1.0], [3, 3])
-        b = Insight.from_data([1.0, -2.0, 0.0], [3])
+        A3 = Insight.from_data(reshape([3.0, 2.0, -1.0, 2.0, -2.0, 4.0, -1.0, 0.5, -1.0], 3, 3), Insight.float64)
+        b = Insight.from_data([1.0, -2.0, 0.0], Insight.float64)
         x = Insight.solve(A3, b)
         println("Ax=b solution: $x")
     catch
@@ -78,10 +69,8 @@ function run_cpu_linalg()
 end
 
 function run_gpu_linalg()
-    separator("GPU Linear Algebra")
-
-    A = Insight.from_data([1.0, 2.0, 3.0, 4.0], [2, 2])
-    B = Insight.from_data([5.0, 6.0, 7.0, 8.0], [2, 2])
+    A = Insight.from_data(reshape([1.0, 2.0, 3.0, 4.0], 2, 2), Insight.float64)
+    B = Insight.from_data(reshape([5.0, 6.0, 7.0, 8.0], 2, 2), Insight.float64)
     A_gpu = Insight.to(A, 1)  # GPUPlace(0)
     B_gpu = Insight.to(B, 1)
     C = Insight.matmul(A_gpu, B_gpu)
@@ -108,31 +97,27 @@ function run_gpu_linalg()
         println("GPU inv: skipped (requires OpenBLAS)")
     end
 
-    D = Insight.from_data([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], [3, 3])
+    D = Insight.from_data(reshape([1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0], 3, 3), Insight.float64)
     D_gpu = Insight.cast(D, Insight.float32)
     D_gpu = Insight.to(D_gpu, 1)
     try
-        U, S, VT = Insight.svd(D_gpu, false)
+        U, S, VT = Insight.svd(D_gpu)
         println("GPU SVD singular values (F32): $(Insight.to(S, 0))")
     catch
         println("GPU SVD: skipped (requires OpenBLAS)")
     end
 end
 
-try
-    Insight.init(["cpu", "cuda"])
-catch
-    Insight.init(["cpu"])
-end
-
 println("Insight7 Linear Algebra Demo (Julia)")
 
 run_cpu_linalg()
 
-if gpu_available()
-    run_gpu_linalg()
-else
-    println("\n[GPU not available, skipping GPU linalg demo]")
+if Insight.has_device(1)
+    separator("GPU Linear Algebra")
+    try
+        run_gpu_linalg()
+    catch
+    end
 end
 
 println("\nDone!")

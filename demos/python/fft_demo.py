@@ -23,14 +23,6 @@ def separator(title):
     print(f"{'=' * 40}")
 
 
-def gpu_available():
-    try:
-        ins.load_backend("cuda")
-        return True
-    except Exception:
-        return False
-
-
 def run_fft_cpu():
     separator("CPU FFT")
 
@@ -41,14 +33,14 @@ def run_fft_cpu():
     signal = signal.astype(np.float32)
 
     x = ins.from_numpy(signal)
-    print(f"Input signal (first 8): {x.numpy()[:8]}")
+    print(f"Input signal (first 8): {x[:8]}")
 
     # RFFT -> IRFFT roundtrip
     X = ins.rfft(x)
     print(f"RFFT output length: {X.numel()} (complex)")
 
     x_recon = ins.irfft(X, n=n)
-    print(f"Reconstructed signal (first 8): {x_recon.numpy()[:8]}")
+    print(f"Reconstructed signal (first 8): {x_recon[:8]}")
 
     # Check reconstruction error
     max_err = np.max(np.abs(signal - x_recon.numpy()))
@@ -71,8 +63,6 @@ def run_fft_cpu():
 
 
 def run_fft_gpu():
-    separator("GPU FFT")
-
     n = 64
     t = np.arange(n) / n
     signal = (np.sin(2 * math.pi * 5 * t) + 0.5 * np.sin(2 * math.pi * 12 * t)).astype(np.float32)
@@ -81,7 +71,7 @@ def run_fft_gpu():
     X = ins.rfft(x)
     x_recon = ins.irfft(X, n=n).to(ins.CPUPlace())
 
-    print(f"GPU RFFT->IRFFT roundtrip (first 8): {x_recon.numpy()[:8]}")
+    print(f"GPU RFFT->IRFFT roundtrip (first 8): {x_recon[:8]}")
     max_err = np.max(np.abs(signal - x_recon.numpy()))
     print(f"GPU max reconstruction error: {max_err:.6e}")
 
@@ -96,16 +86,18 @@ def run_fft_gpu():
 
 
 def main():
-    ins.init(["cpu", "cuda"])
+    ins.init()
 
     print("Insight7 FFT Demo (Python)")
 
     run_fft_cpu()
 
-    if gpu_available():
-        run_fft_gpu()
-    else:
-        print("\n[GPU not available, skipping GPU FFT demo]")
+    if ins.has_device("gpu"):
+        separator("GPU FFT")
+        try:
+            run_fft_gpu()
+        except Exception:
+            pass
 
     print("\nDone!")
 

@@ -9,24 +9,13 @@ local function separator(title)
   print(string.rep("=", 40))
 end
 
-local function gpu_available()
-  local ok, _ = pcall(function()
-    ins.load_backend("cuda")
-  end)
-  return ok
-end
+ins.init()
 
-local ok = pcall(ins.init, { "cpu", "cuda" })
-if not ok then
-  ins.init({ "cpu" })
+if not ins.has_device("gpu") then
+  os.exit(0)
 end
 
 print("Insight7 GPU Transfer Demo (Lua)")
-
-if not gpu_available() then
-  print("GPU not available. This demo requires a CUDA device.")
-  os.exit(0)
-end
 
 -- --- CPU to GPU transfer ---
 separator("CPU -> GPU Transfer")

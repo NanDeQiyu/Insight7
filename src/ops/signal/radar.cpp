@@ -286,7 +286,9 @@ Array mvdr(const Array &x, const Array &sv, bool calc_cov) {
 Array ambgfun(const Array &x, double fs, double prf, const Array &y,
               const std::string &cut, double cutValue) {
   INS_CHECK(x.defined(), "ambgfun: x is undefined");
-  INS_CHECK(cut == "2d", "ambgfun: only '2d' cut is currently supported");
+  INS_CHECK(cut == "2d" || cut == "delay" || cut == "doppler",
+            "ambgfun: cut must be '2d', 'delay', or 'doppler', got '", cut,
+            "'");
 
   Place cpu = CPUPlace();
   Array x_cpu = x.contiguous().to(cpu);
@@ -304,9 +306,14 @@ Array ambgfun(const Array &x, double fs, double prf, const Array &y,
     y_cpx = to_complex(y_cpu);
 
   // Normalize using composite ops: x /= sqrt(sum(|x|^2))
-  Array x_energy = sum(square(abs(x_cpx)));
+  // Compute energy in real domain to avoid sqrt(C64) which is not supported
+  Array x_re = real(x_cpx);
+  Array x_im = imag(x_cpx);
+  Array x_energy = sum(add(square(x_re), square(x_im)));
   x_cpx = div(x_cpx, sqrt(x_energy));
-  Array y_energy = sum(square(abs(y_cpx)));
+  Array y_re = real(y_cpx);
+  Array y_im = imag(y_cpx);
+  Array y_energy = sum(add(square(y_re), square(y_im)));
   y_cpx = div(y_cpx, sqrt(y_energy));
 
   // Flatten to 1D
@@ -328,6 +335,33 @@ Array ambgfun(const Array &x, double fs, double prf, const Array &y,
                {(void *)x_cpx.layout_ptr(), (void *)y_cpx.layout_ptr(),
                 (void *)params.layout_ptr()},
                {result.layout_ptr()});
+
+  // Extract 1D cut if requested
+  if (cut == "delay") {
+    // Cut along delay axis at a specific doppler index
+    int64_t doppler_idx = static_cast<int64_t>(cutValue);
+    if (doppler_idx < 0)
+      doppler_idx += doppler_len;
+    INS_CHECK(doppler_idx >= 0 && doppler_idx < doppler_len,
+              "ambgfun: delay cut doppler index ", cutValue, " out of range [",
+              -doppler_len, ", ", doppler_len, ")");
+    // Extract row: result[doppler_idx, :]
+    result = slice(result,
+                   {Slice(doppler_idx, doppler_idx + 1), Slice(0, delay_len)});
+    result = reshape(result, {delay_len});
+  } else if (cut == "doppler") {
+    // Cut along doppler axis at a specific delay index
+    int64_t delay_idx = static_cast<int64_t>(cutValue);
+    if (delay_idx < 0)
+      delay_idx += delay_len;
+    INS_CHECK(delay_idx >= 0 && delay_idx < delay_len,
+              "ambgfun: doppler cut delay index ", cutValue, " out of range [",
+              -delay_len, ", ", delay_len, ")");
+    // Extract column: result[:, delay_idx]
+    result =
+        slice(result, {Slice(0, doppler_len), Slice(delay_idx, delay_idx + 1)});
+    result = reshape(result, {doppler_len});
+  }
 
   if (x.place().kind() != DeviceKind::CPU)
     result = result.to(x.place());

@@ -35,14 +35,14 @@ class TestIndexingCPU:
     def test_unique_1d(self):
         a = ins.from_numpy(np.array([3, 1, 2, 1, 3, 2], dtype=np.float64))
         result = ins.unique(a)
-        assert hasattr(result, "values")
-        vals = sorted(result.values.numpy().tolist())
+        assert hasattr(result, "unique")
+        vals = sorted(result.unique.numpy().tolist())
         assert vals == [1.0, 2.0, 3.0]
 
     def test_unique_sorted(self):
         a = ins.from_numpy(np.array([5, 3, 1, 3, 5], dtype=np.float64))
         result = ins.unique(a)
-        data = result.values.numpy()
+        data = result.unique.numpy()
         assert np.all(np.diff(data) >= 0)
 
     def test_argsort_1d(self):
@@ -60,27 +60,27 @@ class TestIndexingCPU:
     def test_topk(self):
         a = ins.from_numpy(np.array([1, 5, 3, 2, 4], dtype=np.float64))
         result = ins.topk(a, 3)
-        data = sorted(result.numpy().tolist(), reverse=True)
+        data = sorted(result[0].numpy().tolist(), reverse=True)
         assert data == [5.0, 4.0, 3.0]
 
     def test_gather(self):
         a = ins.from_numpy(np.array([[10, 20], [30, 40]], dtype=np.float64))
         idx = ins.from_numpy(np.array([[0, 1], [1, 0]], dtype=np.int64))
-        result = ins.gather(a, idx, 0)
+        result = ins.gather(a, 0, idx)
         assert result.numel() == 4
 
     def test_scatter(self):
         a = ins.from_numpy(np.zeros([4], dtype=np.float64))
         idx = ins.from_numpy(np.array([0, 2], dtype=np.int64))
         src = ins.from_numpy(np.array([10, 20], dtype=np.float64))
-        result = ins.scatter(a, idx, src, 0)
+        result = ins.scatter(a, 0, idx, src)
         assert result.numel() == 4
 
     def test_scatter_add(self):
         a = ins.from_numpy(np.zeros([4], dtype=np.float64))
         idx = ins.from_numpy(np.array([0, 0, 2], dtype=np.int64))
         src = ins.from_numpy(np.array([1, 2, 3], dtype=np.float64))
-        result = ins.scatter_add(a, idx, src, 0)
+        result = ins.scatter_add(a, 0, idx, src)
         assert result.numel() == 4
         data = result.numpy()
         assert data[0] == pytest.approx(3.0)
@@ -114,7 +114,7 @@ class TestIndexingCPU:
         np.testing.assert_allclose(result.numpy(), np.array([1, 5, 3]))
 
     def test_indices(self):
-        result = ins.indices([2, 3])
+        result = ins.indices(ins.Shape([2, 3]))
         assert result.numel() > 0
 
     def test_sort_2d(self):
@@ -130,7 +130,7 @@ class TestIndexingCPU:
     def test_topk_smallest(self):
         a = ins.from_numpy(np.array([1, 5, 3, 2, 4], dtype=np.float64))
         result = ins.topk(a, 3, largest=False)
-        data = sorted(result.numpy().tolist())
+        data = sorted(result[0].numpy().tolist())
         assert data == [1.0, 2.0, 3.0]
 
 

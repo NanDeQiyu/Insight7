@@ -38,42 +38,67 @@ P = kf.P
 check("covariance_shape", Insight.numel(P) == 4)
 
 # set F
-F = Insight.from_data([1.0, 1.0, 0.0, 1.0])
-F = Insight.reshape(F, [2, 2])
+F = Insight.from_data([1.0, 1.0, 0.0, 1.0], Insight.float64)
+F = Insight.reshape(F, Int64[2, 2])
 kf.F = F
 check("set_F", Insight.numel(kf.F) == 4)
 
 # set H
-H = Insight.from_data([1.0, 0.0])
-H = Insight.reshape(H, [1, 2])
+H = Insight.from_data([1.0, 0.0], Insight.float64)
+H = Insight.reshape(H, Int64[1, 2])
 kf.H = H
 check("set_H", Insight.numel(kf.H) == 2)
 
 # predict
-Insight.predict(kf)
-x_after = kf.x
+kf2 = Insight.KalmanFilter(2, 1)
+F = Insight.from_data([1.0, 1.0, 0.0, 1.0], Insight.float64)
+F = Insight.reshape(F, Int64[2, 2])
+kf2.F = F
+H = Insight.from_data([1.0, 0.0], Insight.float64)
+H = Insight.reshape(H, Int64[1, 2])
+kf2.H = H
+# Set initial covariance and noise matrices
+P = Insight.from_data([1.0, 0.0, 0.0, 1.0], Insight.float64)
+P = Insight.reshape(P, Int64[2, 2])
+kf2.P = P
+R = Insight.from_data([1.0], Insight.float64)
+R = Insight.reshape(R, Int64[1, 1])
+kf2.R = R
+Q = Insight.from_data([0.1, 0.0, 0.0, 0.1], Insight.float64)
+Q = Insight.reshape(Q, Int64[2, 2])
+kf2.Q = Q
+Insight.predict(kf2)
+x_after = kf2.x
 check("predict", Insight.numel(x_after) == 2)
 
 # update
-z = Insight.from_data([1.0])
-Insight.update(kf, z)
-x_after = kf.x
-check("update", Insight.numel(x_after) == 2)
+kf3 = Insight.KalmanFilter(2, 1)
+kf3.F = F
+kf3.H = H
+kf3.P = P
+kf3.R = R
+kf3.Q = Q
+Insight.predict(kf3)
+z = Insight.from_data([1.0], Insight.float64)
+z = Insight.reshape(z, Int64[1, 1])
+Insight.update(kf3, z)
+x_after_u = kf3.x
+check("update", Insight.numel(x_after_u) == 2)
 
 # predict-update cycle
-kf2 = Insight.KalmanFilter(2, 1)
-F2 = Insight.from_data([1.0, 1.0, 0.0, 1.0])
-F2 = Insight.reshape(F2, [2, 2])
-H2 = Insight.from_data([1.0, 0.0])
-H2 = Insight.reshape(H2, [1, 2])
-kf2.F = F2
-kf2.H = H2
-for _ in 1:5
-    Insight.predict(kf2)
-    z2 = Insight.from_data([1.0])
-    Insight.update(kf2, z2)
+kf4 = Insight.KalmanFilter(2, 1)
+kf4.F = F
+kf4.H = H
+kf4.P = P
+kf4.R = R
+kf4.Q = Q
+for i in 1:5
+    Insight.predict(kf4)
+    zi = Insight.from_data([1.0], Insight.float64)
+    zi = Insight.reshape(zi, Int64[1, 1])
+    Insight.update(kf4, zi)
 end
-check("predict_update_cycle", Insight.numel(kf2.x) == 2)
+check("predict_update_cycle", Insight.numel(kf4.x) == 2)
 
 # ============================================================================
 # Results

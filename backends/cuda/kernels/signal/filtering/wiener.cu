@@ -7,6 +7,8 @@
 // outputs[0]: filtered array
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 template <typename T>
@@ -37,6 +39,72 @@ __global__ void signal_wiener_kernel(T *out, const T *x, int64_t n,
     var = T(1e-15);
 
   out[i] = x[i] - noise * (x[i] - mean) / var;
+}
+
+__global__ void signal_wiener_kernel_f16(uint16_t *out, const uint16_t *in,
+                                         int64_t n, int kernel_size) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+
+  int64_t lo = i - (int64_t)kernel_size;
+  if (lo < 0)
+    lo = 0;
+  int64_t hi = i + (int64_t)kernel_size;
+  if (hi >= n)
+    hi = n - 1;
+  int64_t count = hi - lo + 1;
+
+  float sum = 0.0f;
+  float sum2 = 0.0f;
+  for (int64_t j = lo; j <= hi; ++j) {
+    float val = __half2float(*(const __half *)&in[j]);
+    sum += val;
+    sum2 += val * val;
+  }
+
+  float mean = sum / (float)count;
+  float var = sum2 / (float)count - mean * mean;
+  if (var < 1e-15f)
+    var = 1e-15f;
+
+  float x_i = __half2float(*(const __half *)&in[i]);
+  float result = x_i - 0.0f * (x_i - mean) / var;
+  __half res = __float2half(result);
+  out[i] = *(uint16_t *)&res;
+}
+
+__global__ void signal_wiener_kernel_bf16(uint16_t *out, const uint16_t *in,
+                                          int64_t n, int kernel_size) {
+  int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+
+  int64_t lo = i - (int64_t)kernel_size;
+  if (lo < 0)
+    lo = 0;
+  int64_t hi = i + (int64_t)kernel_size;
+  if (hi >= n)
+    hi = n - 1;
+  int64_t count = hi - lo + 1;
+
+  float sum = 0.0f;
+  float sum2 = 0.0f;
+  for (int64_t j = lo; j <= hi; ++j) {
+    float val = __bfloat162float(*(const __nv_bfloat16 *)&in[j]);
+    sum += val;
+    sum2 += val * val;
+  }
+
+  float mean = sum / (float)count;
+  float var = sum2 / (float)count - mean * mean;
+  if (var < 1e-15f)
+    var = 1e-15f;
+
+  float x_i = __bfloat162float(*(const __nv_bfloat16 *)&in[i]);
+  float result = x_i - 0.0f * (x_i - mean) / var;
+  __nv_bfloat16 res = __float2bfloat16(result);
+  out[i] = *(uint16_t *)&res;
 }
 
 extern "C" {
@@ -79,8 +147,17 @@ C_Status signal_wiener_kernel_gpu(void **inputs, void **outputs) {
     signal_wiener_kernel<float><<<blocks, threads>>>(
         (float *)y_arr->data, (const float *)x_arr->data, n, kernel_size, 0.0f);
     break;
+  case INSIGHT_DTYPE_F16:
+    signal_wiener_kernel_f16<<<blocks, threads>>>(
+        (uint16_t *)y_arr->data, (const uint16_t *)x_arr->data, n, kernel_size);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    signal_wiener_kernel_bf16<<<blocks, threads>>>(
+        (uint16_t *)y_arr->data, (const uint16_t *)x_arr->data, n, kernel_size);
+    break;
   default:
-    gpu_set_last_error("signal_wiener: unsupported dtype, need F32 or F64");
+    gpu_set_last_error(
+        "signal_wiener: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -96,3 +173,6 @@ C_Status signal_wiener_kernel_gpu(void **inputs, void **outputs) {
 
 REGISTER_GPU_KERNEL(signal_wiener, INSIGHT_DTYPE_F64, signal_wiener_kernel_gpu);
 REGISTER_GPU_KERNEL(signal_wiener, INSIGHT_DTYPE_F32, signal_wiener_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_wiener, INSIGHT_DTYPE_F16, signal_wiener_kernel_gpu);
+REGISTER_GPU_KERNEL(signal_wiener, INSIGHT_DTYPE_BF16,
+                    signal_wiener_kernel_gpu);

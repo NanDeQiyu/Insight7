@@ -31,11 +31,23 @@ tests/cpu/test_signal_<module>.cpp        # CPU tests
 tests/cuda/test_signal_<module>.cpp       # CUDA tests
 ```
 
-### Implementation Strategy: Composite First
-Most cuSignal functions combine existing Insight7 primitives (FFT, math, linalg). Only write dedicated kernels when:
-1. Algorithm has sequential data dependency (e.g., IIR recursive filter `sosfilt`)
-2. Performance-critical hot path that composite ops can't match
-3. cuSignal already has a `.cu` file for the operation
+### Implementation Strategy: Composite First (with Backend Kernels)
+Most cuSignal functions combine existing Insight7 primitives (FFT, math, linalg). All 14 signal
+submodules now have dedicated backend kernels registered with the `signal_` prefix convention.
+The general approach is:
+
+1. **Frontend**: Uses composite Insight7 API (FFT, math, linalg) for high-level logic
+2. **Backend kernels**: For performance-critical paths, sequential algorithms, and data generation
+3. **Only write dedicated kernels when:**
+   - Algorithm has sequential data dependency (e.g., IIR recursive filter `sosfilt`)
+   - Performance-critical hot path that composite ops can't match
+   - cuSignal already has a `.cu` file for the operation
+
+**Signal kernel conventions (2026-06-01)**:
+- All signal kernels use `signal_` prefix: `signal_<op>_kernel_cpu`, `signal_<op>_kernel_gpu`
+- dtype support: CPU (F64, F32), CUDA (F64, F32, F16, BF16)
+- OpenMP parallelism for CPU when `numel > 1000`
+- 256 threads/block for CUDA
 
 **Insight7 primitives available for composition:**
 | Category | Functions |

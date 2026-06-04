@@ -1,0 +1,139 @@
+diff --git a/source/matplot/backend/gnuplot.cpp b/source/matplot/backend/gnuplot.cpp
+index 1e4a330..61907fc 100644
+--- a/source/matplot/backend/gnuplot.cpp
++++ b/source/matplot/backend/gnuplot.cpp
+@@ -69,11 +69,35 @@ namespace matplot::backend {
+             terminal_ = default_terminal_type();
+         }
+ 
+-        // Open the gnuplot pipe_
++        // When terminal is "unknown" (headless, no display), try "pngcairo"
++        // first which supports full gnuplot features including pm3d/image.
++        // Fall back to "png" (libgd, fewer features) then "dumb".
++        if (terminal_ == "unknown") {
++            if (terminal_is_available("pngcairo")) {
++                terminal_ = "pngcairo";
++            } else if (terminal_is_available("png")) {
++                terminal_ = "png";
++            } else {
++                terminal_ = "dumb";
++            }
++        }
++
++        // Check if gnuplot binary is actually available before opening pipe.
++        // Without this check, popen("gnuplot","w") returns a valid FILE* to a
++        // dead shell process, and subsequent writes cause SIGPIPE/segfault.
++        if (system("gnuplot --version > /dev/null 2>&1") != 0) {
++            pipe_ = nullptr;
++            return;
++        }
++
++        // Open the gnuplot pipe_.
++        // Redirect gnuplot's stdout/stderr to /dev/null to prevent binary
++        // PNG data from leaking to the parent process's stdout.
++        // When save() sends "set output filename", gnuplot writes to the file.
+         if constexpr (windows_should_persist_by_default) {
+             pipe_ = POPEN("gnuplot --persist", "w");
+         } else {
+-            pipe_ = POPEN("gnuplot", "w");
++            pipe_ = POPEN("gnuplot >/dev/null 2>&1", "w");
+         }
+ 
+         // Check if everything is OK
+@@ -86,6 +110,8 @@ namespace matplot::backend {
+     }
+ 
+     gnuplot::~gnuplot() {
++        if (!pipe_) return;
++
+         if constexpr (dont_let_it_close_too_fast) {
+             auto time_since_last_flush =
+                 std::chrono::high_resolution_clock::now() - last_flush_;
+@@ -94,12 +120,15 @@ namespace matplot::backend {
+                                             time_since_last_flush);
+             }
+         }
+-        flush_commands();
+-        run_command("exit");
+-        flush_commands();
+-        if (pipe_) {
+-            PCLOSE(pipe_);
++
++        // Graceful shutdown: try to close gnuplot, ignore errors.
++        // The pipe may be broken (e.g. gnuplot crashed during rendering).
++        errno = 0;
++        if (fputs("set output\nexit\n", pipe_) != EOF) {
++            fflush(pipe_);
+         }
++        PCLOSE(pipe_);
++        pipe_ = nullptr;
+     }
+ 
+     bool gnuplot::is_interactive() { return output_.empty(); }
+@@ -278,11 +307,22 @@ namespace matplot::backend {
+     bool gnuplot::render_data() { return flush_commands(); }
+ 
+     bool gnuplot::flush_commands() {
++        if (!pipe_) {
++            return false;
++        }
++        if (ferror(pipe_)) {
++            PCLOSE(pipe_);
++            pipe_ = nullptr;
++            return false;
++        }
+         if constexpr (dont_let_it_close_too_fast) {
+             last_flush_ = std::chrono::high_resolution_clock::now();
+         }
+-        fputs("\n", pipe_);
+-        fflush(pipe_);
++        if (fputs("\n", pipe_) == EOF || fflush(pipe_) == EOF) {
++            PCLOSE(pipe_);
++            pipe_ = nullptr;
++            return false;
++        }
+         if constexpr (trace_commands) {
+             std::cout << "\n\n\n\n" << std::endl;
+         }
+@@ -297,16 +337,30 @@ namespace matplot::backend {
+         if (!pipe_) {
+             return;
+         }
++        // Check if pipe is still valid (previous write may have failed)
++        if (ferror(pipe_)) {
++            PCLOSE(pipe_);
++            pipe_ = nullptr;
++            return;
++        }
+         size_t pipe_capacity = gnuplot_pipe_capacity(pipe_);
+         if (command.size() + bytes_in_pipe_ > pipe_capacity) {
+             flush_commands();
+             bytes_in_pipe_ = 0;
+         }
+         if (!command.empty()) {
+-            fputs(command.c_str(), pipe_);
++            if (fputs(command.c_str(), pipe_) == EOF) {
++                PCLOSE(pipe_);
++                pipe_ = nullptr;
++                return;
++            }
+         }
+         // fputs("; ", pipe_);
+-        fputs("\n", pipe_);
++        if (fputs("\n", pipe_) == EOF) {
++            PCLOSE(pipe_);
++            pipe_ = nullptr;
++            return;
++        }
+         bytes_in_pipe_ += command.size();
+         if constexpr (trace_commands) {
+             std::cout << command << std::endl;
+@@ -451,7 +505,7 @@ namespace matplot::backend {
+             "hpljii",   "hppj",    "imagen",  "linux",   "lua",
+             "lua tikz", "mf",      "mif",     "mp",      "pbm",
+             "pm",       "qms",     "regis",   "svga",    "texdraw",
+-            "tikz",     "tpic",    "vgagl",   "vws",     "pdf"};
++            "tikz",     "tpic",    "vgagl",   "vws",     "pdf",     "unknown"};
+         return std::find(std::begin(blacklist), std::end(blacklist), t) ==
+                std::end(blacklist);
+     }

@@ -15,6 +15,7 @@
 #define SOL_NO_EXCEPTIONS 0
 #include <sol/sol.hpp>
 
+#include "insight/c_api/array.h"
 #include "insight/core/array.h"
 #include "insight/core/dtype.h"
 #include "insight/core/place.h"
@@ -39,6 +40,7 @@
 #endif
 
 #include <cmath>
+#include <csignal>
 #include <string>
 #include <vector>
 
@@ -154,41 +156,42 @@ static Array from_lua_table(sol::table t) {
   return result;
 }
 
-// Helper: Array __tostring
+// Helper: Array __tostring — delegates to C++ ins::to_string()
 static std::string array_tostring(const Array &a) {
   if (!a.defined())
     return "<insight.Array (undefined)>";
-  std::string s = "<insight.Array shape=(";
-  for (int i = 0; i < a.shape().ndim(); i++) {
-    if (i > 0)
-      s += ", ";
-    s += std::to_string(a.shape().dim(i));
+  char *s = insight_array_tostring(a.layout_ptr());
+  if (s) {
+    std::string result(s);
+    std::free(s);
+    return result;
   }
-  s += ") dtype=";
-  switch (a.dtype()) {
-  case DType::F32:
-    s += "float32";
-    break;
-  case DType::F64:
-    s += "float64";
-    break;
-  case DType::I32:
-    s += "int32";
-    break;
-  case DType::I64:
-    s += "int64";
-    break;
-  case DType::BOOL:
-    s += "bool";
-    break;
-  default:
-    s += "other";
-    break;
-  }
-  s += " place=";
-  s += (a.place().is_gpu() ? "gpu" : "cpu");
-  s += ">";
-  return s;
+  return "<insight.Array (error)>";
+}
+
+// Helper: signal::write_bin wrapper (avoids sol2 default-param issues)
+static void lua_write_bin(const std::string &file, const Array &data,
+                          sol::optional<bool> append) {
+  signal::write_bin(file, data, append.value_or(true));
+}
+
+// Helper: signal::read_bin wrapper
+static Array lua_read_bin(const std::string &file, sol::optional<int> dtype) {
+  DType dt = dtype.has_value() ? static_cast<DType>(dtype.value()) : DType::U8;
+  return signal::read_bin(file, dt);
+}
+
+// Helper: signal::unpack_bin wrapper (avoids sol2 default-param issues)
+static Array lua_unpack_bin(const Array &binary, int dtype,
+                            sol::optional<std::string> endianness) {
+  return signal::unpack_bin(binary, static_cast<DType>(dtype),
+                            endianness.value_or("L"));
+}
+
+// Helper: signal::write_sigmf wrapper (avoids sol2 default-param issues)
+static void lua_write_sigmf(const std::string &data_file, const Array &data,
+                            sol::optional<bool> append) {
+  signal::write_sigmf(data_file, data, append.value_or(true));
 }
 
 // Convert a Lua 1-based slice spec string to C++ 0-based.
@@ -229,18 +232,22 @@ extern "C" int luaopen__insight(lua_State *L) {
   sol::state_view lua(L);
   sol::table m = lua.create_table();
 
-  // Auto-initialize CPU backend
+  // Auto-initialize with smart backend discovery
   if (!ins::is_initialized()) {
-    ins::init({"cpu"});
+    ins::init();
   }
 
-  // Manual init
-  m["init"] = [](sol::table backends) {
-    std::vector<std::string> be;
-    for (size_t i = 1; i <= backends.size(); i++) {
-      be.push_back(backends.get<std::string>(i));
+  // Manual init — supports no args (auto-discover) or table of backend names
+  m["init"] = [](sol::optional<sol::table> backends) {
+    if (!backends.has_value()) {
+      ins::init(); // auto-discover: CPU + first GPU if available
+    } else {
+      std::vector<std::string> be;
+      for (size_t i = 1; i <= backends->size(); i++) {
+        be.push_back(backends->get<std::string>(i));
+      }
+      ins::init(be);
     }
-    ins::init(be);
   };
 
   // Load additional backend after init
@@ -251,6 +258,15 @@ extern "C" int luaopen__insight(lua_State *L) {
     } catch (...) {
       return false;
     }
+  };
+
+  // Check if a device kind is available (e.g., "cpu", "gpu")
+  m["has_device"] = [](const std::string &kind) -> bool {
+    if (kind == "cpu")
+      return ins::has_device(DeviceKind::CPU);
+    if (kind == "gpu")
+      return ins::has_device(DeviceKind::GPU);
+    return false;
   };
 
   // ===== Device information =====
@@ -272,6 +288,9 @@ extern "C" int luaopen__insight(lua_State *L) {
   };
   m["gpu_count"] = []() {
     return static_cast<int>(device_count(DeviceKind::GPU));
+  };
+  m["device_count"] = [](int kind) {
+    return static_cast<int>(device_count(static_cast<DeviceKind>(kind)));
   };
 
   // ===== DType shortcuts (Paddle-style: ins.float32, ins.int64, ...) =====
@@ -299,7 +318,14 @@ extern "C" int luaopen__insight(lua_State *L) {
   place_type["device_id"] = &Place::device_id;
 
   m["CPUPlace"] = []() { return CPUPlace(); };
-  m["GPUPlace"] = [](int id) { return GPUPlace(id); };
+  m["GPUPlace"] = [](int id, sol::this_state ts) -> Place {
+    try {
+      return GPUPlace(id);
+    } catch (const std::exception &e) {
+      luaL_error(ts, "%s", e.what());
+      return CPUPlace();
+    }
+  };
 
   // ===== Shape helper =====
   m["Shape"] = [](sol::table dims) { return Shape(table_to_shape(dims)); };
@@ -367,6 +393,14 @@ extern "C" int luaopen__insight(lua_State *L) {
       return (double)cpu.data<int64_t>()[idx];
     case DType::I32:
       return (double)cpu.data<int32_t>()[idx];
+    case DType::I16:
+      return (double)cpu.data<int16_t>()[idx];
+    case DType::I8:
+      return (double)cpu.data<int8_t>()[idx];
+    case DType::U8:
+      return (double)cpu.data<uint8_t>()[idx];
+    case DType::BOOL:
+      return cpu.data<bool>()[idx] ? 1.0 : 0.0;
     default:
       return 0.0;
     }
@@ -387,9 +421,24 @@ extern "C" int luaopen__insight(lua_State *L) {
 
   // Device/type conversion
   array_type["to"] = sol::overload(
-      [](const Array &a, const Place &p) { return a.to(p); },
+      [](const Array &a, const Place &p, sol::this_state ts) -> Array {
+        try {
+          return a.to(p);
+        } catch (const std::exception &e) {
+          luaL_error(ts, "%s", e.what());
+          return Array();
+        }
+      },
       [](const Array &a, DType dt) { return a.to(dt); },
-      [](const Array &a, const Place &p, DType dt) { return a.to(p, dt); });
+      [](const Array &a, const Place &p, DType dt,
+         sol::this_state ts) -> Array {
+        try {
+          return a.to(p, dt);
+        } catch (const std::exception &e) {
+          luaL_error(ts, "%s", e.what());
+          return Array();
+        }
+      });
   array_type["copy"] = &Array::copy;
 
   // String slicing: a[":,1:-1"] (Lua 1-based → auto-convert to 0-based)
@@ -443,6 +492,9 @@ extern "C" int luaopen__insight(lua_State *L) {
       [](const Array &a, const Array &b) { return less(a, b); };
   array_type[sol::meta_function::less_than_or_equal_to] =
       [](const Array &a, const Array &b) { return less_equal(a, b); };
+
+  // String representation metamethod (enables print(arr) and tostring(arr))
+  array_type[sol::meta_function::to_string] = &array_tostring;
 
   // ====================================================================
   // Creation
@@ -545,6 +597,8 @@ extern "C" int luaopen__insight(lua_State *L) {
   m["ceil"] = [](const Array &x) { return ceil(x); };
   m["round"] = [](const Array &x) { return rint(x); };
   m["sign"] = [](const Array &x) { return sign(x); };
+  m["conj"] = &conj;
+  m["angle"] = &angle;
   m["isnan"] = [](const Array &x) { return isnan(x); };
   m["isinf"] = [](const Array &x) { return isinf(x); };
   m["isfinite"] = [](const Array &x) { return isfinite(x); };
@@ -615,6 +669,26 @@ extern "C" int luaopen__insight(lua_State *L) {
                    sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
     return argmin(x, ax, keepdims.value_or(false));
+  };
+  m["any"] = [](const Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return any(x, ax, keepdims.value_or(false));
+  };
+  m["all"] = [](const Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return all(x, ax, keepdims.value_or(false));
+  };
+  m["var"] = [](const Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims, sol::optional<int> ddof) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return var(x, ax, keepdims.value_or(false), ddof.value_or(0));
+  };
+  m["std"] = [](const Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims, sol::optional<int> ddof) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return ins::std(x, ax, keepdims.value_or(false), ddof.value_or(0));
   };
   m["cumsum"] = [](const Array &x, int axis) { return cumsum(x, axis); };
   m["cumprod"] = [](const Array &x, int axis) { return cumprod(x, axis); };
@@ -771,6 +845,11 @@ extern "C" int luaopen__insight(lua_State *L) {
     return cond(x, p.value_or(2.0));
   };
   m["matrix_rank"] = [](const Array &x) { return matrix_rank(x); };
+  m["matrix_power"] = [](const Array &x, int n) { return matrix_power(x, n); };
+  m["slogdet"] = [](const Array &x) { return slogdet(x); };
+  m["eigvalsh"] = [](const Array &x, sol::optional<std::string> uplo) {
+    return eigvalsh(x, uplo.value_or("L"));
+  };
 
   // ====================================================================
   // FFT
@@ -831,6 +910,38 @@ extern "C" int luaopen__insight(lua_State *L) {
     return fft::irfft2(x, s.value_or(std::vector<int64_t>{}),
                        axes.value_or(std::vector<int>{-2, -1}),
                        norm.value_or("backward"));
+  };
+  m["fft2"] = [](const Array &x, sol::optional<sol::table> s,
+                 sol::optional<sol::table> axes,
+                 sol::optional<std::string> norm) {
+    std::vector<int64_t> s_vec;
+    if (s) {
+      for (auto &kv : *s)
+        s_vec.push_back(kv.second.as<int64_t>());
+    }
+    std::vector<int> axes_vec = {-2, -1};
+    if (axes) {
+      axes_vec.clear();
+      for (auto &kv : *axes)
+        axes_vec.push_back(kv.second.as<int>());
+    }
+    return fft::fft2(x, s_vec, axes_vec, norm.value_or("backward"));
+  };
+  m["ifft2"] = [](const Array &x, sol::optional<sol::table> s,
+                  sol::optional<sol::table> axes,
+                  sol::optional<std::string> norm) {
+    std::vector<int64_t> s_vec;
+    if (s) {
+      for (auto &kv : *s)
+        s_vec.push_back(kv.second.as<int64_t>());
+    }
+    std::vector<int> axes_vec = {-2, -1};
+    if (axes) {
+      axes_vec.clear();
+      for (auto &kv : *axes)
+        axes_vec.push_back(kv.second.as<int>());
+    }
+    return fft::ifft2(x, s_vec, axes_vec, norm.value_or("backward"));
   };
   m["rfftn"] = [](const Array &x, sol::optional<std::vector<int64_t>> s,
                   sol::optional<std::vector<int>> axes,
@@ -1168,7 +1279,9 @@ extern "C" int luaopen__insight(lua_State *L) {
     sig["bark2hz"] = &signal::bark2hz;
 
     // --- Demod ---
-    sig["fm_demod"] = &signal::fm_demod;
+    sig["fm_demod"] = [](const Array &x, sol::optional<int> axis) {
+      return signal::fm_demod(x, axis.value_or(-1));
+    };
 
     // --- Peak Finding ---
     sig["argrelextrema"] = &signal::argrelextrema;
@@ -1176,26 +1289,47 @@ extern "C" int luaopen__insight(lua_State *L) {
     sig["argrelmin"] = &signal::argrelmin;
 
     // --- Radar ---
-    sig["pulse_compression"] = &signal::pulse_compression;
+    sig["pulse_compression"] = [](const Array &x, const Array &tpl,
+                                  sol::optional<bool> normalize,
+                                  sol::optional<std::string> window,
+                                  sol::optional<int64_t> nfft) {
+      return signal::pulse_compression(x, tpl, normalize.value_or(false),
+                                       window.value_or(""), nfft.value_or(0));
+    };
     sig["pulse_doppler"] = &signal::pulse_doppler;
     sig["cfar_alpha"] = &signal::cfar_alpha;
-    sig["ca_cfar"] = &signal::ca_cfar;
-    sig["mvdr"] = &signal::mvdr;
+    sig["ca_cfar"] = [](sol::this_state L, const Array &data,
+                        sol::table guard_tbl, sol::table ref_tbl,
+                        sol::optional<double> pfa) {
+      std::vector<int> guard, ref;
+      for (auto &kv : guard_tbl)
+        guard.push_back(kv.second.as<int>());
+      for (auto &kv : ref_tbl)
+        ref.push_back(kv.second.as<int>());
+      auto result = signal::ca_cfar(data, guard, ref, pfa.value_or(1e-3));
+      sol::state_view lua(L);
+      sol::table ret = lua.create_table();
+      ret[1] = result.first;
+      ret[2] = result.second;
+      return ret;
+    };
+    sig["mvdr"] = [](const Array &x, const Array &sv,
+                     sol::optional<bool> calc_cov) {
+      return signal::mvdr(x, sv, calc_cov.value_or(true));
+    };
     sig["ambgfun"] = &signal::ambgfun;
 
     // --- Signal I/O ---
-    sig["read_bin"] = &signal::read_bin;
-    sig["write_bin"] = &signal::write_bin;
-    sig["unpack_bin"] = &signal::unpack_bin;
+    sig["read_bin"] = &lua_read_bin;
+    sig["write_bin"] = &lua_write_bin;
+    sig["unpack_bin"] = &lua_unpack_bin;
     sig["pack_bin"] = &signal::pack_bin;
     sig["read_sigmf"] = &signal::read_sigmf;
-    sig["write_sigmf"] = &signal::write_sigmf;
+    sig["write_sigmf"] = &lua_write_sigmf;
 
     // --- Estimation (KalmanFilter) ---
     sol::usertype<signal::KalmanFilter> kf_type =
-        sig.new_usertype<signal::KalmanFilter>(
-            "KalmanFilter", sol::constructors<signal::KalmanFilter(
-                                int, int, int, int, DType)>());
+        sig.new_usertype<signal::KalmanFilter>("KalmanFilter");
     kf_type["x"] = &signal::KalmanFilter::x;
     kf_type["P"] = &signal::KalmanFilter::P;
     kf_type["z"] = &signal::KalmanFilter::z;
@@ -1208,16 +1342,34 @@ extern "C" int luaopen__insight(lua_State *L) {
     kf_type["points"] = &signal::KalmanFilter::points;
     kf_type["predict"] = &signal::KalmanFilter::predict;
     kf_type["update"] = &signal::KalmanFilter::update;
+    // Factory function for constructing KalmanFilter with optional args
+    sig["KalmanFilter_new"] = [](int dim_x, int dim_z, sol::optional<int> dim_u,
+                                 sol::optional<int> points,
+                                 sol::optional<DType> dtype) {
+      return signal::KalmanFilter(dim_x, dim_z, dim_u.value_or(0),
+                                  points.value_or(1),
+                                  dtype.value_or(DType::F64));
+    };
 
     // Top-level aliases
     sig["convolve"] = &convolve;
-    sig["unwrap"] = &unwrap;
+    sig["unwrap"] = [](const Array &p, sol::optional<int> axis,
+                       sol::optional<double> discont,
+                       sol::optional<double> period) {
+      return unwrap(p, axis.value_or(-1), discont.value_or(M_PI),
+                    period.value_or(2 * M_PI));
+    };
     sig["sinc"] = &sinc;
   }
 
   // Top-level aliases (scipy-compatible)
   m["convolve"] = &convolve;
-  m["unwrap"] = &unwrap;
+  m["unwrap"] = [](const Array &p, sol::optional<int> axis,
+                   sol::optional<double> discont,
+                   sol::optional<double> period) {
+    return unwrap(p, axis.value_or(-1), discont.value_or(M_PI),
+                  period.value_or(2 * M_PI));
+  };
   m["sinc"] = &sinc;
 
   // ====================================================================
@@ -1225,221 +1377,759 @@ extern "C" int luaopen__insight(lua_State *L) {
   // ====================================================================
 #ifdef INSIGHT_USE_MATPLOT
   {
+    // Ignore SIGPIPE to prevent process crash when gnuplot is unavailable.
+    // matplotplusplus spawns gnuplot via popen; if gnuplot is not installed
+    // the pipe breaks and SIGPIPE would kill the process.
+    std::signal(SIGPIPE, SIG_IGN);
+
     sol::table plt = m.create_named("plot");
 
     plt["figure"] = [](sol::optional<int> number) {
-      plot::figure(number.value_or(-1));
+      try {
+        plot::figure(number.value_or(-1));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
-    plt["subplot"] = &plot::subplot;
-    plt["hold"] = &plot::hold;
-    plt["clf"] = &plot::clf;
-    plt["show"] = &plot::show;
-    plt["save"] = &plot::save;
+    plt["subplot"] = [](int r, int c, int i) {
+      try {
+        plot::subplot(r, c, i);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["hold"] = [](bool on) {
+      try {
+        plot::hold(on);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["clf"] = []() {
+      try {
+        plot::clf();
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["show"] = []() {
+      try {
+        plot::show();
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["save"] = [](const std::string &fn) {
+      try {
+        plot::save(fn);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
     plt["plot"] = sol::overload(
         [](const Array &y, sol::optional<std::string> fmt) {
-          plot::plot(y, fmt.value_or(""));
+          try {
+            plot::plot(y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         },
         [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
-          plot::plot(x, y, fmt.value_or(""));
+          try {
+            plot::plot(x, y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         });
     plt["plot3"] = [](const Array &x, const Array &y, const Array &z,
                       sol::optional<std::string> fmt) {
-      plot::plot3(x, y, z, fmt.value_or(""));
+      try {
+        plot::plot3(x, y, z, fmt.value_or(""));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
     plt["stairs"] = sol::overload(
         [](const Array &y, sol::optional<std::string> fmt) {
-          plot::stairs(y, fmt.value_or(""));
+          try {
+            plot::stairs(y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         },
         [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
-          plot::stairs(x, y, fmt.value_or(""));
+          try {
+            plot::stairs(x, y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         });
-    plt["errorbar"] = &plot::errorbar;
-    plt["area"] =
-        sol::overload([](const Array &y) { plot::area(y); },
-                      [](const Array &x, const Array &y) { plot::area(x, y); });
+    plt["errorbar"] = [](const Array &x, const Array &y, const Array &err,
+                         sol::optional<std::string> fmt) {
+      try {
+        plot::errorbar(x, y, err, fmt.value_or(""));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["area"] = sol::overload(
+        [](const Array &y) {
+          try {
+            plot::area(y);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        },
+        [](const Array &x, const Array &y) {
+          try {
+            plot::area(x, y);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        });
     plt["fill"] = [](const Array &x, const Array &y,
                      sol::optional<std::string> color) {
-      plot::fill(x, y, color.value_or("b"));
+      try {
+        plot::fill(x, y, color.value_or("b"));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
     plt["line"] = [](const Array &x, const Array &y,
                      sol::optional<std::string> fmt) {
-      plot::line(x, y, fmt.value_or(""));
+      try {
+        plot::line(x, y, fmt.value_or(""));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
 
     plt["semilogx"] = sol::overload(
         [](const Array &y, sol::optional<std::string> fmt) {
-          plot::semilogx(y, fmt.value_or(""));
+          try {
+            plot::semilogx(y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         },
         [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
-          plot::semilogx(x, y, fmt.value_or(""));
+          try {
+            plot::semilogx(x, y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         });
     plt["semilogy"] = sol::overload(
         [](const Array &y, sol::optional<std::string> fmt) {
-          plot::semilogy(y, fmt.value_or(""));
+          try {
+            plot::semilogy(y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         },
         [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
-          plot::semilogy(x, y, fmt.value_or(""));
+          try {
+            plot::semilogy(x, y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         });
     plt["loglog"] = sol::overload(
         [](const Array &y, sol::optional<std::string> fmt) {
-          plot::loglog(y, fmt.value_or(""));
+          try {
+            plot::loglog(y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         },
         [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
-          plot::loglog(x, y, fmt.value_or(""));
+          try {
+            plot::loglog(x, y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         });
 
     plt["scatter"] = [](const Array &x, const Array &y,
                         sol::optional<double> size) {
-      plot::scatter(x, y, size.value_or(20.0));
+      try {
+        plot::scatter(x, y, size.value_or(20.0));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
     plt["scatter3"] = [](const Array &x, const Array &y, const Array &z,
                          sol::optional<double> size) {
-      plot::scatter3(x, y, z, size.value_or(20.0));
+      try {
+        plot::scatter3(x, y, z, size.value_or(20.0));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
-    plt["binscatter"] = &plot::binscatter;
+    plt["binscatter"] = [](const Array &x, const Array &y) {
+      try {
+        plot::binscatter(x, y);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
     plt["bar"] = sol::overload(
         [](const Array &y, sol::optional<double> w) {
-          plot::bar(y, w.value_or(0.8));
+          try {
+            plot::bar(y, w.value_or(0.8));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         },
         [](const Array &x, const Array &y, sol::optional<double> w) {
-          plot::bar(x, y, w.value_or(0.8));
+          try {
+            plot::bar(x, y, w.value_or(0.8));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         });
     plt["barh"] = sol::overload(
         [](const Array &y, sol::optional<double> w) {
-          plot::barh(y, w.value_or(0.8));
+          try {
+            plot::barh(y, w.value_or(0.8));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         },
         [](const Array &x, const Array &y, sol::optional<double> w) {
-          plot::barh(x, y, w.value_or(0.8));
+          try {
+            plot::barh(x, y, w.value_or(0.8));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         });
     plt["barstacked"] = sol::overload(
-        [](const Array &Y) { plot::barstacked(Y); },
-        [](const Array &x, const Array &Y) { plot::barstacked(x, Y); });
+        [](const Array &Y) {
+          try {
+            plot::barstacked(Y);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        },
+        [](const Array &x, const Array &Y) {
+          try {
+            plot::barstacked(x, Y);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        });
     plt["pareto"] = sol::overload(
-        [](const Array &y) { plot::pareto(y); },
-        [](const Array &x, const Array &y) { plot::pareto(x, y); });
+        [](const Array &y) {
+          try {
+            plot::pareto(y);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        },
+        [](const Array &x, const Array &y) {
+          try {
+            plot::pareto(x, y);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        });
 
     plt["hist"] = [](const Array &data, sol::optional<int> bins) {
-      plot::hist(data, bins.value_or(10));
+      try {
+        plot::hist(data, bins.value_or(10));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
     plt["hist2"] = [](const Array &x, const Array &y, sol::optional<int> bins) {
-      plot::hist2(x, y, bins.value_or(10));
+      try {
+        plot::hist2(x, y, bins.value_or(10));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
-    plt["boxplot"] =
-        sol::overload([](const Array &data) { plot::boxplot(data); },
-                      [](const Array &data, std::vector<std::string> groups) {
-                        plot::boxplot(data, groups);
-                      });
-    plt["heatmap"] = &plot::heatmap;
+    plt["boxplot"] = sol::overload(
+        [](const Array &data) {
+          try {
+            plot::boxplot(data);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        },
+        [](const Array &data, std::vector<std::string> groups) {
+          try {
+            plot::boxplot(data, groups);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        });
+    plt["heatmap"] = [](const Array &data) {
+      try {
+        plot::heatmap(data);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
     plt["stem"] = sol::overload(
         [](const Array &y, sol::optional<std::string> fmt) {
-          plot::stem(y, fmt.value_or(""));
+          try {
+            plot::stem(y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         },
         [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
-          plot::stem(x, y, fmt.value_or(""));
+          try {
+            plot::stem(x, y, fmt.value_or(""));
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
         });
     plt["stem3"] = [](const Array &x, const Array &y, const Array &z,
                       sol::optional<std::string> fmt) {
-      plot::stem3(x, y, z, fmt.value_or(""));
+      try {
+        plot::stem3(x, y, z, fmt.value_or(""));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
 
     plt["contour"] = [](const Array &X, const Array &Y, const Array &Z,
                         sol::optional<int> levels) {
-      plot::contour(X, Y, Z, levels.value_or(10));
+      try {
+        plot::contour(X, Y, Z, levels.value_or(10));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
     plt["contourf"] = [](const Array &X, const Array &Y, const Array &Z,
                          sol::optional<int> levels) {
-      plot::contourf(X, Y, Z, levels.value_or(10));
+      try {
+        plot::contourf(X, Y, Z, levels.value_or(10));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
-    plt["pcolor"] = &plot::pcolor;
+    plt["pcolor"] = [](const Array &C) {
+      try {
+        plot::pcolor(C);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
-    plt["surf"] = &plot::surf;
-    plt["surfc"] = &plot::surfc;
-    plt["mesh"] = &plot::mesh;
-    plt["meshc"] = &plot::meshc;
-    plt["meshz"] = &plot::meshz;
-    plt["waterfall"] = &plot::waterfall;
+    plt["surf"] = [](const Array &X, const Array &Y, const Array &Z) {
+      try {
+        plot::surf(X, Y, Z);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["surfc"] = [](const Array &X, const Array &Y, const Array &Z) {
+      try {
+        plot::surfc(X, Y, Z);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["mesh"] = [](const Array &X, const Array &Y, const Array &Z) {
+      try {
+        plot::mesh(X, Y, Z);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["meshc"] = [](const Array &X, const Array &Y, const Array &Z) {
+      try {
+        plot::meshc(X, Y, Z);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["meshz"] = [](const Array &X, const Array &Y, const Array &Z) {
+      try {
+        plot::meshz(X, Y, Z);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["waterfall"] = [](const Array &X, const Array &Y, const Array &Z) {
+      try {
+        plot::waterfall(X, Y, Z);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
     plt["ribbon"] = sol::overload(
-        [](const Array &y) { plot::ribbon(y); },
-        [](const Array &x, const Array &y) { plot::ribbon(x, y); });
-    plt["fence"] = &plot::fence;
+        [](const Array &y) {
+          try {
+            plot::ribbon(y);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        },
+        [](const Array &x, const Array &y) {
+          try {
+            plot::ribbon(x, y);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        });
+    plt["fence"] = [](const Array &X, const Array &Y, const Array &Z) {
+      try {
+        plot::fence(X, Y, Z);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
     plt["quiver"] = [](const Array &X, const Array &Y, const Array &U,
                        const Array &V, sol::optional<double> scale) {
-      plot::quiver(X, Y, U, V, scale.value_or(1.0));
+      try {
+        plot::quiver(X, Y, U, V, scale.value_or(1.0));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
-    plt["quiver3"] = &plot::quiver3;
-    plt["feather"] = &plot::feather;
+    plt["quiver3"] = [](const Array &X, const Array &Y, const Array &Z,
+                        const Array &U, const Array &V, const Array &W) {
+      try {
+        plot::quiver3(X, Y, Z, U, V, W);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["feather"] = [](const Array &u, const Array &v) {
+      try {
+        plot::feather(u, v);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
     plt["polarplot"] = [](const Array &theta, const Array &rho,
                           sol::optional<std::string> fmt) {
-      plot::polarplot(theta, rho, fmt.value_or(""));
+      try {
+        plot::polarplot(theta, rho, fmt.value_or(""));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
     plt["polarscatter"] = [](const Array &theta, const Array &rho,
                              sol::optional<double> size) {
-      plot::polarscatter(theta, rho, size.value_or(20.0));
+      try {
+        plot::polarscatter(theta, rho, size.value_or(20.0));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
     plt["polarhistogram"] = [](const Array &data, sol::optional<int> bins) {
-      plot::polarhistogram(data, bins.value_or(10));
+      try {
+        plot::polarhistogram(data, bins.value_or(10));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
-    plt["compass"] = &plot::compass;
-    plt["ezpolar"] = &plot::ezpolar;
+    plt["compass"] = [](const Array &u, const Array &v) {
+      try {
+        plot::compass(u, v);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["ezpolar"] = [](const std::string &expr) {
+      try {
+        plot::ezpolar(expr);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
-    plt["pie"] =
-        sol::overload([](const Array &x) { plot::pie(x); },
-                      [](const Array &x, std::vector<std::string> labels) {
-                        plot::pie(x, labels);
-                      });
+    plt["pie"] = sol::overload(
+        [](const Array &x) {
+          try {
+            plot::pie(x);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        },
+        [](const Array &x, std::vector<std::string> labels) {
+          try {
+            plot::pie(x, labels);
+          } catch (const std::exception &e) {
+            throw sol::error(e.what());
+          }
+        });
 
-    plt["imshow"] = &plot::imshow;
-    plt["image"] = &plot::image;
-    plt["imagesc"] = &plot::imagesc;
+    plt["imshow"] = [](const Array &data) {
+      try {
+        plot::imshow(data);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["image"] = [](const Array &data) {
+      try {
+        plot::image(data);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["imagesc"] = [](const Array &data) {
+      try {
+        plot::imagesc(data);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
-    plt["graph"] = &plot::graph;
-    plt["digraph"] = &plot::digraph;
-    plt["parallelplot"] = &plot::parallelplot;
-    plt["plotmatrix"] = &plot::plotmatrix;
-    plt["wordcloud"] = &plot::wordcloud;
-    plt["rgbplot"] = &plot::rgbplot;
+    plt["graph"] = [](const std::vector<int> &s, const std::vector<int> &t) {
+      try {
+        plot::graph(s, t);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["digraph"] = [](const std::vector<int> &s, const std::vector<int> &t) {
+      try {
+        plot::digraph(s, t);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["parallelplot"] = [](const Array &data) {
+      try {
+        plot::parallelplot(data);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["plotmatrix"] = [](const Array &X) {
+      try {
+        plot::plotmatrix(X);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["wordcloud"] = [](const std::vector<std::string> &w,
+                          const std::vector<double> &s) {
+      try {
+        plot::wordcloud(w, s);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["rgbplot"] = [](const Array &data) {
+      try {
+        plot::rgbplot(data);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
-    plt["title"] = &plot::title;
-    plt["subtitle"] = &plot::subtitle;
-    plt["xlabel"] = &plot::xlabel;
-    plt["ylabel"] = &plot::ylabel;
-    plt["zlabel"] = &plot::zlabel;
-    plt["legend"] = &plot::legend;
+    plt["title"] = [](const std::string &text) {
+      try {
+        plot::title(text);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["subtitle"] = [](const std::string &text) {
+      try {
+        plot::subtitle(text);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["xlabel"] = [](const std::string &text) {
+      try {
+        plot::xlabel(text);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["ylabel"] = [](const std::string &text) {
+      try {
+        plot::ylabel(text);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["zlabel"] = [](const std::string &text) {
+      try {
+        plot::zlabel(text);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["legend"] = [](const std::vector<std::string> &labels) {
+      try {
+        plot::legend(labels);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
-    plt["xlim"] = &plot::xlim;
-    plt["ylim"] = &plot::ylim;
-    plt["zlim"] = &plot::zlim;
-    plt["axis_equal"] = &plot::axis_equal;
-    plt["axis_tight"] = &plot::axis_tight;
-    plt["axis_off"] = &plot::axis_off;
-    plt["axis_ij"] = &plot::axis_ij;
-    plt["grid"] = &plot::grid;
+    plt["xlim"] = [](double xmin, double xmax) {
+      try {
+        plot::xlim(xmin, xmax);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["ylim"] = [](double ymin, double ymax) {
+      try {
+        plot::ylim(ymin, ymax);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["zlim"] = [](double zmin, double zmax) {
+      try {
+        plot::zlim(zmin, zmax);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["axis_equal"] = []() {
+      try {
+        plot::axis_equal();
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["axis_tight"] = []() {
+      try {
+        plot::axis_tight();
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["axis_off"] = []() {
+      try {
+        plot::axis_off();
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["axis_ij"] = []() {
+      try {
+        plot::axis_ij();
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["grid"] = [](bool on) {
+      try {
+        plot::grid(on);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
-    plt["xticks"] = &plot::xticks;
-    plt["yticks"] = &plot::yticks;
-    plt["zticks"] = &plot::zticks;
-    plt["xticklabels"] = &plot::xticklabels;
-    plt["yticklabels"] = &plot::yticklabels;
-    plt["xtickangle"] = &plot::xtickangle;
-    plt["ytickangle"] = &plot::ytickangle;
+    plt["xticks"] = [](const std::vector<double> &t) {
+      try {
+        plot::xticks(t);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["yticks"] = [](const std::vector<double> &t) {
+      try {
+        plot::yticks(t);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["zticks"] = [](const std::vector<double> &t) {
+      try {
+        plot::zticks(t);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["xticklabels"] = [](const std::vector<std::string> &l) {
+      try {
+        plot::xticklabels(l);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["yticklabels"] = [](const std::vector<std::string> &l) {
+      try {
+        plot::yticklabels(l);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["xtickangle"] = [](double angle) {
+      try {
+        plot::xtickangle(angle);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["ytickangle"] = [](double angle) {
+      try {
+        plot::ytickangle(angle);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
 
-    plt["colormap"] = &plot::colormap;
+    plt["colormap"] = [](plot::Colormap cmap) {
+      try {
+        plot::colormap(cmap);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
     plt["colorbar"] = [](sol::optional<bool> on) {
-      plot::colorbar(on.value_or(true));
+      try {
+        plot::colorbar(on.value_or(true));
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
 
     plt["text"] = [](double x, double y, const std::string &s) {
-      plot::text(x, y, s);
+      try {
+        plot::text(x, y, s);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
     };
-    plt["arrow"] = &plot::arrow;
-    plt["rectangle"] = &plot::rectangle;
-    plt["ellipse"] = &plot::ellipse;
-    plt["view"] = &plot::view;
+    plt["arrow"] = [](double x1, double y1, double x2, double y2) {
+      try {
+        plot::arrow(x1, y1, x2, y2);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["rectangle"] = [](double x, double y, double w, double h) {
+      try {
+        plot::rectangle(x, y, w, h);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["ellipse"] = [](double cx, double cy, double rx, double ry) {
+      try {
+        plot::ellipse(cx, cy, rx, ry);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
+    plt["view"] = [](double az, double el) {
+      try {
+        plot::view(az, el);
+      } catch (const std::exception &e) {
+        throw sol::error(e.what());
+      }
+    };
   }
 #endif // INSIGHT_USE_MATPLOT
 
@@ -1461,7 +2151,11 @@ extern "C" int luaopen__insight(lua_State *L) {
     return randint(low, high, Shape(table_to_shape(shape)),
                    dtype.value_or(DType::I64), place.value_or(get_device()));
   };
-  m["randperm"] = &randperm;
+  m["randperm"] = [](int64_t n, sol::optional<DType> dtype,
+                     sol::optional<Place> place) {
+    return randperm(n, dtype.value_or(DType::I64),
+                    place.value_or(get_device()));
+  };
   m["seed"] = [](uint64_t s) { return seed(s); };
   m["get_seed"] = []() { return get_seed(); };
   m["rand_like"] = [](const Array &x) { return rand_like(x); };
@@ -1497,7 +2191,10 @@ extern "C" int luaopen__insight(lua_State *L) {
   // ====================================================================
   // Cast
   // ====================================================================
-  m["cast"] = &cast;
+  m["cast"] = [](const Array &input, DType target_dtype,
+                 sol::optional<bool> copy) {
+    return cast(input, target_dtype, copy.value_or(true));
+  };
 
   // ====================================================================
   // Indexing
@@ -1511,8 +2208,20 @@ extern "C" int luaopen__insight(lua_State *L) {
 
   m["take"] = &take;
   m["nonzero"] = &nonzero;
-  m["argsort"] = &argsort;
-  m["sort"] = &sort;
+  m["flatnonzero"] = &flatnonzero;
+  m["masked_select"] = &masked_select;
+  m["argsort"] = [](const Array &x, sol::optional<int> axis,
+                    sol::optional<bool> descending) {
+    return argsort(x, axis.value_or(-1), descending.value_or(false));
+  };
+  m["searchsorted"] = [](const Array &x, const Array &v,
+                         sol::optional<std::string> side) {
+    return searchsorted(x, v, side.value_or("left"));
+  };
+  m["sort"] = [](const Array &x, sol::optional<int> axis,
+                 sol::optional<bool> descending) {
+    return sort(x, axis.value_or(-1), descending.value_or(false));
+  };
   m["unique"] = [](const Array &x, sol::optional<bool> return_indices,
                    sol::optional<bool> return_inverse,
                    sol::optional<bool> return_counts) {

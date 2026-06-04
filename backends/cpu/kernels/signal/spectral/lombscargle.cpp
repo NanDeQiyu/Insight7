@@ -42,98 +42,196 @@ C_Status signal_lombscargle_kernel_cpu(void **inputs, void **outputs) {
   int64_t n = x_arr->numel;
   int64_t nf = freqs_arr->numel;
 
-  const double *x = (const double *)x_arr->data;
-  const double *y = (const double *)y_arr->data;
-  const double *freqs = (const double *)freqs_arr->data;
-  double *p = (double *)p_arr->data;
+  switch (x_arr->dtype) {
+  case INSIGHT_DTYPE_F64: {
+    const double *x = (const double *)x_arr->data;
+    const double *y = (const double *)y_arr->data;
+    const double *freqs = (const double *)freqs_arr->data;
+    double *p = (double *)p_arr->data;
 
 #ifdef _OPENMP
-  if (nf > 100) {
+    if (nf > 100) {
 #pragma omp parallel for schedule(dynamic)
-    for (int64_t fi = 0; fi < nf; ++fi) {
-      double f = freqs[fi];
-      double w = 2.0 * M_PI * f;
+      for (int64_t fi = 0; fi < nf; ++fi) {
+        double f = freqs[fi];
+        double w = 2.0 * M_PI * f;
 
-      if (w == 0.0) {
-        // DC component: mean of y
-        double sum_y = 0.0;
-        for (int64_t j = 0; j < n; ++j)
-          sum_y += y[j];
-        p[fi] = (sum_y * sum_y) / (double)(n * n);
-        continue;
+        if (w == 0.0) {
+          double sum_y = 0.0;
+          for (int64_t j = 0; j < n; ++j)
+            sum_y += y[j];
+          p[fi] = (sum_y * sum_y) / (double)(n * n);
+          continue;
+        }
+
+        double sin2wt = 0.0, cos2wt = 0.0;
+        for (int64_t j = 0; j < n; ++j) {
+          double arg = 2.0 * w * x[j];
+          sin2wt += std::sin(arg);
+          cos2wt += std::cos(arg);
+        }
+        double tau = std::atan2(sin2wt, cos2wt) / (2.0 * w);
+
+        double cs = 0.0, cc = 0.0, sn = 0.0, ss = 0.0;
+        for (int64_t j = 0; j < n; ++j) {
+          double arg = w * (x[j] - tau);
+          double c = std::cos(arg);
+          double s = std::sin(arg);
+          cs += y[j] * c;
+          cc += c * c;
+          sn += y[j] * s;
+          ss += s * s;
+        }
+
+        double pval = 0.0;
+        if (cc > 1e-30)
+          pval += (cs * cs) / cc;
+        if (ss > 1e-30)
+          pval += (sn * sn) / ss;
+        p[fi] = 0.5 * pval;
       }
-
-      // Compute tau
-      double sin2wt = 0.0, cos2wt = 0.0;
-      for (int64_t j = 0; j < n; ++j) {
-        double arg = 2.0 * w * x[j];
-        sin2wt += std::sin(arg);
-        cos2wt += std::cos(arg);
-      }
-      double tau = std::atan2(sin2wt, cos2wt) / (2.0 * w);
-
-      // Compute P
-      double cs = 0.0, cc = 0.0, sn = 0.0, ss = 0.0;
-      for (int64_t j = 0; j < n; ++j) {
-        double arg = w * (x[j] - tau);
-        double c = std::cos(arg);
-        double s = std::sin(arg);
-        cs += y[j] * c;
-        cc += c * c;
-        sn += y[j] * s;
-        ss += s * s;
-      }
-
-      double pval = 0.0;
-      if (cc > 1e-30)
-        pval += (cs * cs) / cc;
-      if (ss > 1e-30)
-        pval += (sn * sn) / ss;
-      p[fi] = 0.5 * pval;
-    }
-  } else {
+    } else {
 #endif
-    for (int64_t fi = 0; fi < nf; ++fi) {
-      double f = freqs[fi];
-      double w = 2.0 * M_PI * f;
+      for (int64_t fi = 0; fi < nf; ++fi) {
+        double f = freqs[fi];
+        double w = 2.0 * M_PI * f;
 
-      if (w == 0.0) {
-        double sum_y = 0.0;
-        for (int64_t j = 0; j < n; ++j)
-          sum_y += y[j];
-        p[fi] = (sum_y * sum_y) / (double)(n * n);
-        continue;
+        if (w == 0.0) {
+          double sum_y = 0.0;
+          for (int64_t j = 0; j < n; ++j)
+            sum_y += y[j];
+          p[fi] = (sum_y * sum_y) / (double)(n * n);
+          continue;
+        }
+
+        double sin2wt = 0.0, cos2wt = 0.0;
+        for (int64_t j = 0; j < n; ++j) {
+          double arg = 2.0 * w * x[j];
+          sin2wt += std::sin(arg);
+          cos2wt += std::cos(arg);
+        }
+        double tau = std::atan2(sin2wt, cos2wt) / (2.0 * w);
+
+        double cs = 0.0, cc = 0.0, sn = 0.0, ss = 0.0;
+        for (int64_t j = 0; j < n; ++j) {
+          double arg = w * (x[j] - tau);
+          double c = std::cos(arg);
+          double s = std::sin(arg);
+          cs += y[j] * c;
+          cc += c * c;
+          sn += y[j] * s;
+          ss += s * s;
+        }
+
+        double pval = 0.0;
+        if (cc > 1e-30)
+          pval += (cs * cs) / cc;
+        if (ss > 1e-30)
+          pval += (sn * sn) / ss;
+        p[fi] = 0.5 * pval;
       }
-
-      double sin2wt = 0.0, cos2wt = 0.0;
-      for (int64_t j = 0; j < n; ++j) {
-        double arg = 2.0 * w * x[j];
-        sin2wt += std::sin(arg);
-        cos2wt += std::cos(arg);
-      }
-      double tau = std::atan2(sin2wt, cos2wt) / (2.0 * w);
-
-      double cs = 0.0, cc = 0.0, sn = 0.0, ss = 0.0;
-      for (int64_t j = 0; j < n; ++j) {
-        double arg = w * (x[j] - tau);
-        double c = std::cos(arg);
-        double s = std::sin(arg);
-        cs += y[j] * c;
-        cc += c * c;
-        sn += y[j] * s;
-        ss += s * s;
-      }
-
-      double pval = 0.0;
-      if (cc > 1e-30)
-        pval += (cs * cs) / cc;
-      if (ss > 1e-30)
-        pval += (sn * sn) / ss;
-      p[fi] = 0.5 * pval;
-    }
 #ifdef _OPENMP
-  }
+    }
 #endif
+    break;
+  }
+  case INSIGHT_DTYPE_F32: {
+    const float *x = (const float *)x_arr->data;
+    const float *y = (const float *)y_arr->data;
+    const float *freqs = (const float *)freqs_arr->data;
+    float *p = (float *)p_arr->data;
+
+#ifdef _OPENMP
+    if (nf > 100) {
+#pragma omp parallel for schedule(dynamic)
+      for (int64_t fi = 0; fi < nf; ++fi) {
+        float f = freqs[fi];
+        float w = 2.0f * (float)M_PI * f;
+
+        if (w == 0.0f) {
+          float sum_y = 0.0f;
+          for (int64_t j = 0; j < n; ++j)
+            sum_y += y[j];
+          p[fi] = (sum_y * sum_y) / (float)(n * n);
+          continue;
+        }
+
+        float sin2wt = 0.0f, cos2wt = 0.0f;
+        for (int64_t j = 0; j < n; ++j) {
+          float arg = 2.0f * w * x[j];
+          sin2wt += std::sin(arg);
+          cos2wt += std::cos(arg);
+        }
+        float tau = std::atan2(sin2wt, cos2wt) / (2.0f * w);
+
+        float cs = 0.0f, cc = 0.0f, sn = 0.0f, ss = 0.0f;
+        for (int64_t j = 0; j < n; ++j) {
+          float arg = w * (x[j] - tau);
+          float c = std::cos(arg);
+          float s = std::sin(arg);
+          cs += y[j] * c;
+          cc += c * c;
+          sn += y[j] * s;
+          ss += s * s;
+        }
+
+        float pval = 0.0f;
+        if (cc > 1e-30f)
+          pval += (cs * cs) / cc;
+        if (ss > 1e-30f)
+          pval += (sn * sn) / ss;
+        p[fi] = 0.5f * pval;
+      }
+    } else {
+#endif
+      for (int64_t fi = 0; fi < nf; ++fi) {
+        float f = freqs[fi];
+        float w = 2.0f * (float)M_PI * f;
+
+        if (w == 0.0f) {
+          float sum_y = 0.0f;
+          for (int64_t j = 0; j < n; ++j)
+            sum_y += y[j];
+          p[fi] = (sum_y * sum_y) / (float)(n * n);
+          continue;
+        }
+
+        float sin2wt = 0.0f, cos2wt = 0.0f;
+        for (int64_t j = 0; j < n; ++j) {
+          float arg = 2.0f * w * x[j];
+          sin2wt += std::sin(arg);
+          cos2wt += std::cos(arg);
+        }
+        float tau = std::atan2(sin2wt, cos2wt) / (2.0f * w);
+
+        float cs = 0.0f, cc = 0.0f, sn = 0.0f, ss = 0.0f;
+        for (int64_t j = 0; j < n; ++j) {
+          float arg = w * (x[j] - tau);
+          float c = std::cos(arg);
+          float s = std::sin(arg);
+          cs += y[j] * c;
+          cc += c * c;
+          sn += y[j] * s;
+          ss += s * s;
+        }
+
+        float pval = 0.0f;
+        if (cc > 1e-30f)
+          pval += (cs * cs) / cc;
+        if (ss > 1e-30f)
+          pval += (sn * sn) / ss;
+        p[fi] = 0.5f * pval;
+      }
+#ifdef _OPENMP
+    }
+#endif
+    break;
+  }
+  default:
+    cpu_set_last_error(
+        "signal_lombscargle: unsupported dtype, need F32 or F64");
+    return C_FAILED;
+  }
 
   return C_SUCCESS;
 }
@@ -141,4 +239,6 @@ C_Status signal_lombscargle_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(signal_lombscargle, INSIGHT_DTYPE_F64,
+                    signal_lombscargle_kernel_cpu);
+REGISTER_CPU_KERNEL(signal_lombscargle, INSIGHT_DTYPE_F32,
                     signal_lombscargle_kernel_cpu);

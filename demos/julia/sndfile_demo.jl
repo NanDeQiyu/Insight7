@@ -5,6 +5,7 @@
 # Mirrors the C++ sndfile_demo without libsndfile dependency.
 
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "bindings", "julia"))
+push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "build", "bindings", "julia"))
 using Insight
 
 function separator(title)
@@ -13,7 +14,6 @@ function separator(title)
     println("=" ^ 60)
 end
 
-Insight.init(["cpu"])
 
 # Parameters
 sample_rate = 44100
@@ -34,7 +34,7 @@ signal_data = Float32[0.5 * sin(2π * 440 * i / sample_rate) +
                        0.1 * sin(2π * 3141 * i / sample_rate)
                        for i in 0:frames-1]
 
-signal = Insight.from_data(signal_data, [frames])
+signal = Insight.from_data(signal_data)
 println("    Signal: [$(frames)] elements")
 println()
 
@@ -45,7 +45,7 @@ tmp = "/tmp/insight_demo_"
 Insight.write_bin(tmp * "original.bin", signal)
 println("    Written: $(tmp)original.bin")
 
-read_back = Insight.read_bin(tmp * "original.bin")
+read_back = Insight.read_bin(tmp * "original.bin", dtype=Float32)
 println("    Roundtrip read: $(Insight.numel(read_back)) elements")
 println()
 
@@ -55,7 +55,7 @@ separator("[3] FFT analysis")
 spectrum = Insight.fft(signal)
 freq_bins = Insight.numel(spectrum)
 println("    FFT bins: $freq_bins")
-println("    Nyquist: $(div(sample_rate, 2)) Hz")
+println("    Nyquist: $(Base.div(sample_rate, 2)) Hz")
 println("    Bin resolution: $(round(sample_rate / freq_bins, digits=2)) Hz")
 println()
 
@@ -79,17 +79,17 @@ r_bins = Insight.numel(r_spectrum)
 # Build mask for real FFT
 mask_data = Float32[]
 for i in 0:r_bins-1
-    if i < cutoff_bin - div(taper_width, 2)
+    if i < cutoff_bin - Base.div(taper_width, 2)
         push!(mask_data, 1.0f0)
-    elseif i < cutoff_bin + div(taper_width, 2)
-        t_val = 1.0f0 - (i - cutoff_bin + div(taper_width, 2)) / taper_width
-        push!(mask_data, max(0.0f0, min(1.0f0, t_val)))
+    elseif i < cutoff_bin + Base.div(taper_width, 2)
+        t_val = 1.0f0 - (i - cutoff_bin + Base.div(taper_width, 2)) / taper_width
+        push!(mask_data, Base.max(0.0f0, Base.min(1.0f0, t_val)))
     else
         push!(mask_data, 0.0f0)
     end
 end
 
-mask = Insight.from_data(mask_data, [r_bins])
+mask = Insight.from_data(mask_data)
 
 # Apply mask to magnitude of rfft result
 r_real = Insight.real_part(r_spectrum)
@@ -109,8 +109,8 @@ separator("[5] Signal statistics")
 energy_orig = Insight.sum(Insight.mul(signal, signal))
 energy_filt = Insight.sum(Insight.mul(filtered, filtered))
 
-eo = Insight.item(energy_orig)
-ef = Insight.item(energy_filt)
+eo = Insight.item(energy_orig, 0)
+ef = Insight.item(energy_filt, 0)
 
 println("    Energy (original): $eo")
 println("    Energy (filtered): $ef")

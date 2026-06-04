@@ -42,40 +42,72 @@ C_Status signal_mel_frequencies_kernel_cpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
-  if (out->dtype != INSIGHT_DTYPE_F64) {
-    cpu_set_last_error("signal_mel_frequencies: only F64 dtype supported");
-    return C_FAILED;
-  }
+  if (out->dtype == INSIGHT_DTYPE_F64) {
+    double *data = (double *)out->data;
 
-  double *data = (double *)out->data;
+    // Convert endpoints to mel scale
+    double mel_low = 2595.0 * std::log10(1.0 + f_low / 700.0);
+    double mel_high = 2595.0 * std::log10(1.0 + f_high / 700.0);
 
-  // Convert endpoints to mel scale
-  double mel_low = 2595.0 * std::log10(1.0 + f_low / 700.0);
-  double mel_high = 2595.0 * std::log10(1.0 + f_high / 700.0);
-
-  if (n_mels == 1) {
-    // Single point: midpoint
-    double mel_mid = (mel_low + mel_high) / 2.0;
-    data[0] = 700.0 * (std::pow(10.0, mel_mid / 2595.0) - 1.0);
-  } else {
-    double mel_step = (mel_high - mel_low) / (double)(n_mels - 1);
-
-#ifdef _OPENMP
-    if (n_mels > 1000) {
-#pragma omp parallel for
-      for (int64_t i = 0; i < n_mels; ++i) {
-        double mel_val = mel_low + (double)i * mel_step;
-        data[i] = 700.0 * (std::pow(10.0, mel_val / 2595.0) - 1.0);
-      }
+    if (n_mels == 1) {
+      // Single point: midpoint
+      double mel_mid = (mel_low + mel_high) / 2.0;
+      data[0] = 700.0 * (std::pow(10.0, mel_mid / 2595.0) - 1.0);
     } else {
-#endif
-      for (int64_t i = 0; i < n_mels; ++i) {
-        double mel_val = mel_low + (double)i * mel_step;
-        data[i] = 700.0 * (std::pow(10.0, mel_val / 2595.0) - 1.0);
-      }
+      double mel_step = (mel_high - mel_low) / (double)(n_mels - 1);
+
 #ifdef _OPENMP
-    }
+      if (n_mels > 1000) {
+#pragma omp parallel for
+        for (int64_t i = 0; i < n_mels; ++i) {
+          double mel_val = mel_low + (double)i * mel_step;
+          data[i] = 700.0 * (std::pow(10.0, mel_val / 2595.0) - 1.0);
+        }
+      } else {
 #endif
+        for (int64_t i = 0; i < n_mels; ++i) {
+          double mel_val = mel_low + (double)i * mel_step;
+          data[i] = 700.0 * (std::pow(10.0, mel_val / 2595.0) - 1.0);
+        }
+#ifdef _OPENMP
+      }
+#endif
+    }
+  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    float *data = (float *)out->data;
+
+    // Convert endpoints to mel scale
+    float mel_low = 2595.0f * std::log10(1.0f + (float)f_low / 700.0f);
+    float mel_high = 2595.0f * std::log10(1.0f + (float)f_high / 700.0f);
+
+    if (n_mels == 1) {
+      // Single point: midpoint
+      float mel_mid = (mel_low + mel_high) / 2.0f;
+      data[0] = 700.0f * (std::pow(10.0f, mel_mid / 2595.0f) - 1.0f);
+    } else {
+      float mel_step = (mel_high - mel_low) / (float)(n_mels - 1);
+
+#ifdef _OPENMP
+      if (n_mels > 1000) {
+#pragma omp parallel for
+        for (int64_t i = 0; i < n_mels; ++i) {
+          float mel_val = mel_low + (float)i * mel_step;
+          data[i] = 700.0f * (std::pow(10.0f, mel_val / 2595.0f) - 1.0f);
+        }
+      } else {
+#endif
+        for (int64_t i = 0; i < n_mels; ++i) {
+          float mel_val = mel_low + (float)i * mel_step;
+          data[i] = 700.0f * (std::pow(10.0f, mel_val / 2595.0f) - 1.0f);
+        }
+#ifdef _OPENMP
+      }
+#endif
+    }
+  } else {
+    cpu_set_last_error(
+        "signal_mel_frequencies: unsupported dtype, need F32 or F64");
+    return C_FAILED;
   }
 
   return C_SUCCESS;
@@ -84,4 +116,6 @@ C_Status signal_mel_frequencies_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(signal_mel_frequencies, INSIGHT_DTYPE_F64,
+                    signal_mel_frequencies_kernel_cpu);
+REGISTER_CPU_KERNEL(signal_mel_frequencies, INSIGHT_DTYPE_F32,
                     signal_mel_frequencies_kernel_cpu);

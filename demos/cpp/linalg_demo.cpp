@@ -13,15 +13,6 @@ static void separator(const char *title) {
   printf("========================================\n");
 }
 
-static bool gpu_available() {
-  try {
-    set_device(GPUPlace(0));
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
 static void run_cpu_linalg() {
   separator("CPU Linear Algebra");
 
@@ -98,8 +89,6 @@ static void run_cpu_linalg() {
 }
 
 static void run_gpu_linalg() {
-  separator("GPU Linear Algebra");
-
   // MatMul F64 on GPU
   {
     Array A =
@@ -160,21 +149,16 @@ static void run_gpu_linalg() {
 }
 
 int main() {
-  try {
-    ins::init({"cpu", "cuda"});
-  } catch (...) {
-    ins::init({"cpu"});
-  }
+  ins::init();
 
   printf("Insight7 Linear Algebra Demo\n");
   printf("OpenBLAS: %s\n", is_compiled_with_openblas() ? "yes" : "no");
 
   run_cpu_linalg();
 
-  if (gpu_available()) {
+  if (ins::has_device(DeviceKind::GPU)) {
+    separator("GPU Linear Algebra");
     run_gpu_linalg();
-  } else {
-    printf("\n[GPU not available, skipping GPU linalg demo]\n");
   }
 
   printf("\nDone!\n");

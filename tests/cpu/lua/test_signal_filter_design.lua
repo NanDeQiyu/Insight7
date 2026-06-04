@@ -52,42 +52,42 @@ describe("Signal Filter Design CPU Tests", function()
   -- ========================================================================
 
   it("firwin_lowpass_basic", function()
-    local h = ins.signal.firwin(11, { 0.3 }, "lowpass", true)
+    local h = ins.signal.firwin(11, { 0.3 }, nil, "lowpass", true)
     assert.is_not_nil(h)
     assert.are.equal(11, h.numel)
     -- Symmetric
     for i = 0, 4 do
-      assert.near(ins.item(h, i), ins.item(h, 10 - i), 1e-10)
+      assert.near(h:get(i), h:get(10 - i), 1e-10)
     end
   end)
 
   it("firwin_highpass_basic", function()
-    local h = ins.signal.firwin(11, { 0.3 }, "highpass", true)
+    local h = ins.signal.firwin(11, { 0.3 }, nil, "highpass", true)
     assert.is_not_nil(h)
     assert.are.equal(11, h.numel)
   end)
 
   it("firwin_bandpass", function()
-    local h = ins.signal.firwin(21, { 0.2, 0.5 }, "bandpass", false)
+    local h = ins.signal.firwin(21, { 0.2, 0.5 }, nil, "bandpass", false)
     assert.is_not_nil(h)
     assert.are.equal(21, h.numel)
   end)
 
   it("firwin_bandstop", function()
-    local h = ins.signal.firwin(21, { 0.2, 0.5 }, "bandstop", false)
+    local h = ins.signal.firwin(21, { 0.2, 0.5 }, nil, "bandstop", false)
     assert.is_not_nil(h)
     assert.are.equal(21, h.numel)
   end)
 
   it("firwin_different_windows", function()
-    local h1 = ins.signal.firwin(11, { 0.3 }, "lowpass", false)
-    local h2 = ins.signal.firwin(11, { 0.3 }, "highpass", false)
+    local h1 = ins.signal.firwin(11, { 0.3 }, nil, "lowpass", false)
+    local h2 = ins.signal.firwin(11, { 0.3 }, nil, "highpass", false)
     assert.is_not_nil(h1)
     assert.is_not_nil(h2)
     assert.are.equal(11, h1.numel)
     assert.are.equal(11, h2.numel)
     -- Different filter types should give different results
-    assert.are_not.equal(ins.item(h1, 0), ins.item(h2, 0))
+    assert.are_not.equal(h1:get(0), h2:get(0))
   end)
 
   -- ========================================================================
@@ -117,10 +117,10 @@ describe("Signal Filter Design CPU Tests", function()
     assert.is_not_nil(sorted)
     assert.are.equal(4, sorted.numel)
     -- Sorted by absolute value: |-1|, |2|, |3|, |-4|
-    assert.near(-1.0, ins.item(sorted, 0), 1e-10)
-    assert.near(2.0, ins.item(sorted, 1), 1e-10)
-    assert.near(3.0, ins.item(sorted, 2), 1e-10)
-    assert.near(-4.0, ins.item(sorted, 3), 1e-10)
+    assert.near(-1.0, sorted:get(0), 1e-10)
+    assert.near(2.0, sorted:get(1), 1e-10)
+    assert.near(3.0, sorted:get(2), 1e-10)
+    assert.near(-4.0, sorted:get(3), 1e-10)
   end)
 
   it("cmplx_sort_single", function()
@@ -128,6 +128,6 @@ describe("Signal Filter Design CPU Tests", function()
     local sorted = ins.signal.cmplx_sort(a)
     assert.is_not_nil(sorted)
     assert.are.equal(1, sorted.numel)
-    assert.near(42.0, ins.item(sorted, 0), 1e-10)
+    assert.near(42.0, sorted:get(0), 1e-10)
   end)
 end)

@@ -350,6 +350,30 @@ For older GPUs, NVIDIA drivers provide software emulation automatically.
    reverts). Either assign each agent to a unique set of files, or stop agents
    before making manual fixes.
 
+## Signal Kernel fp16/bf16 Support (2026-06-01)
+
+All 50 signal backend kernels (across 14 submodules) support F16/BF16 on CUDA.
+CPU signal kernels support F64/F32 only (fp16/bf16 on CPU uses software emulation
+via `half_utils.h` — convert to float, compute, convert back).
+
+Signal kernel naming convention: `signal_` prefix (e.g., `signal_morlet`, `signal_lombscargle`).
+CUDA signal kernels use 256 threads/block. CPU signal kernels use OpenMP when `numel > 1000`.
+
+Key signal kernel files with fp16/bf16 CUDA support:
+- `backends/cuda/kernels/signal/windows/*.cu` — 12 kernels (hann, hamming, etc.)
+- `backends/cuda/kernels/signal/waveforms/*.cu` — 5 kernels (sawtooth, chirp, etc.)
+- `backends/cuda/kernels/signal/filtering/*.cu` — 8 kernels (lfilter, wiener, etc.)
+- `backends/cuda/kernels/signal/spectral/*.cu` — 3 kernels (spectrogram, lombscargle)
+- `backends/cuda/kernels/signal/convolution/*.cu` — 3 kernels
+- `backends/cuda/kernels/signal/wavelets/*.cu` — 3 kernels
+- `backends/cuda/kernels/signal/acoustics/*.cu` — 5 kernels
+- `backends/cuda/kernels/signal/radar/*.cu` — 2 kernels (ca_cfar, ambgfun)
+- `backends/cuda/kernels/signal/peak_finding/*.cu` — 2 kernels
+- `backends/cuda/kernels/signal/io/*.cu` — 2 kernels
+- `backends/cuda/kernels/signal/estimation/*.cu` — 1 kernel
+- `backends/cuda/kernels/signal/filter_design/*.cu` — 1 kernel
+- `backends/cuda/kernels/signal/bsplines/*.cu` — 3 kernels
+
 ## Verification
 
 ```bash

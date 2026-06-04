@@ -21,7 +21,7 @@ function check(name, cond)
 end
 
 function approx(a, b; atol=1e-10)
-    return abs(a - b) < atol
+    return Base.abs(Float64(a) - Float64(b)) < atol
 end
 
 # ============================================================================
@@ -63,7 +63,7 @@ check("firwin_lowpass_numel", Insight.numel(h) == 11)
 sym_ok = true
 for i in 0:4
     if !approx(Insight.item(h, i), Insight.item(h, 10 - i))
-        sym_ok = false; break
+        local sym_ok = false; break
     end
 end
 check("firwin_lowpass_sym", sym_ok)

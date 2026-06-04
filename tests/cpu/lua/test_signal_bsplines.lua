@@ -1,6 +1,6 @@
 -- Signal B-Splines CPU binding tests.
 -- Run with:
---   LUA_PATH="bindings/lua/?/init.lua;;" LUA_CPATH="build/bindings/lua/?.so;;" \
+--   LUA_PATH="bindings/lua/?/init.lua;bindings/lua/?.lua;;" LUA_CPATH="build/bindings/lua/?.so;;" \
 --   LD_LIBRARY_PATH=build/backends/cpu ~/.luarocks/bin/busted tests/cpu/lua/test_signal_bsplines.lua
 
 describe("Signal B-Splines CPU Tests", function()
@@ -21,7 +21,7 @@ describe("Signal B-Splines CPU Tests", function()
     -- At x=0: 1/sqrt(2*pi*sigma^2), sigma^2=(n+1)/12 = 4/12
     local sigma_sq = 4.0 / 12.0
     local expected = 1.0 / math.sqrt(2.0 * math.pi * sigma_sq)
-    assert.near(expected, ins.item(y, 0), 1e-10)
+    assert.near(expected, y:get(0), 1e-10)
   end)
 
   it("gauss_spline_symmetry", function()
@@ -29,11 +29,11 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.gauss_spline(2, x)
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
-    assert.near(ins.item(y, 0), ins.item(y, 4), 1e-10)
-    assert.near(ins.item(y, 1), ins.item(y, 3), 1e-10)
+    assert.near(y:get(0), y:get(4), 1e-10)
+    assert.near(y:get(1), y:get(3), 1e-10)
     -- Peak at center
-    assert.is_true(ins.item(y, 2) > ins.item(y, 0))
-    assert.is_true(ins.item(y, 2) > ins.item(y, 1))
+    assert.is_true(y:get(2) > y:get(0))
+    assert.is_true(y:get(2) > y:get(1))
   end)
 
   it("gauss_spline_decay", function()
@@ -42,7 +42,7 @@ describe("Signal B-Splines CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
     for i = 1, 4 do
-      assert.is_true(ins.item(y, i) < ins.item(y, i - 1))
+      assert.is_true(y:get(i) < y:get(i - 1))
     end
   end)
 
@@ -55,7 +55,7 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.cubic(x)
     assert.is_not_nil(y)
     assert.are.equal(1, y.numel)
-    assert.near(2.0 / 3.0, ins.item(y, 0), 1e-10)
+    assert.near(2.0 / 3.0, y:get(0), 1e-10)
   end)
 
   it("cubic_symmetry", function()
@@ -63,8 +63,8 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.cubic(x)
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
-    assert.near(ins.item(y, 0), ins.item(y, 4), 1e-10)
-    assert.near(ins.item(y, 1), ins.item(y, 3), 1e-10)
+    assert.near(y:get(0), y:get(4), 1e-10)
+    assert.near(y:get(1), y:get(3), 1e-10)
   end)
 
   it("cubic_zero_outside", function()
@@ -73,7 +73,7 @@ describe("Signal B-Splines CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(4, y.numel)
     for i = 0, 3 do
-      assert.near(0.0, ins.item(y, i), 1e-10)
+      assert.near(0.0, y:get(i), 1e-10)
     end
   end)
 
@@ -83,7 +83,7 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.cubic(x)
     assert.is_not_nil(y)
     local expected = 2.0 / 3.0 - 0.5 * 0.25 * 1.5
-    assert.near(expected, ins.item(y, 0), 1e-10)
+    assert.near(expected, y:get(0), 1e-10)
   end)
 
   it("cubic_region2", function()
@@ -92,7 +92,7 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.cubic(x)
     assert.is_not_nil(y)
     local expected = (1.0 / 6.0) * 0.125
-    assert.near(expected, ins.item(y, 0), 1e-10)
+    assert.near(expected, y:get(0), 1e-10)
   end)
 
   -- ========================================================================
@@ -104,7 +104,7 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.quadratic(x)
     assert.is_not_nil(y)
     assert.are.equal(1, y.numel)
-    assert.near(0.75, ins.item(y, 0), 1e-10)
+    assert.near(0.75, y:get(0), 1e-10)
   end)
 
   it("quadratic_symmetry", function()
@@ -112,8 +112,8 @@ describe("Signal B-Splines CPU Tests", function()
     local y = ins.signal.quadratic(x)
     assert.is_not_nil(y)
     assert.are.equal(5, y.numel)
-    assert.near(ins.item(y, 0), ins.item(y, 4), 1e-10)
-    assert.near(ins.item(y, 1), ins.item(y, 3), 1e-10)
+    assert.near(y:get(0), y:get(4), 1e-10)
+    assert.near(y:get(1), y:get(3), 1e-10)
   end)
 
   it("quadratic_zero_outside", function()
@@ -122,7 +122,7 @@ describe("Signal B-Splines CPU Tests", function()
     assert.is_not_nil(y)
     assert.are.equal(4, y.numel)
     for i = 0, 3 do
-      assert.near(0.0, ins.item(y, i), 1e-10)
+      assert.near(0.0, y:get(i), 1e-10)
     end
   end)
 end)

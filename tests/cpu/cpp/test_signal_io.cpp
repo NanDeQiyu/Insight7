@@ -98,6 +98,7 @@ TEST_F(SignalIOTestCPU, UnpackBinBigEndian) {
 
 TEST_F(SignalIOTestCPU, WriteReadBin) {
   std::string path = tmp_dir + "/test.bin";
+  std::filesystem::create_directories(tmp_dir);
 
   std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0};
   Array arr = to_array(data, DType::F64, CPUPlace());
@@ -115,6 +116,7 @@ TEST_F(SignalIOTestCPU, WriteReadBin) {
 
 TEST_F(SignalIOTestCPU, ReadBinWithOffset) {
   std::string path = tmp_dir + "/test_offset.bin";
+  std::filesystem::create_directories(tmp_dir);
 
   std::vector<double> data = {1.0, 2.0, 3.0, 4.0, 5.0};
   Array arr = to_array(data, DType::F64, CPUPlace());
@@ -133,6 +135,7 @@ TEST_F(SignalIOTestCPU, ReadBinWithOffset) {
 
 TEST_F(SignalIOTestCPU, ReadBinNumSamples) {
   std::string path = tmp_dir + "/test_ns.bin";
+  std::filesystem::create_directories(tmp_dir);
 
   std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
   Array arr = to_array(data, DType::F32, CPUPlace());
@@ -146,6 +149,7 @@ TEST_F(SignalIOTestCPU, ReadBinNumSamples) {
 
 TEST_F(SignalIOTestCPU, WriteBinAppend) {
   std::string path = tmp_dir + "/test_append.bin";
+  std::filesystem::create_directories(tmp_dir);
 
   std::vector<double> data1 = {1.0, 2.0};
   std::vector<double> data2 = {3.0, 4.0};
@@ -169,10 +173,17 @@ TEST_F(SignalIOTestCPU, WriteReadSigmf) {
 
   // Write data as raw bytes
   std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::filesystem::create_directories(tmp_dir);
   std::ofstream ofs(data_path, std::ios::binary);
+  ASSERT_TRUE(ofs.is_open()) << "Cannot open " << data_path;
   ofs.write(reinterpret_cast<const char *>(data.data()),
             data.size() * sizeof(float));
+  ofs.flush();
   ofs.close();
+
+  // Verify file exists before reading
+  ASSERT_TRUE(std::filesystem::exists(data_path))
+      << "File not written: " << data_path;
 
   // Read back using read_bin directly (SigMF parsing is separate)
   Array read = read_bin(data_path, DType::F32, 0, 0);

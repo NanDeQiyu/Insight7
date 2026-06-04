@@ -15,6 +15,7 @@
  */
 
 #include "common.h"
+#include <complex>
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,6 +72,12 @@ C_Status sum_kernel_cpu(void **inputs, void **outputs) {
   case INSIGHT_DTYPE_BF16:
     REDUCE_HALF_SUM_LOOP(uint16_t, insight::bf16_to_f32, insight::f32_to_bf16);
     break;
+  case INSIGHT_DTYPE_C32:
+    REDUCE_SUM_LOOP(std::complex<float>);
+    break;
+  case INSIGHT_DTYPE_C64:
+    REDUCE_SUM_LOOP(std::complex<double>);
+    break;
 
   default:
     cpu_set_last_error("sum: unsupported dtype");
@@ -97,3 +104,5 @@ REGISTER_CPU_KERNEL(sum, INSIGHT_DTYPE_F32, sum_kernel_cpu);
 REGISTER_CPU_KERNEL(sum, INSIGHT_DTYPE_F64, sum_kernel_cpu);
 REGISTER_CPU_KERNEL(sum, INSIGHT_DTYPE_F16, sum_kernel_cpu);
 REGISTER_CPU_KERNEL(sum, INSIGHT_DTYPE_BF16, sum_kernel_cpu);
+REGISTER_CPU_KERNEL(sum, INSIGHT_DTYPE_C32, sum_kernel_cpu);
+REGISTER_CPU_KERNEL(sum, INSIGHT_DTYPE_C64, sum_kernel_cpu);

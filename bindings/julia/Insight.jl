@@ -17,12 +17,20 @@ module Insight
 export Array, zeros, ones, full, arange, linspace, eye,
        add, sub, mul, div, pow, matmul, dot, det, inv, solve, svd,
        fft, ifft, rand, randn, cast,
+       # Convenience
+       item, to, to_data, negative, abs, equal, greater, less,
+       max, min, argmax, argmin, prod, outer, norm, trace, DType,
        # Complex
        is_complex, has_complex_shape, to_complex, as_complex, as_real,
        real_part, imag_part,
        # Additional unary
        exp2_fn, expm1_fn, log1p_fn, cbrt_fn, reciprocal_fn,
        asinh_fn, acosh_fn, atanh_fn, trunc_fn, deg2rad_fn, rad2deg_fn,
+       conj_fn, angle_fn,
+       # Logical binary
+       logical_and, logical_or, logical_xor, logical_not,
+       # Manipulation
+       squeeze,
        # Additional reduction
        cummax, cummin, sem, count_nonzero, median, quantile, percentile,
        nansum, nanmean, nanmax, nanmin, nanstd, nanvar,
@@ -36,10 +44,10 @@ export Array, zeros, ones, full, arange, linspace, eye,
        seed, get_seed, rand_like, randn_like,
        exponential, gamma_dist, beta_dist, binomial_dist, poisson_dist,
        # Additional FFT
-       fftshift, ifftshift, next_fast_len, hfft, ihfft,
-       rfft2, irfft2, rfftn, irfftn,
+       fftshift, ifftshift, fftfreq, next_fast_len, hfft, ihfft,
+       rfft, irfft, rfft2, irfft2, rfftn, irfftn,
        # Additional linalg
-       lstsq, cond_fn, matrix_rank,
+       lstsq, cond_fn, matrix_rank, matrix_power, slogdet, eigvalsh, pinv,
        # Signal
        convolve, unwrap, sinc,
        hann, hamming, blackman, kaiser, gaussian, boxcar, triang,
@@ -52,7 +60,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        welch_jl, periodogram_jl,
        morlet, ricker,
        mel2hz, hz2mel, mel_frequencies, hz2bark, bark2hz,
-       fm_demod, argrelmax, argrelmin, cfar_alpha,
+       fm_demod, argrelmax, argrelmin, cfar_alpha, ca_cfar,
        pulse_compression, pulse_doppler, mvdr,
        read_bin, write_bin, pack_bin, unpack_bin, read_sigmf, write_sigmf,
        cosine_win, general_hamming, parzen_win, bohman_win, barthann_win,
@@ -64,9 +72,10 @@ export Array, zeros, ones, full, arange, linspace, eye,
        choose_conv_method, firfilter_zi_state,
        # Device info
        device_name, cuda_version, driver_version, compute_capability,
-       device_memory, gpu_count,
+       device_memory, gpu_count, load_backend,
        # Signal submodule
        signal
+
 
 # ============================================================================
 # Configuration
@@ -84,6 +93,24 @@ end
 # Auto-initialize CPU backend on module load
 function __init__()
     ccall((:insight_jl_init_cpu, LIB_INSIGHT), Cvoid, ())
+end
+
+"""
+    load_backend(name::String)::Bool
+
+Load an additional backend (e.g. "cuda"). Returns true on success.
+"""
+function load_backend(name::String)::Bool
+    ccall((:insight_jl_load_backend, LIB_INSIGHT), Int32, (Cstring,), name) == 1
+end
+
+"""
+    has_device(device_type::Int) -> Bool
+
+Check if a device kind is available. 0=CPU, 1=GPU.
+"""
+function has_device(device_type::Int)::Bool
+    ccall((:insight_jl_has_device, LIB_INSIGHT), Int32, (Int32,), Int32(device_type)) == 1
 end
 
 # DType enum mapping (matches InsightDType in c_api/dtype.h)
@@ -170,6 +197,11 @@ const int8     = DTypeValues.I8
 const int16    = DTypeValues.I16
 const int32    = DTypeValues.I32
 const int64    = DTypeValues.I64
+
+# DType wrapper struct for API compatibility
+struct DType
+    val::Int32
+end
 const uint16   = DTypeValues.U16
 const uint32   = DTypeValues.U32
 const uint64   = DTypeValues.U64
@@ -221,8 +253,8 @@ end
 function shape(arr::InsightArray)::Vector{Int64}
     n = ndim(arr)
     dims = Vector{Int64}(undef, n)
-    ccall((:insight_jl_shape, LIB_INSIGHT), Cvoid,
-          (Ptr{Cvoid}, Ptr{Int64}), arr, dims)
+    ccall((:insight_jl_shape_reversed, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Int64}, Int32), arr, dims, Int32(n))
     return dims
 end
 
@@ -255,6 +287,7 @@ Insight.numel(a)  # 6
 """
 function zeros(dims::Vector{Int64}, dtype_val::Int32=float32,
                device::Int32=CPU)::InsightArray
+
     ptr = ccall((:insight_jl_zeros, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
                 dims, Int32(length(dims)), dtype_val, device)
@@ -278,6 +311,7 @@ Create an array filled with ones.
 """
 function ones(dims::Vector{Int64}, dtype_val::Int32=float32,
               device::Int32=CPU)::InsightArray
+
     ptr = ccall((:insight_jl_ones, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
                 dims, Int32(length(dims)), dtype_val, device)
@@ -288,6 +322,7 @@ end
 
 function full(dims::Vector{Int64}, fill_value::Float64,
               dtype_val::Int32=float32, device::Int32=CPU)::InsightArray
+
     ptr = ccall((:insight_jl_full, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Float64, Int32, Int32),
                 dims, Int32(length(dims)), fill_value, dtype_val, device)
@@ -325,12 +360,47 @@ function linspace(start::Float64, stop::Float64, num::Int64,
     return arr
 end
 
-function from_data(data::AbstractArray{T}, dtype_val::Int32=float32,
+# Auto-detect Insight dtype from Julia element type
+_auto_dtype(::Type{Float64}) = DTypeValues.F64
+_auto_dtype(::Type{Float32}) = DTypeValues.F32
+_auto_dtype(::Type{Int64}) = DTypeValues.I64
+_auto_dtype(::Type{Int32}) = DTypeValues.I32
+_auto_dtype(::Type{Int16}) = DTypeValues.I16
+_auto_dtype(::Type{Int8}) = DTypeValues.I8
+_auto_dtype(::Type{UInt64}) = DTypeValues.U64
+_auto_dtype(::Type{UInt32}) = DTypeValues.U32
+_auto_dtype(::Type{UInt16}) = DTypeValues.U16
+_auto_dtype(::Type{UInt8}) = DTypeValues.U8
+_auto_dtype(::Type{Bool}) = DTypeValues.BOOL
+_auto_dtype(::Type{Complex{Float32}}) = DTypeValues.C32
+_auto_dtype(::Type{Complex{Float64}}) = DTypeValues.C64
+_auto_dtype(::Type) = DTypeValues.F32  # fallback
+
+function from_data(data::AbstractArray{T}, dtype_val::Int32=Int32(-1),
                    device::Int32=CPU) where T
-    dims = collect(Int64, size(data))
+    # Auto-detect dtype from Julia element type when not explicitly specified
+    actual_dtype = dtype_val == Int32(-1) ? _auto_dtype(T) : dtype_val
+
+    # Convert data to match the requested dtype before passing to C
+    _julia_type(dt::Int32) = dt == DTypeValues.F32 ? Float32 :
+                             dt == DTypeValues.F64 ? Float64 :
+                             dt == DTypeValues.I32 ? Int32 :
+                             dt == DTypeValues.I64 ? Int64 :
+                             dt == DTypeValues.I8  ? Int8  :
+                             dt == DTypeValues.U8  ? UInt8 :
+                             dt == DTypeValues.I16 ? Int16 :
+                             dt == DTypeValues.U16 ? UInt16 :
+                             dt == DTypeValues.U32 ? UInt32 :
+                             dt == DTypeValues.U64 ? UInt64 :
+                             dt == DTypeValues.BOOL ? Bool :
+                             dt == DTypeValues.C32 ? Complex{Float32} :
+                             dt == DTypeValues.C64 ? Complex{Float64} : Float32
+    target_type = _julia_type(actual_dtype)
+    converted = T === target_type ? data : convert(Array{target_type}, data)
+    dims = collect(Int64, size(converted))
     ptr = ccall((:insight_jl_from_data, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Ptr{Int64}, Int32, Int32, Int32),
-                pointer(data), dims, Int32(length(dims)), dtype_val, device)
+                pointer(converted), dims, Int32(length(dims)), actual_dtype, device)
     arr = InsightArray(ptr)
     finalizer(_free, arr)
     return arr
@@ -347,12 +417,30 @@ function to_array(arr::InsightArray)::Array
         dst = Vector{Int32}(undef, n)
     elseif dt == DTypeValues.I64
         dst = Vector{Int64}(undef, n)
+    elseif dt == DTypeValues.I8
+        dst = Vector{Int8}(undef, n)
+    elseif dt == DTypeValues.U8
+        dst = Vector{UInt8}(undef, n)
+    elseif dt == DTypeValues.I16
+        dst = Vector{Int16}(undef, n)
+    elseif dt == DTypeValues.U16
+        dst = Vector{UInt16}(undef, n)
+    elseif dt == DTypeValues.U32
+        dst = Vector{UInt32}(undef, n)
+    elseif dt == DTypeValues.U64
+        dst = Vector{UInt64}(undef, n)
+    elseif dt == DTypeValues.BOOL
+        dst = Vector{Bool}(undef, n)
+    elseif dt == DTypeValues.C32
+        dst = Vector{Complex{Float32}}(undef, n)
+    elseif dt == DTypeValues.C64
+        dst = Vector{Complex{Float64}}(undef, n)
     else
         dst = Vector{Float64}(undef, n)
     end
     ccall((:insight_jl_to_data, LIB_INSIGHT), Cvoid,
           (Ptr{Cvoid}, Ptr{Cvoid}), arr, dst)
-    return reshape(dst, Tuple(shape(arr)))
+    return Base.reshape(dst, Tuple(shape(arr)))
 end
 
 # ============================================================================
@@ -394,6 +482,9 @@ Base.:+(a::InsightArray, b::InsightArray) = add(a, b)
 Base.:-(a::InsightArray, b::InsightArray) = sub(a, b)
 Base.:*(a::InsightArray, b::InsightArray) = mul(a, b)
 Base.:/(a::InsightArray, b::InsightArray) = div(a, b)
+# Scalar promotion: Array * Number and Number * Array
+Base.:*(a::InsightArray, b::Number) = mul(a, from_data([b], float64))
+Base.:*(a::Number, b::InsightArray) = mul(from_data([a], float64), b)
 Base.:-(x::InsightArray) = begin
     ptr = ccall((:insight_jl_negative, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid},), x)
@@ -432,6 +523,10 @@ end
 @jl_unary trunc_fn     :insight_jl_trunc_unary
 @jl_unary deg2rad_fn   :insight_jl_deg2rad
 @jl_unary rad2deg_fn   :insight_jl_rad2deg
+
+# Complex unary
+@jl_unary conj_fn      :insight_jl_conj
+@jl_unary angle_fn     :insight_jl_angle
 
 # ============================================================================
 # Complex
@@ -486,22 +581,27 @@ end
 # Additional Reduction (Phase D)
 # ============================================================================
 
+# Helper: convert Julia 1-based axis to Insight 0-based axis.
+# With dim reversal: Julia axis k = Insight axis (ndim - k).
+# axis <= 0 means "all axes" — pass through unchanged.
+_julia_axis(arr::InsightArray, axis::Int) = axis <= 0 ? axis : ndim(arr) - axis
+
 function cummax(x::InsightArray, axis::Int)::InsightArray
     ptr = ccall((:insight_jl_cummax, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32), x, Int32(axis))
+                (Ptr{Cvoid}, Int32), x, Int32(_julia_axis(x, axis)))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
 function cummin(x::InsightArray, axis::Int)::InsightArray
     ptr = ccall((:insight_jl_cummin, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32), x, Int32(axis))
+                (Ptr{Cvoid}, Int32), x, Int32(_julia_axis(x, axis)))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
 function sem(x::InsightArray; axis::Union{Int,Nothing}=nothing,
              keepdims::Bool=false, ddof::Int=0)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_sem, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32, Int32),
@@ -512,7 +612,7 @@ end
 function count_nonzero(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                        keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_count_nonzero, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -522,7 +622,7 @@ end
 function median(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_median, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -533,7 +633,7 @@ function quantile(x::InsightArray, q::Float64;
                   axis::Union{Int,Nothing}=nothing,
                   keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_quantile, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Float64, Int32, Int32, Int32),
@@ -545,7 +645,7 @@ function percentile(x::InsightArray, q::Float64;
                     axis::Union{Int,Nothing}=nothing,
                     keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_percentile, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Float64, Int32, Int32, Int32),
@@ -556,7 +656,7 @@ end
 function nansum(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nansum, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -566,7 +666,7 @@ end
 function nanmean(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                  keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanmean, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -576,7 +676,7 @@ end
 function nanmax(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanmax, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -586,7 +686,7 @@ end
 function nanmin(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanmin, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -596,7 +696,7 @@ end
 function nanstd(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false, ddof::Int=0)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanstd, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32, Int32),
@@ -607,7 +707,7 @@ end
 function nanvar(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false, ddof::Int=0)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanvar, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32, Int32),
@@ -635,7 +735,7 @@ Sum of array elements over a given axis.
 function sum(x::InsightArray; axis::Union{Int,Nothing}=nothing,
              keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_sum, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -660,7 +760,7 @@ Mean of array elements over a given axis.
 function mean(x::InsightArray; axis::Union{Int,Nothing}=nothing,
               keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_mean, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -752,11 +852,17 @@ end
 # Returns
 - `InsightArray`: Complex-valued DFT result.
 """
-function fft(x::InsightArray; n::Union{Int,Nothing}=nothing)::InsightArray
-    has_n = n !== nothing ? Int32(1) : Int32(0)
-    nv = n !== nothing ? Int64(n) : Int64(-1)
-    ptr = ccall((:insight_jl_fft, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32, Int64), x, has_n, nv)
+function fft(x::InsightArray; n::Union{Int,Nothing}=nothing, axis::Union{Int,Nothing}=nothing)::InsightArray
+    if axis !== nothing
+        nv = n !== nothing ? Int64(n) : Int64(-1)
+        ptr = ccall((:insight_jl_fft_axis, LIB_INSIGHT), Ptr{Cvoid},
+                    (Ptr{Cvoid}, Int64, Int32), x, nv, Int32(_julia_axis(x, axis)))
+    else
+        has_n = n !== nothing ? Int32(1) : Int32(0)
+        nv = n !== nothing ? Int64(n) : Int64(-1)
+        ptr = ccall((:insight_jl_fft, LIB_INSIGHT), Ptr{Cvoid},
+                    (Ptr{Cvoid}, Int32, Int64), x, has_n, nv)
+    end
     arr = InsightArray(ptr)
     finalizer(_free, arr)
     return arr
@@ -767,6 +873,34 @@ function ifft(x::InsightArray; n::Union{Int,Nothing}=nothing)::InsightArray
     nv = n !== nothing ? Int64(n) : Int64(-1)
     ptr = ccall((:insight_jl_ifft, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int64), x, has_n, nv)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+"""
+    rfft(x; n=nothing)
+
+Real-input FFT (returns complex output of length n÷2+1).
+"""
+function rfft(x::InsightArray; n::Union{Int,Nothing}=nothing)::InsightArray
+    has_n = n !== nothing ? Int32(1) : Int32(0)
+    nv = n !== nothing ? Int64(n) : Int64(-1)
+    ptr = ccall((:insight_jl_rfft, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32, Int64), x, has_n, nv)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+"""
+    irfft(x, n)
+
+Inverse real FFT (complex input, real output of length n).
+"""
+function irfft(x::InsightArray, n::Int)::InsightArray
+    ptr = ccall((:insight_jl_irfft, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int64), x, Int64(n))
     arr = InsightArray(ptr)
     finalizer(_free, arr)
     return arr
@@ -788,6 +922,7 @@ end
 
 function randn(dims::Vector{Int64}, dtype_val::Int32=float32,
                device::Int32=CPU)::InsightArray
+
     ptr = ccall((:insight_jl_randn, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
                 dims, Int32(length(dims)), dtype_val, device)
@@ -831,6 +966,19 @@ end
 
 function Base.copy(x::InsightArray)::InsightArray
     ptr = ccall((:insight_jl_copy, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid},), x)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+"""
+    squeeze(x::InsightArray) -> InsightArray
+
+Remove dimensions of size 1 from the array shape.
+"""
+function squeeze(x::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_squeeze, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid},), x)
     arr = InsightArray(ptr)
     finalizer(_free, arr)
@@ -909,7 +1057,7 @@ end
 
 function diff_fn(x::InsightArray; n::Int=1, axis::Int=-1)::InsightArray
     ptr = ccall((:insight_jl_diff, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32, Int32), x, Int32(n), Int32(axis))
+                (Ptr{Cvoid}, Int32, Int32), x, Int32(n), Int32(_julia_axis(x, axis)))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
@@ -1101,13 +1249,24 @@ end
 
 function fftshift(x::InsightArray; axis::Int=-1)::InsightArray
     ptr = ccall((:insight_jl_fftshift, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32), x, Int32(axis))
+                (Ptr{Cvoid}, Int32), x, Int32(_julia_axis(x, axis)))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
 function ifftshift(x::InsightArray; axis::Int=-1)::InsightArray
     ptr = ccall((:insight_jl_ifftshift, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32), x, Int32(axis))
+                (Ptr{Cvoid}, Int32), x, Int32(_julia_axis(x, axis)))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+"""
+    fftfreq(n::Int, d::Float64=1.0) -> InsightArray
+
+Return the DFT sample frequencies for a signal of length `n` with sample spacing `d`.
+"""
+function fftfreq(n::Int, d::Float64=1.0)::InsightArray
+    ptr = ccall((:insight_jl_fftfreq, LIB_INSIGHT), Ptr{Cvoid},
+                (Int64, Float64), Int64(n), d)
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
@@ -1186,23 +1345,455 @@ function matrix_rank(x::InsightArray)::InsightArray
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
+function matrix_power(x::InsightArray, n::Int)::InsightArray
+    ptr = ccall((:insight_jl_matrix_power, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(n))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function slogdet(x::InsightArray)
+    sign_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    logdet_ref = Ref{Ptr{Cvoid}}(C_NULL)
+    ccall((:insight_jl_slogdet, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Ptr{Cvoid}}, Ptr{Ptr{Cvoid}}),
+          x, sign_ref, logdet_ref)
+    sign = InsightArray(sign_ref[]); finalizer(_free, sign)
+    logdet = InsightArray(logdet_ref[]); finalizer(_free, logdet)
+    return (sign, logdet)
+end
+
+function eigvalsh(x::InsightArray; uplo::String="L")::InsightArray
+    ptr = ccall((:insight_jl_eigvalsh, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Cstring), x, uplo)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+function pinv(x::InsightArray; rcond::Float64=-1.0)::InsightArray
+    ptr = ccall((:insight_jl_pinv, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Float64), x, rcond)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+# ============================================================================
+# Convenience functions (aliases and missing bindings)
+# ============================================================================
+
+"""
+    item(arr::InsightArray, idx::Int) -> Number
+
+Extract a scalar value from a 1-D array at 0-based index `idx`.
+"""
+function item(arr::InsightArray, idx::Int)
+    data = to_array(arr)
+    return data[idx + 1]
+end
+
+"""
+    to_data(arr::InsightArray) -> Array
+
+Alias for `to_array`. Copies data from an InsightArray to a Julia Array.
+"""
+const to_data = to_array
+
+"""
+    to(x::InsightArray, device_type::Int) -> InsightArray
+
+Transfer array to a different device. device_type: 0=CPU, 1=GPU.
+"""
+function to(x::InsightArray, device_type::Int)::InsightArray
+    ptr = ccall((:insight_jl_to_device, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(device_type))
+    if ptr == C_NULL
+        error("Insight: device transfer failed (GPU backend not available?)")
+    end
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+"""
+    negative(x::InsightArray) -> InsightArray
+
+Element-wise negation.
+"""
+function negative(x::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_negative, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid},), x)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+"""
+    abs(x::InsightArray) -> InsightArray
+
+Element-wise absolute value. Alias for `abs_fn`.
+"""
+abs(x::InsightArray) = abs_fn(x)
+
+"""
+    sqrt(x::InsightArray) -> InsightArray
+
+Element-wise square root. Alias for `sqrt_fn`.
+"""
+sqrt(x::InsightArray) = sqrt_fn(x)
+
+"""
+    exp(x::InsightArray) -> InsightArray
+
+Element-wise exponential. Alias for `exp_fn`.
+"""
+exp(x::InsightArray) = exp_fn(x)
+
+"""
+    log(x::InsightArray) -> InsightArray
+
+Element-wise natural logarithm. Alias for `log_fn`.
+"""
+log(x::InsightArray) = log_fn(x)
+
+"""
+    sin(x::InsightArray) -> InsightArray
+
+Element-wise sine. Alias for `sin_fn`.
+"""
+sin(x::InsightArray) = sin_fn(x)
+
+"""
+    cos(x::InsightArray) -> InsightArray
+
+Element-wise cosine. Alias for `cos_fn`.
+"""
+cos(x::InsightArray) = cos_fn(x)
+
+"""
+    tan(x::InsightArray) -> InsightArray
+
+Element-wise tangent. Alias for `tan_fn`.
+"""
+tan(x::InsightArray) = tan_fn(x)
+
+"""
+    floor(x::InsightArray) -> InsightArray
+
+Element-wise floor. Alias for `floor_fn`.
+"""
+floor(x::InsightArray) = floor_fn(x)
+
+"""
+    ceil(x::InsightArray) -> InsightArray
+
+Element-wise ceil. Alias for `ceil_fn`.
+"""
+ceil(x::InsightArray) = ceil_fn(x)
+
+"""
+    round(x::InsightArray) -> InsightArray
+
+Element-wise round. Alias for `round_fn`.
+"""
+round(x::InsightArray) = round_fn(x)
+
+# --- Comparison operators ---
+@jl_binary equal  :insight_jl_equal
+@jl_binary greater :insight_jl_greater
+@jl_binary less   :insight_jl_less
+
+# Logical binary ops
+@jl_binary logical_and :insight_jl_logical_and
+@jl_binary logical_or  :insight_jl_logical_or
+@jl_binary logical_xor :insight_jl_logical_xor
+
+# Logical unary ops
+@jl_unary logical_not :insight_jl_logical_not
+
+# --- Additional reductions ---
+function max(x::InsightArray; axis::Union{Int,Nothing}=nothing,
+             keepdims::Bool=false)::InsightArray
+    has_axis = axis !== nothing ? Int32(1) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
+    kd = keepdims ? Int32(1) : Int32(0)
+    ptr = ccall((:insight_jl_max, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+function min(x::InsightArray; axis::Union{Int,Nothing}=nothing,
+             keepdims::Bool=false)::InsightArray
+    has_axis = axis !== nothing ? Int32(1) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
+    kd = keepdims ? Int32(1) : Int32(0)
+    ptr = ccall((:insight_jl_min, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+function argmax(x::InsightArray; axis::Union{Int,Nothing}=nothing,
+                keepdims::Bool=false)::InsightArray
+    has_axis = axis !== nothing ? Int32(1) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
+    kd = keepdims ? Int32(1) : Int32(0)
+    ptr = ccall((:insight_jl_argmax, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+function argmin(x::InsightArray; axis::Union{Int,Nothing}=nothing,
+                keepdims::Bool=false)::InsightArray
+    has_axis = axis !== nothing ? Int32(1) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
+    kd = keepdims ? Int32(1) : Int32(0)
+    ptr = ccall((:insight_jl_argmin, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+function prod(x::InsightArray; axis::Union{Int,Nothing}=nothing,
+              keepdims::Bool=false)::InsightArray
+    has_axis = axis !== nothing ? Int32(1) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
+    kd = keepdims ? Int32(1) : Int32(0)
+    ptr = ccall((:insight_jl_prod, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+# --- Additional linalg ---
+"""
+    dot(a::InsightArray, b::InsightArray) -> InsightArray
+
+Dot product of two 1-D arrays.
+"""
+function dot(a::InsightArray, b::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_dot, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Cvoid}), a, b)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+"""
+    outer(a::InsightArray, b::InsightArray) -> InsightArray
+
+Outer product of two 1-D arrays.
+"""
+function outer(a::InsightArray, b::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_outer, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Cvoid}), a, b)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+"""
+    norm(x::InsightArray; ord::Real=2.0) -> InsightArray
+
+Matrix or vector norm.
+"""
+function norm(x::InsightArray; ord::Real=2.0)::InsightArray
+    ptr = ccall((:insight_jl_norm, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Float64), x, Float64(ord))
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
+"""
+    trace(x::InsightArray) -> InsightArray
+
+Sum of diagonal elements.
+"""
+function trace(x::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_trace, LIB_INSIGHT), Ptr{Cvoid}, (Ptr{Cvoid},), x)
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+
 # ============================================================================
 # Display
 # ============================================================================
 
-function Base.show(io::IO, arr::InsightArray)
-    if arr.ptr == C_NULL
-        print(io, "<InsightArray (freed)>")
+function Base.show(io::IO, a::InsightArray)
+    if a.ptr == C_NULL
+        print(io, "Array(<freed>)")
         return
     end
-    s = shape(arr)
-    dt = dtype(arr)
-    dt_str = dt == float32 ? "float32" :
-             dt == float64 ? "float64" :
-             dt == int32   ? "int32" :
-             dt == int64   ? "int64" : "other"
-    dev = device_type(arr) == 1 ? "gpu" : "cpu"
-    print(io, "<InsightArray shape=($(join(s, ", "))) dtype=$dt_str place=$dev>")
+    cstr = ccall((:insight_jl_array_tostring, LIB_INSIGHT), Ptr{UInt8},
+                 (Ptr{Cvoid},), a)
+    if cstr != C_NULL
+        s = unsafe_string(cstr)
+        Libc.free(cstr)
+        print(io, s)
+    else
+        # Fallback to metadata-only
+        s = shape(a)
+        d = dtype(a)
+        dt_name = d == float64 ? "float64" :
+                  d == float32 ? "float32" :
+                  d == int32   ? "int32" :
+                  d == int64   ? "int64" :
+                  d == int8    ? "int8" :
+                  d == uint8   ? "uint8" :
+                  d == bool    ? "bool" : "dtype($d)"
+        p = device_type(a)
+        place_name = p == GPU ? "gpu" : "cpu"
+        print(io, "Array(shape=$s, dtype=$dt_name, place=$place_name)")
+    end
+end
+
+function Base.show(io::IO, ::MIME"text/plain", a::InsightArray)
+    show(io, a)
+end
+
+# ============================================================================
+# Plot Module (conditionally available — requires INSIGHT_USE_MATPLOT)
+# ============================================================================
+
+module plot
+    using ..Insight
+
+    # Check at load time whether plot symbols are available
+    const _has_plot = try
+        ccall((:insight_jl_figure, Insight.LIB_INSIGHT), Cvoid,
+              (Int32,), Int32(-1))
+        true
+    catch
+        false
+    end
+
+    function _check()
+        if !_has_plot
+            error("Plot functions not available. Rebuild with INSIGHT_USE_MATPLOT=ON")
+        end
+    end
+
+    function plotfn(y::Insight.InsightArray; format::String="")
+        _check()
+        ccall((:insight_jl_plot, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Cstring), y, format)
+    end
+
+    function plotxy(x::Insight.InsightArray, y::Insight.InsightArray;
+                  format::String="")
+        _check()
+        ccall((:insight_jl_plot_xy, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Ptr{Cvoid}, Cstring), x, y, format)
+    end
+
+    function scatter(x::Insight.InsightArray, y::Insight.InsightArray;
+                     size::Float64=20.0)
+        _check()
+        ccall((:insight_jl_plot_scatter, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Ptr{Cvoid}, Float64), x, y, size)
+    end
+
+    function bar(y::Insight.InsightArray; width::Float64=0.8)
+        _check()
+        ccall((:insight_jl_bar, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Float64), y, width)
+    end
+
+    function bar(x::Insight.InsightArray, y::Insight.InsightArray;
+                 width::Float64=0.8)
+        _check()
+        ccall((:insight_jl_bar_xy, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Ptr{Cvoid}, Float64), x, y, width)
+    end
+
+    function hist(data::Insight.InsightArray; bins::Int=10)
+        _check()
+        ccall((:insight_jl_hist, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Int32), data, Int32(bins))
+    end
+
+    function hist(data::Insight.InsightArray, bins::Int)
+        _check()
+        ccall((:insight_jl_hist, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Int32), data, Int32(bins))
+    end
+
+    function imshow(data::Insight.InsightArray)
+        _check()
+        ccall((:insight_jl_imshow, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid},), data)
+    end
+
+    function contour(X::Insight.InsightArray, Y::Insight.InsightArray,
+                     Z::Insight.InsightArray; levels::Int=10)
+        _check()
+        ccall((:insight_jl_contour, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}, Int32),
+              X, Y, Z, Int32(levels))
+    end
+
+    function subplot(rows::Int, cols::Int, index::Int)
+        _check()
+        ccall((:insight_jl_subplot, Insight.LIB_INSIGHT), Cvoid,
+              (Int32, Int32, Int32), Int32(rows), Int32(cols), Int32(index))
+    end
+
+    function title(text::String)
+        _check()
+        ccall((:insight_jl_title, Insight.LIB_INSIGHT), Cvoid,
+              (Cstring,), text)
+    end
+
+    function xlabel(text::String)
+        _check()
+        ccall((:insight_jl_xlabel, Insight.LIB_INSIGHT), Cvoid,
+              (Cstring,), text)
+    end
+
+    function ylabel(text::String)
+        _check()
+        ccall((:insight_jl_ylabel, Insight.LIB_INSIGHT), Cvoid,
+              (Cstring,), text)
+    end
+
+    function legend(labels::Vector{String})
+        _check()
+        ccall((:insight_jl_legend, Insight.LIB_INSIGHT), Cvoid,
+              (Ptr{Cstring}, Int32), labels, Int32(length(labels)))
+    end
+
+    function savefig(filename::String)
+        _check()
+        ccall((:insight_jl_savefig, Insight.LIB_INSIGHT), Cvoid,
+              (Cstring,), filename)
+    end
+
+    function figure(number::Int=-1)
+        _check()
+        ccall((:insight_jl_figure, Insight.LIB_INSIGHT), Cvoid,
+              (Int32,), Int32(number))
+    end
+
+    function clf()
+        _check()
+        ccall((:insight_jl_clf, Insight.LIB_INSIGHT), Cvoid, ())
+    end
+
+    function grid(on::Bool=true)
+        _check()
+        ccall((:insight_jl_grid, Insight.LIB_INSIGHT), Cvoid,
+              (Int32,), on ? Int32(1) : Int32(0))
+    end
+
+    function close()
+        _check()
+        ccall((:insight_jl_close, Insight.LIB_INSIGHT), Cvoid, ())
+    end
 end
 
 # ============================================================================
@@ -1216,11 +1807,11 @@ function convolve(a::InsightArray, v::InsightArray;
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
-function unwrap(p::InsightArray; axis::Int=-1, discont::Float64=π,
-                period::Float64=2π)::InsightArray
+function unwrap(p::InsightArray; axis::Int=-1, discont::Real=Float64(π),
+                period::Real=Float64(2π))::InsightArray
     ptr = ccall((:insight_jl_unwrap, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32, Float64, Float64), p, Int32(axis),
-                discont, period)
+                (Ptr{Cvoid}, Int32, Float64, Float64), p, Int32(_julia_axis(p, axis)),
+                Float64(discont), Float64(period))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
@@ -1308,6 +1899,7 @@ module signal
     const argrelmax = Insight.argrelmax
     const argrelmin = Insight.argrelmin
     const cfar_alpha = Insight.cfar_alpha
+    const ca_cfar = Insight.ca_cfar
     const read_bin = Insight.read_bin
     const write_bin = Insight.write_bin
     const pack_bin = Insight.pack_bin

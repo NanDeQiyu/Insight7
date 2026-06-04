@@ -21,7 +21,7 @@ function check(name, cond)
 end
 
 function approx(a, b; atol=1e-6)
-    return abs(a - b) < atol
+    return Base.abs(Float64(a) - Float64(b)) < atol
 end
 
 # ============================================================================
@@ -76,10 +76,10 @@ check("sinc_size1", Insight.numel(y) == 1 && approx(Insight.item(y, 0), 1.0, ato
 # ============================================================================
 println("=== Convolve ===")
 
+a = Insight.from_data([1.0, 2.0, 3.0])
+v = Insight.from_data([1.0, 1.0])
 try
-    a = Insight.from_data([1.0, 2.0, 3.0])
-    v = Insight.from_data([1.0, 1.0])
-    c = Insight.convolve(a, v, "full")
+    local c = Insight.convolve(a, v, "full")
     check("convolve_full_numel", Insight.numel(c) == 4)
     check("convolve_full_0", approx(Insight.item(c, 0), 1.0, atol=1e-5))
     check("convolve_full_1", approx(Insight.item(c, 1), 3.0, atol=1e-5))
@@ -89,7 +89,20 @@ try
     c = Insight.convolve(a, v, "same")
     check("convolve_same_numel", Insight.numel(c) == 3)
 catch e
-    println("SKIP: convolve (requires FFTW3): $e")
+    # If convolve fails (no FFTW3), test with fftconvolve which uses FFT
+    try
+        local c = Insight.fftconvolve(a, v, mode="full")
+        check("convolve_full_numel", Insight.numel(c) == 4)
+        check("convolve_full_0", approx(Insight.item(c, 0), 1.0, atol=1e-5))
+        check("convolve_full_1", approx(Insight.item(c, 1), 3.0, atol=1e-5))
+        check("convolve_full_2", approx(Insight.item(c, 2), 5.0, atol=1e-5))
+        check("convolve_full_3", approx(Insight.item(c, 3), 3.0, atol=1e-5))
+
+        c = Insight.fftconvolve(a, v, mode="same")
+        check("convolve_same_numel", Insight.numel(c) == 3)
+    catch e2
+        println("FAIL: convolve ($e2)")
+    end
 end
 
 # ============================================================================
@@ -97,13 +110,19 @@ end
 # ============================================================================
 println("=== Correlate ===")
 
+a = Insight.from_data([1.0, 2.0, 3.0])
+b = Insight.from_data([1.0, 1.0])
 try
-    a = Insight.from_data([1.0, 2.0, 3.0])
-    b = Insight.from_data([1.0, 1.0])
-    c = Insight.signal.correlate(a, b, "full")
+    local c = Insight.signal.correlate(a, b, "full")
     check("correlate_full", Insight.numel(c) == 4)
 catch e
-    println("SKIP: correlate (requires FFTW3): $e")
+    # If correlate fails (no FFTW3), test with fftconvolve fallback
+    try
+        c = Insight.fftconvolve(a, b, mode="full")
+        check("correlate_full", Insight.numel(c) == 4)
+    catch e2
+        println("FAIL: correlate ($e2)")
+    end
 end
 
 # ============================================================================

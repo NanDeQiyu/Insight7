@@ -18,18 +18,19 @@ M.read_bin = _wrap({ "filepath", "dtype" }, function(filepath, dtype)
 end)
 
 --- Write an array to a binary file.
--- @tparam Array x Input array.
 -- @string filepath Path to the output binary file.
-M.write_bin = _wrap({ "x", "filepath" }, function(x, filepath)
-  return sig.write_bin(x, filepath)
+-- @tparam Array x Input array.
+M.write_bin = _wrap({ "filepath", "x" }, function(filepath, x)
+  return sig.write_bin(filepath, x)
 end)
 
 --- Unpack binary data from raw bytes.
 -- @tparam Array raw Raw byte array.
--- @string dtype Target data type string.
+-- @int dtype Data type code (e.g., ins.float32, ins.int16).
+-- @string[opt="L"] endianness Endianness: "L" (little) or "B" (big).
 -- @treturn Array Unpacked data array.
-M.unpack_bin = _wrap({ "raw", "dtype" }, function(raw, dtype)
-  return sig.unpack_bin(raw, dtype)
+M.unpack_bin = _wrap({ "raw", "dtype", "endianness" }, function(raw, dtype, endianness)
+  return sig.unpack_bin(raw, dtype, endianness)
 end)
 
 --- Pack array data into raw bytes.
@@ -49,10 +50,10 @@ end)
 
 --- Write data and metadata in SigMF format.
 -- @tparam Array x Input data array.
--- @string metafile Path to the SigMF .json metadata file.
--- @tparam table metadata SigMF metadata as a Lua table.
-M.write_sigmf = _wrap({ "x", "metafile", "metadata" }, function(x, metafile, metadata)
-  return sig.write_sigmf(x, metafile, metadata)
+-- @string metafile Path to the SigMF .sigmf-data output file.
+-- @bool[opt=true] append Append mode.
+M.write_sigmf = _wrap({ "x", "metafile", "append" }, function(x, metafile, append)
+  return sig.write_sigmf(metafile, x, append)
 end)
 
 return M

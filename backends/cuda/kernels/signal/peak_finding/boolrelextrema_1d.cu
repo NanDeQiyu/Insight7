@@ -6,6 +6,8 @@
 // 0=greater, 1=less) outputs: [0]=mask (bool, same shape as data)
 #include "../../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 __global__ void boolrelextrema_1d_f64(const double *data, bool *mask, int64_t n,
@@ -72,6 +74,76 @@ __global__ void boolrelextrema_1d_f32(const float *data, bool *mask, int64_t n,
   mask[i] = is_extremum;
 }
 
+__global__ void boolrelextrema_1d_f16(const uint16_t *data, bool *mask,
+                                      int64_t n, int32_t order, int32_t cmp) {
+  int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+
+  float val = __half2float(*(const __half *)&data[i]);
+  bool is_extremum = true;
+  for (int32_t j = 1; j <= order; ++j) {
+    if (i - j >= 0) {
+      float nb = __half2float(*(const __half *)&data[i - j]);
+      if (cmp == 0 && val < nb) {
+        is_extremum = false;
+        break;
+      }
+      if (cmp == 1 && val > nb) {
+        is_extremum = false;
+        break;
+      }
+    }
+    if (i + j < n) {
+      float nb = __half2float(*(const __half *)&data[i + j]);
+      if (cmp == 0 && val < nb) {
+        is_extremum = false;
+        break;
+      }
+      if (cmp == 1 && val > nb) {
+        is_extremum = false;
+        break;
+      }
+    }
+  }
+  mask[i] = is_extremum;
+}
+
+__global__ void boolrelextrema_1d_bf16(const uint16_t *data, bool *mask,
+                                       int64_t n, int32_t order, int32_t cmp) {
+  int64_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n)
+    return;
+
+  float val = __bfloat162float(*(const __nv_bfloat16 *)&data[i]);
+  bool is_extremum = true;
+  for (int32_t j = 1; j <= order; ++j) {
+    if (i - j >= 0) {
+      float nb = __bfloat162float(*(const __nv_bfloat16 *)&data[i - j]);
+      if (cmp == 0 && val < nb) {
+        is_extremum = false;
+        break;
+      }
+      if (cmp == 1 && val > nb) {
+        is_extremum = false;
+        break;
+      }
+    }
+    if (i + j < n) {
+      float nb = __bfloat162float(*(const __nv_bfloat16 *)&data[i + j]);
+      if (cmp == 0 && val < nb) {
+        is_extremum = false;
+        break;
+      }
+      if (cmp == 1 && val > nb) {
+        is_extremum = false;
+        break;
+      }
+    }
+  }
+  mask[i] = is_extremum;
+}
+
 extern "C" {
 
 C_Status boolrelextrema_1d_kernel_gpu(void **inputs, void **outputs) {
@@ -89,14 +161,26 @@ C_Status boolrelextrema_1d_kernel_gpu(void **inputs, void **outputs) {
   int threads = 256;
   int blocks = (int)((n + threads - 1) / threads);
 
-  if (data->dtype == INSIGHT_DTYPE_F64) {
+  switch (data->dtype) {
+  case INSIGHT_DTYPE_F64:
     boolrelextrema_1d_f64<<<blocks, threads>>>(
         (const double *)data->data, (bool *)out->data, n, order, cmp);
-  } else if (data->dtype == INSIGHT_DTYPE_F32) {
+    break;
+  case INSIGHT_DTYPE_F32:
     boolrelextrema_1d_f32<<<blocks, threads>>>(
         (const float *)data->data, (bool *)out->data, n, order, cmp);
-  } else {
-    gpu_set_last_error("boolrelextrema_1d: unsupported dtype, need F32 or F64");
+    break;
+  case INSIGHT_DTYPE_F16:
+    boolrelextrema_1d_f16<<<blocks, threads>>>(
+        (const uint16_t *)data->data, (bool *)out->data, n, order, cmp);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    boolrelextrema_1d_bf16<<<blocks, threads>>>(
+        (const uint16_t *)data->data, (bool *)out->data, n, order, cmp);
+    break;
+  default:
+    gpu_set_last_error(
+        "boolrelextrema_1d: unsupported dtype, need F32, F64, F16, or BF16");
     return C_FAILED;
   }
 
@@ -113,4 +197,8 @@ C_Status boolrelextrema_1d_kernel_gpu(void **inputs, void **outputs) {
 REGISTER_GPU_KERNEL(boolrelextrema_1d, INSIGHT_DTYPE_F32,
                     boolrelextrema_1d_kernel_gpu);
 REGISTER_GPU_KERNEL(boolrelextrema_1d, INSIGHT_DTYPE_F64,
+                    boolrelextrema_1d_kernel_gpu);
+REGISTER_GPU_KERNEL(boolrelextrema_1d, INSIGHT_DTYPE_F16,
+                    boolrelextrema_1d_kernel_gpu);
+REGISTER_GPU_KERNEL(boolrelextrema_1d, INSIGHT_DTYPE_BF16,
                     boolrelextrema_1d_kernel_gpu);

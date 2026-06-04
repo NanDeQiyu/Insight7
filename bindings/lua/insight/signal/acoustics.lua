@@ -9,18 +9,32 @@ local M = {}
 
 local _wrap = require("insight._wrap")
 
+local from_table = native.from_table
+
 --- Convert Mel scale to Hz.
--- @number mel Frequency in Mel scale.
--- @treturn number Frequency in Hz.
+-- Accepts a scalar number or an Array.
+-- @param mel Frequency in Mel scale (number or Array).
+-- @treturn number Frequency in Hz (scalar).
 M.mel2hz = _wrap({ "mel" }, function(mel)
-  return sig.mel2hz(mel)
+  local arr = (type(mel) == "number") and from_table({ mel }) or mel
+  local r = sig.mel2hz(arr)
+  if type(mel) == "number" then
+    return r:item(0)
+  end
+  return r
 end)
 
 --- Convert Hz to Mel scale.
--- @number hz Frequency in Hz.
--- @treturn number Frequency in Mel scale.
+-- Accepts a scalar number or an Array.
+-- @param hz Frequency in Hz (number or Array).
+-- @treturn number Frequency in Mel scale (scalar).
 M.hz2mel = _wrap({ "hz" }, function(hz)
-  return sig.hz2mel(hz)
+  local arr = (type(hz) == "number") and from_table({ hz }) or hz
+  local r = sig.hz2mel(arr)
+  if type(hz) == "number" then
+    return r:item(0)
+  end
+  return r
 end)
 
 --- Compute Mel-spaced frequencies.
@@ -34,17 +48,29 @@ M.mel_frequencies = _wrap({ "num", "fmin", "fmax", "htk" }, function(num, fmin, 
 end)
 
 --- Convert Hz to Bark scale.
--- @number hz Frequency in Hz.
--- @treturn number Frequency in Bark scale.
+-- Accepts a scalar number or an Array.
+-- @param hz Frequency in Hz (number or Array).
+-- @treturn number Frequency in Bark scale (scalar).
 M.hz2bark = _wrap({ "hz" }, function(hz)
-  return sig.hz2bark(hz)
+  local arr = (type(hz) == "number") and from_table({ hz }) or hz
+  local r = sig.hz2bark(arr)
+  if type(hz) == "number" then
+    return r:item(0)
+  end
+  return r
 end)
 
 --- Convert Bark scale to Hz.
--- @number bark Frequency in Bark scale.
--- @treturn number Frequency in Hz.
+-- Accepts a scalar number or an Array.
+-- @param bark Frequency in Bark scale (number or Array).
+-- @treturn number Frequency in Hz (scalar).
 M.bark2hz = _wrap({ "bark" }, function(bark)
-  return sig.bark2hz(bark)
+  local arr = (type(bark) == "number") and from_table({ bark }) or bark
+  local r = sig.bark2hz(arr)
+  if type(bark) == "number" then
+    return r:item(0)
+  end
+  return r
 end)
 
 return M

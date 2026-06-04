@@ -3,6 +3,7 @@ name: add-cuda-test
 description: Workflow for adding CUDA tests aligned with CPU tests, including common pitfalls and runtime fixes.
 source: auto-skill
 extracted_at: '2026-05-29T16:25:13.968Z'
+updated: '2026-06-01'
 ---
 
 # Workflow: Add CUDA Tests
@@ -14,9 +15,34 @@ When adding new CUDA tests to align with existing CPU tests, follow this workflo
 - Create `tests/cuda/test_<module>.cpp`.
 - Use `file(GLOB)` in `tests/CMakeLists.txt` to automatically pick up new files.
 
-### Composite Operations (no dedicated CUDA kernel needed)
+### Signal Module Tests (all 14 submodules have backend kernels)
 
-Some modules (like `signal`) are implemented as **composite operations** — they call other primitives (`diff`, `sin`, `rfft`, etc.) that already have CUDA kernels. For these modules:
+All 14 signal submodules now have dedicated CPU and CUDA backend kernels with
+the `signal_` naming prefix convention. Signal CUDA tests mirror CPU tests exactly:
+
+```
+tests/cpu/test_signal_convolution.cpp    → tests/cuda/test_signal_convolution.cpp
+tests/cpu/test_signal_filtering.cpp      → tests/cuda/test_signal_filtering.cpp
+tests/cpu/test_signal_windows.cpp        → tests/cuda/test_signal_windows.cpp
+... (one pair per submodule)
+```
+
+Signal kernel naming convention:
+- Kernel function: `signal_<op>_kernel_cpu` / `signal_<op>_kernel_gpu`
+- REGISTER macro: `REGISTER_CPU_KERNEL(signal_<op>, dtype, func)`
+- Example: `signal_exponential`, `signal_square`, `signal_morlet`, `signal_lombscargle`
+- The `signal_` prefix avoids collisions with non-signal kernels (e.g., `exponential` in random module)
+
+Signal dtype support:
+- **CPU kernels**: F64, F32
+- **CUDA kernels**: F64, F32, F16, BF16
+- OpenMP parallelism for CPU when `numel > 1000`
+- 256 threads/block for CUDA
+
+### Composite Operations (non-signal modules)
+
+Some modules are implemented as **composite operations** — they call other primitives
+(`diff`, `sin`, `rfft`, etc.) that already have CUDA kernels. For these modules:
 
 - No `backends/cuda/kernels/<module>/` directory is needed
 - Only the CUDA test file needs to be created

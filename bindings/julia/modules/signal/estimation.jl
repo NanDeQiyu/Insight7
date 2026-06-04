@@ -40,10 +40,11 @@ mutable struct KalmanFilter
     function KalmanFilter(ptr::Ptr{Cvoid})
         kf = new(ptr)
         finalizer(kf) do k
-            if k.ptr != C_NULL
+            p = getfield(k, :ptr)
+            if p != C_NULL
                 ccall((:insight_jl_kalman_filter_free, LIB_INSIGHT),
-                      Cvoid, (Ptr{Cvoid},), k.ptr)
-                k.ptr = C_NULL
+                      Cvoid, (Ptr{Cvoid},), p)
+                setfield!(k, :ptr, C_NULL)
             end
         end
         return kf

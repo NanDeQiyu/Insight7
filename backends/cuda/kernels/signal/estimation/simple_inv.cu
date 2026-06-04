@@ -14,3 +14,5 @@ static C_Status simple_inv_kernel_gpu(void **inputs, void **outputs) {
 
 REGISTER_GPU_KERNEL(simple_inv, INSIGHT_DTYPE_F32, simple_inv_kernel_gpu);
 REGISTER_GPU_KERNEL(simple_inv, INSIGHT_DTYPE_F64, simple_inv_kernel_gpu);
+REGISTER_GPU_KERNEL(simple_inv, INSIGHT_DTYPE_F16, simple_inv_kernel_gpu);
+REGISTER_GPU_KERNEL(simple_inv, INSIGHT_DTYPE_BF16, simple_inv_kernel_gpu);

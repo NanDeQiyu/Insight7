@@ -197,7 +197,8 @@ class TestWiener:
     """Wiener filter — test 19."""
 
     def test_wiener_basic(self):
-        x = ins.from_numpy(np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float64))
+        # wiener requires 1D input (convolve only supports 1D tensors)
+        x = ins.from_numpy(np.array([1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=np.float64))
         y = ins.signal.wiener(x)
         assert y.numel() == 9
 

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <complex>
 #include <cuda_runtime.h>
+#include <vector>
 
 __global__ void ambgfun_kernel(const double *x, const double *y_real,
                                const double *y_imag, double *ambg, double fs,

@@ -39,6 +39,13 @@ REGISTER_CPU_KERNEL(<op>, INSIGHT_DTYPE_F64, <op>_kernel_cpu);
 
 推荐 `<op>_kernel_cpu` 命名，但不强制。只要最终被 REGISTER_CPU_KERNEL 注册即可。
 
+**Signal kernel 命名规范**: 所有 signal 模块的 kernel 必须使用 `signal_` 前缀，
+例如 `signal_morlet_kernel_cpu`、`signal_lombscargle_kernel_cpu`。
+注册时也用 `REGISTER_CPU_KERNEL(signal_morlet, dtype, func)`。
+这样可以避免与非 signal kernel 的命名冲突（如 `exponential` 在 random 模块）。
+
+Signal kernel dtype 支持: CPU (F64, F32), CUDA (F64, F32, F16, BF16)。
+
 不需要 `extern "C"`。
 
 ## 4. 错误处理

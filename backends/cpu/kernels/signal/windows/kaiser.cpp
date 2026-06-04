@@ -69,8 +69,28 @@ C_Status kaiser_kernel_cpu(void **inputs, void **outputs) {
       double arg = beta * sqrt(fmax(0.0, 1.0 - ratio * ratio));
       data[i] = bessel_i0(arg) / i0_beta;
     }
+  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    float *data = (float *)out->data;
+    float beta_f = (float)beta;
+    // Reuse double-precision bessel_i0 for accuracy, cast results to float
+    double i0_beta = bessel_i0(beta);
+    if (i0_beta == 0.0) {
+      for (int64_t i = 0; i < M; ++i)
+        data[i] = 0.0f;
+      return C_SUCCESS;
+    }
+    float half = (M - 1) / 2.0f;
+    float inv_half = (half > 0.0f) ? 1.0f / half : 0.0f;
+#ifdef _OPENMP
+#pragma omp parallel for if (M > 1000)
+#endif
+    for (int64_t i = 0; i < M; ++i) {
+      float ratio = (i - half) * inv_half;
+      float arg = beta_f * sqrtf(fmaxf(0.0f, 1.0f - ratio * ratio));
+      data[i] = (float)(bessel_i0((double)arg) / i0_beta);
+    }
   } else {
-    cpu_set_last_error("kaiser: only F64 dtype supported");
+    cpu_set_last_error("kaiser: unsupported dtype");
     return C_FAILED;
   }
 
@@ -80,3 +100,4 @@ C_Status kaiser_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(kaiser, INSIGHT_DTYPE_F64, kaiser_kernel_cpu);
+REGISTER_CPU_KERNEL(kaiser, INSIGHT_DTYPE_F32, kaiser_kernel_cpu);

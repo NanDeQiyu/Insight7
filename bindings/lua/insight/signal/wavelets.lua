@@ -10,10 +10,13 @@ local M = {}
 local _wrap = require("insight._wrap")
 
 --- Compute a Morlet wavelet.
--- @number w Frequency parameter.
+-- @int M Length of the wavelet (number of points).
+-- @number[opt=5.0] w Frequency parameter (omega0).
+-- @number[opt=1.0] s Scaling factor.
+-- @bool[opt=true] complete Whether to use the complete version.
 -- @treturn Array Complex Morlet wavelet.
-M.morlet = _wrap({ "w" }, function(w)
-  return sig.morlet(w)
+M.morlet = _wrap({ "M", "w", "s", "complete" }, function(M_val, w, s, complete)
+  return sig.morlet(M_val, w, s, complete)
 end)
 
 --- Compute a Ricker (Mexican hat) wavelet.
@@ -25,11 +28,12 @@ M.ricker = _wrap({ "points", "a" }, function(points, a)
 end)
 
 --- Compute a Morlet2 wavelet.
--- @number w Frequency parameter.
+-- @int M Length of the wavelet (number of points).
 -- @number s Scale parameter.
+-- @number[opt=5.0] w Frequency parameter (omega0).
 -- @treturn Array Complex Morlet2 wavelet.
-M.morlet2 = _wrap({ "w", "s" }, function(w, s)
-  return sig.morlet2(w, s)
+M.morlet2 = _wrap({ "M", "s", "w" }, function(M_val, s, w)
+  return sig.morlet2(M_val, s, w)
 end)
 
 return M

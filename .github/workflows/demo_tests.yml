@@ -16,15 +16,17 @@ on:
     paths:
       - 'demos/**'
       - 'bindings/**'
+      - 'backends/**'
       - 'include/**'
       - 'src/**'
       - 'CMakeLists.txt'
+      - '.github/workflows/demo_tests.yml'
   workflow_dispatch:
 
 jobs:
   cpp-demos:
     name: C++ Demos
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,7 +41,9 @@ jobs:
             liblapacke-dev \
             libomp-dev \
             cmake \
-            build-essential
+            build-essential \
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure CMake
         run: |
@@ -50,24 +54,35 @@ jobs:
             -DINSIGHT_WITH_CUDA=OFF \
             -DINSIGHT_USE_FFTW3=ON \
             -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_USE_MATPLOT=ON \
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF
+
+      - name: Force recompile matplotplusplus
+        run: |
+          # Patches are applied by cmake during configure. Touch to force recompile.
+          find build/_deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
+          find build/_deps -name axes_type.h -exec touch {} + 2>/dev/null || true
+          [ -f third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp ] && \
+            touch third_party/matplotplusplus/source/matplot/backend/gnuplot.cpp || true
+          [ -f third_party/matplotplusplus/source/matplot/core/axes_type.h ] && \
+            touch third_party/matplotplusplus/source/matplot/core/axes_type.h || true
 
       - name: Build
         run: cd build && cmake --build . -j$(nproc)
 
       - name: Run C++ demos
         run: |
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
           cd build/bin/demos
-          for demo in demo_basic_ops demo_linalg demo_fft; do
-            echo "=== Running $demo ==="
-            ./$demo || echo "WARN: $demo failed (may require GPU)"
-          done
+          ./demo_basic_ops
+          ./demo_linalg
+          ./demo_fft
+          ./demo_radar_task1
 
   python-demos:
     name: Python Demos
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,7 +99,9 @@ jobs:
             cmake \
             build-essential \
             python3-dev \
-            python3-numpy
+            python3-numpy \
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure and build
         run: |
@@ -98,19 +115,22 @@ jobs:
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF \
             -DINSIGHT_BUILD_PYTHON_BINDING=ON
+          find _deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           cmake --build . -j$(nproc)
 
       - name: Run Python demos
         run: |
           export PYTHONPATH=bindings/python
           export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          python3 demos/python/basic_ops.py || echo "WARN: basic_ops.py failed"
-          python3 demos/python/linalg_demo.py || echo "WARN: linalg_demo.py failed"
-          python3 demos/python/fft_demo.py || echo "WARN: fft_demo.py failed"
+          python3 demos/python/basic_ops.py
+          python3 demos/python/linalg_demo.py
+          python3 demos/python/fft_demo.py
+          python3 demos/python/sndfile_demo.py
+          python3 demos/python/radar_task1.py
 
   lua-demos:
     name: Lua Demos
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -127,7 +147,9 @@ jobs:
             cmake \
             build-essential \
             luajit \
-            libluajit-5.1-dev
+            libluajit-5.1-dev \
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure and build
         run: |
@@ -141,20 +163,23 @@ jobs:
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF \
             -DINSIGHT_BUILD_LUA_BINDING=ON
+          find _deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           cmake --build . -j$(nproc)
 
       - name: Run Lua demos
         run: |
-          export LUA_CPATH="build/bindings/lua/?.so;;"
-          export LUA_PATH="bindings/lua/?/init.lua;bindings/lua/?.lua;;"
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          luajit demos/lua/basic_ops.lua || echo "WARN: basic_ops.lua failed"
-          luajit demos/lua/linalg_demo.lua || echo "WARN: linalg_demo.lua failed"
-          luajit demos/lua/fft_demo.lua || echo "WARN: fft_demo.lua failed"
+          export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
+          export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
+          luajit demos/lua/basic_ops.lua
+          luajit demos/lua/linalg_demo.lua
+          luajit demos/lua/fft_demo.lua
+          luajit demos/lua/sndfile_demo.lua
+          luajit demos/lua/radar_task1.lua
 
   julia-demos:
     name: Julia Demos
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -174,7 +199,9 @@ jobs:
             liblapacke-dev \
             libomp-dev \
             cmake \
-            build-essential
+            build-essential \
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure and build
         run: |
@@ -188,12 +215,16 @@ jobs:
             -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF \
             -DINSIGHT_BUILD_JULIA_BINDING=ON
+          find _deps -name gnuplot.cpp -exec touch {} + 2>/dev/null || true
           cmake --build . -j$(nproc)
 
       - name: Run Julia demos
         run: |
           cp bindings/julia/Insight.jl build/bindings/julia/Insight.jl
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          julia demos/julia/basic_ops.jl || echo "WARN: basic_ops.jl failed"
-          julia demos/julia/linalg_demo.jl || echo "WARN: linalg_demo.jl failed"
-          julia demos/julia/fft_demo.jl || echo "WARN: fft_demo.jl failed"
+          cp -r bindings/julia/modules build/bindings/julia/modules
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$GITHUB_WORKSPACE/build/bindings/julia:$LD_LIBRARY_PATH
+          julia demos/julia/basic_ops.jl
+          julia demos/julia/linalg_demo.jl
+          julia demos/julia/fft_demo.jl
+          julia demos/julia/sndfile_demo.jl
+          julia demos/julia/radar_task1.jl

@@ -20,17 +20,17 @@ a = Insight.from_data([1.0, 2.0, 3.0, 4.0])
 s = Insight.sum(a)
 check("sum", Insight.numel(s) == 1)
 
-# sum_axis
+# sum_axis (Julia 1-based: axis=1 = first dim)
 b = Insight.from_data(Float64[1 2 3; 4 5 6])
-s = Insight.sum(b, axis=0)
+s = Insight.sum(b, axis=1)
 check("sum_axis", Insight.numel(s) == 3)
 
 # mean
 m = Insight.mean(a)
 check("mean", Insight.numel(m) == 1)
 
-# mean_axis
-m = Insight.mean(b, axis=1)
+# mean_axis (Julia 1-based: axis=2 = second dim)
+m = Insight.mean(b, axis=2)
 check("mean_axis", Insight.numel(m) == 2)
 
 # max

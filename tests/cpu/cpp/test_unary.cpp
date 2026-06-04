@@ -609,3 +609,41 @@ TEST_F(UnaryTestCPU, IsFiniteComplex) {
                                 false, true,  false, true};
   expect_bool_equal(c, expected);
 }
+
+// ============================================================================
+// Angle tests
+// ============================================================================
+
+TEST_F(UnaryTestCPU, AngleReal) {
+  Array a({5}, DType::F32);
+  float *a_data = a.data<float>();
+  a_data[0] = -2.0f;
+  a_data[1] = -1.0f;
+  a_data[2] = 0.0f;
+  a_data[3] = 1.0f;
+  a_data[4] = 2.0f;
+
+  Array c = angle(a);
+
+  ASSERT_EQ(c.dtype(), DType::F32);
+  std::vector<float> expected = {static_cast<float>(M_PI),
+                                 static_cast<float>(M_PI), 0.0f, 0.0f, 0.0f};
+  expect_float_equal<float>(c, expected, 1e-6f);
+}
+
+TEST_F(UnaryTestCPU, AngleComplex) {
+  Array a({4}, DType::C32);
+  std::complex<float> *a_data = a.data<std::complex<float>>();
+  a_data[0] = std::complex<float>(1.0f, 0.0f);  // angle = 0
+  a_data[1] = std::complex<float>(0.0f, 1.0f);  // angle = pi/2
+  a_data[2] = std::complex<float>(-1.0f, 0.0f); // angle = pi
+  a_data[3] = std::complex<float>(0.0f, -1.0f); // angle = -pi/2
+
+  Array c = angle(a);
+
+  ASSERT_EQ(c.dtype(), DType::F32);
+  std::vector<float> expected = {0.0f, static_cast<float>(M_PI / 2.0),
+                                 static_cast<float>(M_PI),
+                                 static_cast<float>(-M_PI / 2.0)};
+  expect_float_equal<float>(c, expected, 1e-6f);
+}

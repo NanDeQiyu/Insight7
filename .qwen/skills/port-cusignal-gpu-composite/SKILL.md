@@ -3,9 +3,16 @@ name: port-cusignal-gpu-composite
 description: Composite 操作实现 GPU 兼容的关键规则 — 禁止 raw pointer writes，必须用 Insight7 API 组合
 source: auto-skill
 extracted_at: '2026-05-30T00:00:00.000Z'
+updated: '2026-06-01'
 ---
 
 # GPU-Compatible Composite Operations for Signal Porting
+
+## 当前状态 (2026-06-01)
+
+所有 14 个 signal 子模块已完成后端 kernel 注册（`signal_` 前缀）。
+部分模块（如 demod）仍为纯 composite 实现，其余模块使用 composite 前端 + 后端 kernel 混合模式。
+以下规则仍然适用于 composite 部分和新 signal 函数的开发。
 
 ## 核心规则
 

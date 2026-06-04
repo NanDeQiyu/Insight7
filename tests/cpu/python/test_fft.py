@@ -59,8 +59,10 @@ class TestFFTCPU:
         np.testing.assert_allclose(result.numpy(), expected, atol=1e-8)
 
     def test_fft2(self):
+        # fft2 requires complex input; convert to complex first
         x_np = np.array([[1, 2], [3, 4]], dtype=np.float64)
-        result = ins.fft2(ins.from_numpy(x_np))
+        x_complex = ins.from_numpy(x_np.astype(np.complex128))
+        result = ins.fft2(x_complex)
         expected = np.fft.fft2(x_np)
         np.testing.assert_allclose(result.numpy(), expected, atol=1e-8)
 

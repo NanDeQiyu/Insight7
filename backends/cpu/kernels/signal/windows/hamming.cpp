@@ -36,8 +36,21 @@ C_Status hamming_kernel_cpu(void **inputs, void **outputs) {
     for (int64_t i = 0; i < M; ++i) {
       data[i] = 0.54 - 0.46 * cos(scale * i);
     }
+  } else if (out->dtype == INSIGHT_DTYPE_F32) {
+    float *data = (float *)out->data;
+    if (M == 1) {
+      data[0] = 1.0f;
+      return C_SUCCESS;
+    }
+    float scale = 2.0f * (float)M_PI / (M - 1);
+#ifdef _OPENMP
+#pragma omp parallel for if (M > 1000)
+#endif
+    for (int64_t i = 0; i < M; ++i) {
+      data[i] = 0.54f - 0.46f * cosf(scale * i);
+    }
   } else {
-    cpu_set_last_error("hamming: only F64 dtype supported");
+    cpu_set_last_error("hamming: unsupported dtype");
     return C_FAILED;
   }
 
@@ -47,3 +60,4 @@ C_Status hamming_kernel_cpu(void **inputs, void **outputs) {
 } // extern "C"
 
 REGISTER_CPU_KERNEL(hamming, INSIGHT_DTYPE_F64, hamming_kernel_cpu);
+REGISTER_CPU_KERNEL(hamming, INSIGHT_DTYPE_F32, hamming_kernel_cpu);

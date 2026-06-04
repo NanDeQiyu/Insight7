@@ -17,7 +17,7 @@ local function separator(title)
   print(string.rep("=", 60))
 end
 
-ins.init({ "cpu" })
+ins.init()
 
 -- Parameters
 local sample_rate = 44100
@@ -39,7 +39,7 @@ for i = 0, frames - 1 do
   signal_data[i + 1] = 0.5 * sin(2 * pi * 440 * t) + 0.3 * sin(2 * pi * 880 * t) + 0.1 * sin(2 * pi * 3141 * t)
 end
 
-local signal = ins.from_table(signal_data)
+local signal = ins.from_table(signal_data):to(ins.float32)
 print(fmt("    Signal: [%d] elements", signal.numel))
 print()
 
@@ -57,7 +57,7 @@ print()
 -- Step 3: FFT analysis
 separator("[3] FFT analysis")
 
-local spectrum = ins.fft.rfft(signal)
+local spectrum = ins.rfft(signal)
 local freq_bins = spectrum.numel
 print(fmt("    FFT bins: %d", freq_bins))
 print(fmt("    Nyquist: %d Hz", sample_rate / 2))
@@ -100,7 +100,7 @@ local filtered_imag = ins.mul(spec_imag, mask)
 local filtered_spectrum = ins.to_complex(filtered_real, filtered_imag)
 
 -- Inverse FFT to get filtered signal
-local filtered = ins.fft.irfft(filtered_spectrum, frames)
+local filtered = ins.irfft(filtered_spectrum, frames)
 print(fmt("    Filtered signal: [%d] elements", filtered.numel))
 
 -- Step 5: Energy comparison

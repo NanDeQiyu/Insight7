@@ -7,6 +7,8 @@
 #pragma once
 #include "insight/c_api/array.h"
 #include <cuComplex.h>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 static inline dim3 elementwise_blocks(int64_t n) {
@@ -87,4 +89,43 @@ __device__ static inline int64_t
 elementwise_offset_with_base(int64_t linear, const ElementwiseMetadata *meta,
                              const int64_t *strides, int64_t base_offset) {
   return base_offset + elementwise_offset(linear, meta, strides);
+}
+
+// Half-precision arithmetic helpers (avoid ambiguous conversion on CUDA 11.8)
+// CUDA 11.8 only has __hadd for __half; others must cast through float
+__device__ __forceinline__ __half hadd(__half a, __half b) {
+  return __hadd(a, b);
+}
+__device__ __forceinline__ __half hsub(__half a, __half b) {
+  return __float2half(__half2float(a) - __half2float(b));
+}
+__device__ __forceinline__ __half hmul(__half a, __half b) {
+  return __float2half(__half2float(a) * __half2float(b));
+}
+__device__ __forceinline__ __half hdiv(__half a, __half b) {
+  return __float2half(__half2float(a) / __half2float(b));
+}
+__device__ __forceinline__ __half hneg(__half a) {
+  return __float2half(-__half2float(a));
+}
+
+// BFloat16: cast through float for CUDA 11.8 compatibility
+__device__ __forceinline__ __nv_bfloat16 hadd(__nv_bfloat16 a,
+                                              __nv_bfloat16 b) {
+  return __float2bfloat16(__bfloat162float(a) + __bfloat162float(b));
+}
+__device__ __forceinline__ __nv_bfloat16 hsub(__nv_bfloat16 a,
+                                              __nv_bfloat16 b) {
+  return __float2bfloat16(__bfloat162float(a) - __bfloat162float(b));
+}
+__device__ __forceinline__ __nv_bfloat16 hmul(__nv_bfloat16 a,
+                                              __nv_bfloat16 b) {
+  return __float2bfloat16(__bfloat162float(a) * __bfloat162float(b));
+}
+__device__ __forceinline__ __nv_bfloat16 hdiv(__nv_bfloat16 a,
+                                              __nv_bfloat16 b) {
+  return __float2bfloat16(__bfloat162float(a) / __bfloat162float(b));
+}
+__device__ __forceinline__ __nv_bfloat16 hneg(__nv_bfloat16 a) {
+  return __float2bfloat16(-__bfloat162float(a));
 }

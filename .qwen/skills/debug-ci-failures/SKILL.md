@@ -43,6 +43,22 @@ Group errors across jobs. Common patterns in Insight7:
 | `TearDownTestSuite: filesystem error: cannot remove: Directory not empty` | `std::filesystem::remove_all` throws when dir already removed by parallel run | fix-ci-precommit |
 | `broadcast_to: cannot broadcast shape [N, 1] to [N]` in spectrogram/stft | `scatter` source must be 1D; `reshape(col, {freq_len, 1})` causes 2D→1D broadcast fail | debug-ci-failures |
 | Julia: `No such file or directory: build/bindings/julia/modules/signal/windows.jl` | CMakeLists.txt only copies Insight.jl, not modules/ subdirectory | debug-ci-failures |
+| Lua demo: `bad argument #2 to 'format' (number expected, got userdata)` | `string.format("%.3f", arr)` fails when arr is Insight Array userdata; use `ins.item(arr, 0)` to extract scalar | debug-ci-failures |
+| Demo CI shows WARN but passes | `|| echo "WARN: ..."` masks failures; remove to let demos fail loudly | debug-ci-failures |
+| `[insight] Failed to load library 'libinsight_cuda_backend.so'` in demos | Demos call `init({"cpu","cuda"})` which tries CUDA; change to `init({"cpu"})` for CPU-only CI | debug-ci-failures |
+| Segfault in C++/Lua/Julia demos after `set terminal unknown font` gnuplot warning | matplotplusplus `unknown` terminal not in font blacklist; apply gnuplot.cpp fix with "dumb" fallback | wrap-external-plot-library |
+| Python plot tests segfault in pytest | pytest stdout capture conflicts with gnuplot binary output; use `--capture=no` for plot tests | wrap-external-plot-library |
+| C++ demo segfault when stdout piped | "dumb" terminal output crashes when redirected; add `setbuf(stdout,NULL)` + `isatty()` check | wrap-external-plot-library |
+| Lua CFAR detections all 0 despite correct threshold | `get()` method missing BOOL dtype → returns 0 for bool arrays | fix-lua-binding-api-gotchas |
+| Lua radar demo 0 targets | RNG overflow (double can't store LCG integers) → NaN → all zero detections | fix-cross-language-demo-gotchas |
+| Python `ValueError: could not convert string to float: 'Array(shape=...'` | `float(str(ins.sum(arr)))` fails because Array __repr__ includes metadata; use `.numpy()` | fix-cross-language-demo-gotchas |
+| Language binding CI not triggered on PR | `pull_request.paths` missing `backends/**`; must match `push.paths` | fix-ci-workflow-path-triggers |
+| C++ demo `Failed to load CPU backend` after `cd build/bin/demos` | `LD_LIBRARY_PATH=build/backends/cpu` is relative; after `cd` it resolves to wrong dir. Use `$GITHUB_WORKSPACE/build/backends/cpu` | debug-ci-failures |
+| Python/Lua/Julia linalg/fft demo crashes with `GPUPlace: GPU backend is not available` | `gpu_available()` uses `load_backend("cuda")` which returns true even without GPU (silently fails). Wrap `run_gpu_*()` in try-catch | fix-cross-language-demo-gotchas |
+| Python plot test segfaults on imshow/contour | gnuplot terminal fallback checked pngcairo (cairo/pango) before png (libgd); cairo SIGSEGV on image rendering in headless. Fix: swap order to prefer png, run imshow/contour directly (no subprocess) | wrap-external-plot-library |
+| `git apply --check` fails with `corrupt patch at line N` | Patch file has malformed hunk headers or wrong line counts. Regenerate from scratch: `git diff -- file > patch`. Never edit patch files by hand. | apply-third-party-patch |
+| Patch silently not applied in CI (symptoms: old behavior still present) | ApplyPatch.cmake writes stamp even on failure + swallows stderr. Fix: don't write stamp on failure, use reverse check (`git apply --check -R`) to detect already-applied | apply-third-party-patch |
+| Julia demo `terminate called after throwing 'ins::Exception'` / `std::terminate` | C++ exception crosses FFI boundary (ccall). All `insight_jl_*` returning `Array*` must have `try/catch(...)` returning nullptr. Julia side must check `C_NULL`. | fix-julia-binding-api-gotchas |
 
 ## Step 3: Fix in dependency order
 

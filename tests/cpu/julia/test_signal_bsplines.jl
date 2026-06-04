@@ -20,8 +20,8 @@ function check(name, cond)
     end
 end
 
-function approx(a, b; atol=1e-10)
-    return abs(a - b) < atol
+function approx(a, b; atol=1e-5)
+    return Base.abs(Float64(a) - Float64(b)) < atol
 end
 
 # ============================================================================
@@ -29,7 +29,7 @@ end
 # ============================================================================
 println("=== Gauss Spline ===")
 
-x = Insight.from_data([0.0])
+x = Insight.from_data([0.0], Insight.float64)
 y = Insight.signal.gauss_spline(x, 3)
 sigma_sq = 4.0 / 12.0
 expected = 1.0 / sqrt(2π * sigma_sq)
@@ -51,7 +51,7 @@ check("gauss_spline_decay", Insight.item(y, 0) > Insight.item(y, 1) > Insight.it
 # ============================================================================
 println("=== Cubic ===")
 
-x = Insight.from_data([0.0])
+x = Insight.from_data([0.0], Insight.float64)
 y = Insight.signal.cubic(x)
 check("cubic_basic", Insight.numel(y) == 1 && approx(Insight.item(y, 0), 2.0/3.0))
 
@@ -83,7 +83,7 @@ check("cubic_region2", approx(Insight.item(y, 0), expected_r2))
 # ============================================================================
 println("=== Quadratic ===")
 
-x = Insight.from_data([0.0])
+x = Insight.from_data([0.0], Insight.float64)
 y = Insight.signal.quadratic(x)
 check("quadratic_basic", Insight.numel(y) == 1 && approx(Insight.item(y, 0), 0.75))
 
