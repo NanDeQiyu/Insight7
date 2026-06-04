@@ -5,22 +5,13 @@ file(GLOB_RECURSE KERNEL_SOURCES "kernels/*.cu")
 file(GLOB_RECURSE DEVICE_SOURCES "device/*.cpp")
 file(GLOB_RECURSE REGISTRY_SOURCES "registry/*.cpp")
 
-if(INSIGHT_DYNAMIC_GPU_BACKEND)
-    add_library(insight_cuda_backend SHARED
-        ${KERNEL_SOURCES}
-        ${DEVICE_SOURCES}
-        ${REGISTRY_SOURCES}
-        init.cpp
-    )
-    target_compile_definitions(insight_cuda_backend PRIVATE INSIGHT_GPU_BACKEND_EXPORTS)
-else()
-    add_library(insight_cuda_backend STATIC
-        ${KERNEL_SOURCES}
-        ${DEVICE_SOURCES}
-        ${REGISTRY_SOURCES}
-        init.cpp
-    )
-endif()
+add_library(insight_cuda_backend SHARED
+    ${KERNEL_SOURCES}
+    ${DEVICE_SOURCES}
+    ${REGISTRY_SOURCES}
+    init.cpp
+)
+target_compile_definitions(insight_cuda_backend PRIVATE INSIGHT_GPU_BACKEND_EXPORTS)
 
 target_include_directories(insight_cuda_backend
     PUBLIC ${CMAKE_SOURCE_DIR}/include

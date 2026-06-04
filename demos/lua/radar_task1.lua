@@ -3,7 +3,7 @@
 -- 与 C++ / Python / Julia 版本算法完全对齐：使用 Insight FFT 处理复数信号
 
 local ins = require("insight")
-ins.init({ "cpu" })
+-- Auto-init with smart discovery (CPU + first GPU if available)
 
 -- ========== 参数 (与 C++ 完全一致) ==========
 local FS = 10e6
@@ -238,6 +238,17 @@ for _, tgt in ipairs(targets) do
   local range_m = (r_idx - PC_OFFSET) * RANGE_PER_BIN
   local doppler_hz = doppler_bins[d_idx + 1] or 0
   print(string.format("    → 距离: %7.2f 米, 多普勒: %8.1f Hz", range_m, doppler_hz))
+end
+
+-- GPU — silent skip when not available
+local ok_gpu = pcall(function()
+  ins.load_backend("cuda")
+end)
+if ok_gpu then
+  print("\n============================================================")
+  print("  GPU 信息")
+  print("============================================================")
+  print(string.format("  设备: %s", ins.device_name("gpu")))
 end
 
 print("\n完成！")

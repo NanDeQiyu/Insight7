@@ -4,6 +4,7 @@
 #include "insight/c_api/kernel.h"
 #include "insight/core/exception.h"
 #include "insight/core/place.h"
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -11,6 +12,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <dirent.h>
 #include <dlfcn.h>
 #endif
 
@@ -38,8 +40,6 @@ static LibHandle load_library(const char *path) {
                        FORMAT_MESSAGE_IGNORE_INSERTS,
                    NULL, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                    (LPSTR)&error_msg, 0, NULL);
-    fprintf(stderr, "[insight] Failed to load library '%s': %s (code %lu)\n",
-            path, error_msg ? error_msg : "Unknown error", error);
     if (error_msg)
       LocalFree(error_msg);
   }
@@ -47,115 +47,105 @@ static LibHandle load_library(const char *path) {
 }
 
 static void *get_symbol(LibHandle lib, const char *name) {
-  void *sym = reinterpret_cast<void *>(GetProcAddress(lib, name));
-  if (!sym) {
-    DWORD error = GetLastError();
-    fprintf(stderr, "[insight] Failed to get symbol '%s': error code %lu\n",
-            name, error);
-  }
-  return sym;
+  return reinterpret_cast<void *>(GetProcAddress(lib, name));
 }
 
 static void unload_library(LibHandle lib) { FreeLibrary(lib); }
-
+static const char *backend_prefix() { return ""; }
 static const char *backend_extension() { return ".dll"; }
 #else
 using LibHandle = void *;
 
 static LibHandle load_library(const char *path) {
   LibHandle handle = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
-  if (!handle) {
-    // Only warn for CPU backend; GPU backend absence is expected on CPU-only
-    // machines
-    if (strstr(path, "cuda") == nullptr && strstr(path, "gpu") == nullptr) {
-      fprintf(stderr, "[insight] Failed to load library '%s': %s\n", path,
-              dlerror());
-    }
-  }
   return handle;
 }
 
 static void *get_symbol(LibHandle lib, const char *name) {
-  void *sym = dlsym(lib, name);
-  if (!sym) {
-    fprintf(stderr, "[insight] Failed to get symbol '%s': %s\n", name,
-            dlerror());
-  }
-  return sym;
+  return dlsym(lib, name);
 }
 
 static void unload_library(LibHandle lib) { dlclose(lib); }
-
+static const char *backend_prefix() { return "lib"; }
 static const char *backend_extension() { return ".so"; }
 #endif
 
-/**
- * @brief Load a backend plugin and initialize it.
- *
- * Loads the shared library, calls InitPlugin, and stores the
- * device interface in the global registry.
- *
- * @param kind       Device kind to associate
- * @param lib_name   Library name without extension (e.g.,
- * "insight_cpu_backend")
- */
-static void load_backend_plugin(DeviceKind kind, const char *lib_name) {
-  // Build full path with platform-specific extension
-  char lib_path[512];
+// ========================================================================
+// Backend discovery — scan current directory for libinsight_*_backend.so
+// ========================================================================
+
+static std::vector<std::string> discover_backends() {
+  std::vector<std::string> found;
+  const char *prefix = "libinsight_";
+  const char *suffix = "_backend";
+  const char *ext = backend_extension();
+  size_t prefix_len = strlen(prefix);
+  size_t suffix_len = strlen(suffix);
+  size_t ext_len = strlen(ext);
+
 #ifdef _WIN32
-  snprintf(lib_path, sizeof(lib_path), "%s%s", lib_name, backend_extension());
+  WIN32_FIND_DATAA fd;
+  HANDLE h = FindFirstFileA("insight_*_backend.dll", &fd);
+  if (h != INVALID_HANDLE_VALUE) {
+    do {
+      std::string name(fd.cFileName);
+      // Extract backend name: "insight_<name>_backend.dll"
+      size_t p = name.find("insight_");
+      size_t e = name.rfind("_backend.dll");
+      if (p != std::string::npos && e != std::string::npos && e > p + 8) {
+        found.push_back(name.substr(p + 8, e - p - 8));
+      }
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+  }
 #else
-  snprintf(lib_path, sizeof(lib_path), "lib%s%s", lib_name,
-           backend_extension());
+  DIR *dir = opendir(".");
+  if (!dir)
+    return found;
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != nullptr) {
+    std::string name(entry->d_name);
+    // Match libinsight_*_backend.so
+    if (name.size() > prefix_len + suffix_len + ext_len &&
+        name.compare(0, prefix_len, prefix) == 0 &&
+        name.compare(name.size() - ext_len, ext_len, ext) == 0) {
+      size_t start = prefix_len;
+      size_t end = name.size() - ext_len - suffix_len;
+      if (end > start) {
+        found.push_back(name.substr(start, end - start));
+      }
+    }
+  }
+  closedir(dir);
 #endif
 
-  LibHandle lib = load_library(lib_path);
-
-  INS_CHECK(lib, std::string(lib_name) + " not available");
-
-  // Get InitPlugin entry point
-  typedef C_Status (*InitPluginFunc)(CustomRuntimeParams *);
-  InitPluginFunc init_plugin = reinterpret_cast<InitPluginFunc>(get_symbol(
-      lib, kind == DeviceKind::GPU ? "InitPluginGPU" : "InitPluginCPU"));
-  if (!init_plugin) {
-    unload_library(lib);
-    INS_THROW("get_symbol function failed: fail to get function " +
-              std::string(kind == DeviceKind::GPU ? "InitPluginGPU"
-                                                  : "InitPluginCPU"));
-  }
-
-  // Prepare params and call InitPlugin
-  CustomRuntimeParams params;
-  std::memset(&params, 0, sizeof(params));
-  params.size = sizeof(CustomRuntimeParams);
-  params.interface = new C_DeviceInterface();
-  params.interface->size = sizeof(C_DeviceInterface);
-  params.register_kernel = insight_register_kernel;
-
-  C_Status status = init_plugin(&params);
-  if (status != C_SUCCESS) {
-    delete params.interface;
-    unload_library(lib);
-    INS_THROW("fail to init plugin.");
-  }
-
-  // Store device interface in global registry
-  set_device_interface(kind, params.interface, params.device_type);
+  std::sort(found.begin(), found.end());
+  return found;
 }
 
-/**
- * @brief Initialize a backend by calling its InitPlugin directly.
- *
- * Used for statically linked backends where InitPlugin is linked
- * into the same executable.
- *
- * @param kind        Device kind to associate
- * @param init_plugin Pointer to the backend's InitPlugin function
- * @return true on success, false on failure
- */
-static bool
-init_static_backend(DeviceKind kind,
-                    C_Status (*init_plugin)(CustomRuntimeParams *)) {
+// ========================================================================
+// Backend loading
+// ========================================================================
+
+static bool try_load_backend(DeviceKind kind, const char *lib_name) {
+  char lib_path[512];
+  snprintf(lib_path, sizeof(lib_path), "%s%s%s", backend_prefix(), lib_name,
+           backend_extension());
+
+  LibHandle lib = load_library(lib_path);
+  if (!lib)
+    return false;
+
+  const char *entry_name =
+      (kind == DeviceKind::GPU) ? "InitPluginGPU" : "InitPluginCPU";
+  typedef C_Status (*InitPluginFunc)(CustomRuntimeParams *);
+  InitPluginFunc init_plugin =
+      reinterpret_cast<InitPluginFunc>(get_symbol(lib, entry_name));
+  if (!init_plugin) {
+    unload_library(lib);
+    return false;
+  }
+
   CustomRuntimeParams params;
   std::memset(&params, 0, sizeof(params));
   params.size = sizeof(CustomRuntimeParams);
@@ -166,6 +156,7 @@ init_static_backend(DeviceKind kind,
   C_Status status = init_plugin(&params);
   if (status != C_SUCCESS) {
     delete params.interface;
+    unload_library(lib);
     return false;
   }
 
@@ -177,41 +168,54 @@ init_static_backend(DeviceKind kind,
 // Public API
 // ========================================================================
 
-void init(const std::vector<std::string> &backends) {
+void init(std::optional<std::vector<std::string>> backends) {
   if (g_initialized)
     return;
 
-  for (const auto &backend : backends) {
-    if (backend == "cpu") {
-      if (!get_device_interface(DeviceKind::CPU)) {
-#ifdef INSIGHT_CPU_BACKEND_EXPORTS
-        load_backend_plugin(DeviceKind::CPU, "insight_cpu_backend");
-#else
-        init_static_backend(DeviceKind::CPU, InitPluginCPU);
-#endif
-      }
-    } else {
-      // GPU backend: must be loaded dynamically
-      if (!get_device_interface(DeviceKind::GPU)) {
-        std::string lib_name = "insight_" + backend + "_backend";
-        load_backend_plugin(DeviceKind::GPU, lib_name.c_str());
-      } else {
-        // There is already a GPU backend, which means repeated loading
-        INS_THROW("GPU backend already loaded, cannot load another: ", backend);
+  if (!backends.has_value()) {
+    // === Auto-discover mode (default) ===
+    // 1. Load CPU backend (required)
+    if (!try_load_backend(DeviceKind::CPU, "insight_cpu_backend")) {
+      INS_THROW("Failed to load CPU backend");
+    }
+    // 2. Scan for other backends
+    auto available = discover_backends();
+    for (const auto &name : available) {
+      if (name == "cpu")
+        continue; // already loaded
+      // Try to load as GPU backend (first one wins)
+      if (try_load_backend(DeviceKind::GPU,
+                           ("insight_" + name + "_backend").c_str())) {
+        break; // load only the first non-CPU backend
       }
     }
-  }
-
-  // Check that all required backends are loaded successfully
-  for (const auto &backend : backends) {
-    if (backend == "cpu" && !get_device_interface(DeviceKind::CPU)) {
-      INS_THROW("Failed to load CPU backend");
-    } else if (backend != "cpu" && !get_device_interface(DeviceKind::GPU)) {
-      INS_THROW("Failed to load GPU backend: ", backend);
+  } else if (backends->empty()) {
+    // === Empty vector: load nothing ===
+  } else {
+    // === Specified backends: load each in order ===
+    for (const auto &backend : *backends) {
+      if (backend == "cpu") {
+        if (!get_device_interface(DeviceKind::CPU)) {
+          if (!try_load_backend(DeviceKind::CPU, "insight_cpu_backend")) {
+            INS_THROW("Failed to load CPU backend");
+          }
+        }
+      } else {
+        if (!get_device_interface(DeviceKind::GPU)) {
+          std::string lib_name = "insight_" + backend + "_backend";
+          if (!try_load_backend(DeviceKind::GPU, lib_name.c_str())) {
+            INS_THROW("Failed to load GPU backend: " + backend);
+          }
+        }
+      }
     }
   }
 
   g_initialized = true;
+}
+
+void init(const std::vector<std::string> &backends) {
+  init(std::optional<std::vector<std::string>>(backends));
 }
 
 bool is_initialized() { return g_initialized; }
@@ -223,16 +227,12 @@ bool has_device(DeviceKind kind) {
 void load_backend(const std::string &backend) {
   if (backend == "cpu") {
     if (!get_device_interface(DeviceKind::CPU)) {
-#ifdef INSIGHT_CPU_BACKEND_EXPORTS
-      load_backend_plugin(DeviceKind::CPU, "insight_cpu_backend");
-#else
-      init_static_backend(DeviceKind::CPU, InitPluginCPU);
-#endif
+      try_load_backend(DeviceKind::CPU, "insight_cpu_backend");
     }
   } else {
     if (!get_device_interface(DeviceKind::GPU)) {
       std::string lib_name = "insight_" + backend + "_backend";
-      load_backend_plugin(DeviceKind::GPU, lib_name.c_str());
+      try_load_backend(DeviceKind::GPU, lib_name.c_str());
     }
   }
 }

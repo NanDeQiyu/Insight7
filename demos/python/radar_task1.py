@@ -194,12 +194,13 @@ if __name__ == "__main__":
     print(f"  单脉冲采样点数: {N}, 脉冲串数量: {N_PULSES}")
     print(f"  距离分辨率: {RANGE_RES:.2f} 米")
 
-    ins.init(["cpu"])
+    ins.init()  # Smart discovery: CPU + first GPU if available
     print("\n" + "=" * 60 + "\n  CPU 运行\n" + "=" * 60)
     cpu = run_task1("cpu")
     print_result(cpu)
     save_plots(cpu, "task1_cpu")
 
+    # GPU — silent skip when not available
     try:
         ins.load_backend("cuda")
         print("\n" + "=" * 60 + "\n  GPU 运行\n" + "=" * 60)
@@ -212,6 +213,6 @@ if __name__ == "__main__":
         print(f"  CPU: {cpu['total_ms']:.2f} ms, GPU: {gpu['total_ms']:.2f} ms")
         print(f"  加速比: {speedup:.2f}x {'✅ GPU 更快' if speedup > 1 else '⚠️ 需优化'}")
     except Exception:
-        print("\n  GPU 不可用: CUDA backend not available")
+        pass  # Silent skip when GPU not available
 
     print("\n完成！")

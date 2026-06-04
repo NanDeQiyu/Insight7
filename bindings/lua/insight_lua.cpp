@@ -232,9 +232,9 @@ extern "C" int luaopen__insight(lua_State *L) {
   sol::state_view lua(L);
   sol::table m = lua.create_table();
 
-  // Auto-initialize CPU backend
+  // Auto-initialize with smart backend discovery
   if (!ins::is_initialized()) {
-    ins::init({"cpu"});
+    ins::init();
   }
 
   // Manual init

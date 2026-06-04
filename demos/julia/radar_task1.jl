@@ -159,4 +159,12 @@ for (d_idx, r_idx) in targets
             "多普勒: $(Base.lpad(Base.round(doppler_hz, digits=1), 8)) Hz")
 end
 
+# GPU — silent skip when not available
+if Insight.load_backend("cuda")
+    println("\n" * "=" ^ 60)
+    println("  GPU 信息")
+    println("=" ^ 60)
+    println("  设备: $(Insight.device_name("gpu"))")
+end
+
 println("\n完成！")

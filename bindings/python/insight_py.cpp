@@ -273,17 +273,31 @@ PYBIND11_MODULE(_insight, m) {
   m.doc() = "Insight7 — lightweight scientific computing framework";
   m.attr("__version__") = "1.0.0";
 
-  // Auto-initialize CPU backend on module load
+  // Auto-initialize with smart backend discovery
   if (!ins::is_initialized()) {
-    ins::init({"cpu"});
+    ins::init();
   }
 
-  // Manual init for advanced users
+  // Smart init: no args = auto-discover, list = specified backends
   m.def(
       "init",
-      [](const std::vector<std::string> &backends) { ins::init(backends); },
-      py::arg("backends") = std::vector<std::string>{"cpu"},
-      "Initialize Insight backends");
+      [](py::args args) {
+        if (args.size() == 0) {
+          // No args: smart discovery (CPU + first GPU if available)
+          ins::init(std::nullopt);
+        } else if (py::isinstance<py::list>(args[0])) {
+          auto backends = args[0].cast<std::vector<std::string>>();
+          if (backends.empty()) {
+            ins::init(std::vector<std::string>{});
+          } else {
+            ins::init(backends);
+          }
+        } else {
+          throw py::type_error(
+              "init() expects a list of backend names or no arguments");
+        }
+      },
+      "Initialize Insight backends (smart discovery if no args)");
   m.def("is_initialized", &ins::is_initialized,
         "Check if Insight is initialized");
   m.def(

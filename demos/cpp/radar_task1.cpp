@@ -337,7 +337,7 @@ int main() {
   std::signal(SIGPIPE, SIG_IGN);
 #endif
 
-  ins::init({"cpu"});
+  ins::init(); // Smart discovery: CPU + first GPU if available
   separator("比赛任务1：雷达目标检测与多普勒分析");
 
   printf("\n[配置信息]\n");
@@ -385,6 +385,24 @@ int main() {
     std::signal(SIGSEGV, prev_segv);
   }
 #endif
+
+  // GPU — silent skip when not available
+  if (has_device(DeviceKind::GPU)) {
+    separator("GPU 运行");
+    set_device(GPUPlace(0));
+    Task1Result gpu = run_task1(GPUPlace(0));
+    printf("  GPU 耗时: %.2f ms (PC: %.1f, Doppler: %.1f, CFAR: %.1f)\n",
+           gpu.total_ms, gpu.pc_ms, gpu.doppler_ms, gpu.cfar_ms);
+    printf("  加速比: %.2fx\n", cpu.total_ms / gpu.total_ms);
+    printf("  聚类后目标数: %zu\n", gpu.targets.size());
+
+    printf("\n[GPU 检测结果]\n");
+    for (auto &[d, r] : gpu.targets) {
+      double range_m = (r - pc_offset) * range_per_bin;
+      printf("  → 距离: %7.2f 米, 多普勒: %8.1f Hz\n", range_m,
+             doppler_bins[d]);
+    }
+  }
 
   printf("\n完成！\n");
   return 0;

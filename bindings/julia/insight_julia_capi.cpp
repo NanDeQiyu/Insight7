@@ -42,9 +42,8 @@ extern "C" {
 
 void insight_jl_init_cpu() {
   if (!ins::is_initialized()) {
-    // Try to load backends — dlopen will search LD_LIBRARY_PATH
     try {
-      ins::init({"cpu"});
+      ins::init(); // Smart discovery: CPU + first GPU if available
     } catch (...) {
       // If dynamic loading fails, the user needs to set LD_LIBRARY_PATH
       fprintf(stderr,
