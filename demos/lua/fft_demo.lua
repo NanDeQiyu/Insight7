@@ -130,7 +130,7 @@ local function run_fft_gpu()
   print(string.format("GPU F64 FFT roundtrip max error: %e", max_err64))
 end
 
-ins.init({ "cpu" })
+ins.init()
 
 print("Insight7 FFT Demo (Lua)")
 

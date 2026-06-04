@@ -17,7 +17,7 @@ local function separator(title)
   print(string.rep("=", 60))
 end
 
-ins.init({ "cpu" })
+ins.init()
 
 -- Parameters
 local sample_rate = 44100

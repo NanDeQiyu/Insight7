@@ -10,7 +10,7 @@ local function separator(title)
   print(string.rep("=", 40))
 end
 
-ins.init({ "cpu" })
+ins.init()
 
 print("Insight7 Basic Operations Demo (Lua)")
 

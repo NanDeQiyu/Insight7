@@ -24,7 +24,7 @@ print("=" * 60)
 print("  任务1 精度对齐验证 (Insight7 vs numpy+scipy)")
 print("=" * 60)
 
-ins.init(["cpu"])
+ins.init()
 
 # ========== Step 1: LFM 信号生成 ==========
 print("\n[Step 1] LFM 信号生成")

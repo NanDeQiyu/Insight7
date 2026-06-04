@@ -160,7 +160,7 @@ static void run_gpu_linalg() {
 }
 
 int main() {
-  ins::init({"cpu"});
+  ins::init();
 
   printf("Insight7 Linear Algebra Demo\n");
   printf("OpenBLAS: %s\n", is_compiled_with_openblas() ? "yes" : "no");

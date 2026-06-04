@@ -16,7 +16,7 @@ def separator(title: str) -> None:
 
 
 def main() -> None:
-    ins.init(["cpu"])
+    ins.init()
 
     sample_rate = 44100
     duration = 2.0

@@ -56,6 +56,9 @@ Group errors across jobs. Common patterns in Insight7:
 | C++ demo `Failed to load CPU backend` after `cd build/bin/demos` | `LD_LIBRARY_PATH=build/backends/cpu` is relative; after `cd` it resolves to wrong dir. Use `$GITHUB_WORKSPACE/build/backends/cpu` | debug-ci-failures |
 | Python/Lua/Julia linalg/fft demo crashes with `GPUPlace: GPU backend is not available` | `gpu_available()` uses `load_backend("cuda")` which returns true even without GPU (silently fails). Wrap `run_gpu_*()` in try-catch | fix-cross-language-demo-gotchas |
 | Python plot test segfaults on imshow/contour | gnuplot terminal fallback checked pngcairo (cairo/pango) before png (libgd); cairo SIGSEGV on image rendering in headless. Fix: swap order to prefer png, run imshow/contour directly (no subprocess) | wrap-external-plot-library |
+| `git apply --check` fails with `corrupt patch at line N` | Patch file has malformed hunk headers or wrong line counts. Regenerate from scratch: `git diff -- file > patch`. Never edit patch files by hand. | apply-third-party-patch |
+| Patch silently not applied in CI (symptoms: old behavior still present) | ApplyPatch.cmake writes stamp even on failure + swallows stderr. Fix: don't write stamp on failure, use reverse check (`git apply --check -R`) to detect already-applied | apply-third-party-patch |
+| Julia demo `terminate called after throwing 'ins::Exception'` / `std::terminate` | C++ exception crosses FFI boundary (ccall). All `insight_jl_*` returning `Array*` must have `try/catch(...)` returning nullptr. Julia side must check `C_NULL`. | fix-julia-binding-api-gotchas |
 
 ## Step 3: Fix in dependency order
 

@@ -16,10 +16,7 @@ local function gpu_available()
   return ok and result
 end
 
-local ok = pcall(ins.init, { "cpu", "cuda" })
-if not ok then
-  ins.init({ "cpu" })
-end
+ins.init()
 
 print("Insight7 GPU Transfer Demo (Lua)")
 

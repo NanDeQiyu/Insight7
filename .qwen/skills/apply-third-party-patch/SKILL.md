@@ -156,3 +156,27 @@ When a third-party library has a build error:
 6. Verify: `cmake ..` shows "applied successfully"
 7. Verify idempotency: second `cmake ..` shows "already applied"
 8. Verify clean: reset library (`git checkout -- .`) and re-run cmake
+
+## CRITICAL: Never edit patch files by hand
+
+Patch files have strict format requirements (hunk headers with exact line counts,
+context lines with correct indentation). Editing by hand almost always produces
+a corrupt patch that `git apply` rejects with `corrupt patch at line N`.
+
+**Correct way to update a patch**:
+1. Reset source to original: `cd third_party/<lib> && git checkout -- <file>`
+2. Apply changes to the source file directly (edit the .cpp/.h)
+3. Generate patch: `cd third_party/<lib> && git diff -- <file> > patches/<lib>/<name>.patch`
+4. Verify: `git apply --check patches/<lib>/<name>.patch` must print nothing
+5. Verify reverse: `cd third_party/<lib> && git checkout -- <file> && patch -p1 --dry-run < patches/<lib>/<name>.patch`
+
+**Symptom of corrupt patch**: `git apply --check` prints `error: corrupt patch at line N`.
+The patch silently fails in CI (stamp is written, error is swallowed).
+
+## ApplyPatch.cmake must NOT write stamp on failure
+
+The stamp mechanism must be:
+- `git apply --check` succeeds → apply → write stamp
+- `git apply --check` fails → try reverse check (`git apply --check -R`)
+  - Reverse succeeds → patch already applied → write stamp
+  - Reverse fails → **do NOT write stamp** (allow retry on next configure)

@@ -40,7 +40,7 @@ static Array generate_test_signal(int64_t frames, float sample_rate) {
 }
 
 int main() {
-  ins::init({"cpu"});
+  ins::init();
 
   std::cout << "=== Insight Audio Processing Demo ===" << std::endl;
   std::cout << std::endl;

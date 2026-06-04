@@ -240,7 +240,66 @@ noise_flat = Insight.to_data(Insight.randn(Int64[N_PULSES * N], Insight.float64)
 # Access: noise_flat[(p-1)*N+1 : p*N] for pulse p
 ```
 
-## 14. Julia demo pattern
+## 14. FFI exception safety: all `insight_jl_*` functions need try/catch
+
+Julia uses `ccall` (C ABI). C++ exceptions crossing the FFI boundary cause
+`std::terminate` — the process crashes, Julia's `try/catch` never fires.
+
+**Rule**: Every `insight_jl_*` function returning `Array*` MUST wrap in try/catch:
+
+```cpp
+// ❌ WRONG — exception crosses FFI → std::terminate
+Array *insight_jl_to_device(const Array *x, int32_t device_type) {
+  Place place = device_type == 1 ? GPUPlace(0) : CPUPlace();
+  return new Array(x->to(place));
+}
+
+// ✅ CORRECT — catch all exceptions, return nullptr
+Array *insight_jl_to_device(const Array *x, int32_t device_type) {
+  try {
+    Place place = device_type == 1 ? GPUPlace(0) : CPUPlace();
+    return new Array(x->to(place));
+  } catch (...) {
+    return nullptr;
+  }
+}
+```
+
+Julia side must check for null:
+
+```julia
+# ❌ WRONG — nullptr creates broken InsightArray
+function to(x::InsightArray, device_type::Int)::InsightArray
+    ptr = ccall((:insight_jl_to_device, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(device_type))
+    arr = InsightArray(ptr)  # broken if ptr == C_NULL
+    finalizer(_free, arr)
+    return arr
+end
+
+# ✅ CORRECT — check null, throw Julia error
+function to(x::InsightArray, device_type::Int)::InsightArray
+    ptr = ccall((:insight_jl_to_device, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32), x, Int32(device_type))
+    if ptr == C_NULL
+        error("Insight: device transfer failed (GPU backend not available?)")
+    end
+    arr = InsightArray(ptr)
+    finalizer(_free, arr)
+    return arr
+end
+```
+
+**Symptom**: `terminate called after throwing an instance of 'ins::Exception'`
+followed by `signal 6 (Aborted)`. The Julia stack trace shows `__cxa_throw`
+in `libinsight_julia.so`.
+
+**Functions that need this**: insight_jl_to_device, insight_jl_cast,
+insight_jl_take, insight_jl_nonzero, insight_jl_sort, insight_jl_concat,
+insight_jl_reshape, insight_jl_transpose, insight_jl_copy, insight_jl_squeeze,
+and any other function that calls C++ operations that may throw.
+
+## 15. Julia demo pattern
 
 ```julia
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "bindings", "julia"))

@@ -116,7 +116,7 @@ local function run_gpu_linalg()
   end
 end
 
-ins.init({ "cpu" })
+ins.init()
 
 print("Insight7 Linear Algebra Demo (Lua)")
 

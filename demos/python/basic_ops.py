@@ -25,7 +25,7 @@ def separator(title):
 
 
 def main():
-    ins.init(["cpu"])
+    ins.init()
 
     print("Insight7 Basic Operations Demo (Python)")
 

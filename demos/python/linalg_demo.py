@@ -119,7 +119,7 @@ def run_gpu_linalg():
 
 
 def main():
-    ins.init(["cpu"])
+    ins.init()
 
     print("Insight7 Linear Algebra Demo (Python)")
 
