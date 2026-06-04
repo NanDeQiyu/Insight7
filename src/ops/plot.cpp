@@ -363,7 +363,7 @@ void pie(const Array &x, const std::vector<std::string> &labels) {
 // Images
 // ============================================================================
 
-void imshow(const Array &data) { mp::imshow(to_matrix(data)); }
+void imshow(const Array &data) { mp::image(to_matrix(data)); }
 void image(const Array &data) { mp::image(to_matrix(data)); }
 void imagesc(const Array &data) { mp::imagesc(to_matrix(data)); }
 
