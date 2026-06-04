@@ -118,16 +118,16 @@ function run_gpu_linalg()
     end
 end
 
-try
-catch
-end
-
 println("Insight7 Linear Algebra Demo (Julia)")
 
 run_cpu_linalg()
 
 if gpu_available()
-    run_gpu_linalg()
+    try
+        run_gpu_linalg()
+    catch e
+        println("\n[GPU not available: $e]")
+    end
 else
     println("\n[GPU not available, skipping GPU linalg demo]")
 end

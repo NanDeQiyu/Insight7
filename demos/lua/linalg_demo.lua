@@ -123,7 +123,10 @@ print("Insight7 Linear Algebra Demo (Lua)")
 run_cpu_linalg()
 
 if gpu_available() then
-  run_gpu_linalg()
+  local ok, err = pcall(run_gpu_linalg)
+  if not ok then
+    print("\n[GPU not available: " .. tostring(err) .. "]")
+  end
 else
   print("\n[GPU not available, skipping GPU linalg demo]")
 end

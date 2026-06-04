@@ -103,7 +103,10 @@ def main():
     run_fft_cpu()
 
     if gpu_available():
-        run_fft_gpu()
+        try:
+            run_fft_gpu()
+        except Exception as e:
+            print(f"\n[GPU not available: {e}]")
     else:
         print("\n[GPU not available, skipping GPU FFT demo]")
 

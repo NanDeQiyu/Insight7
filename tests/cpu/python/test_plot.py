@@ -102,12 +102,25 @@ class TestPlotCPU:
 
     def _run_in_subprocess(self, target):
         """Run a plot function in a subprocess (portable crash isolation)."""
+        import signal
         from multiprocessing import Process
 
         p = Process(target=target)
         p.start()
-        p.join()
-        # Subprocess may crash (matplotplusplus/cairo bug) — that's OK
+        p.join(timeout=30)
+        if p.is_alive():
+            p.terminate()
+            p.join()
+            pytest.fail("Subprocess timed out after 30s")
+        if p.exitcode is not None and p.exitcode != 0:
+            if p.exitcode < 0:
+                sig = signal.Signals(-p.exitcode)
+                pytest.skip(
+                    f"Subprocess killed by {sig.name} "
+                    f"(matplotplusplus/cairo crash in headless CI)"
+                )
+            else:
+                pytest.fail(f"Subprocess exited with code {p.exitcode}")
 
     def test_imshow_basic(self):
         """Test 5: imshow without crashing."""

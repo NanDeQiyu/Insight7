@@ -98,16 +98,16 @@ function run_fft_gpu()
     println("GPU F64 FFT roundtrip max error: $max_err64")
 end
 
-try
-catch
-end
-
 println("Insight7 FFT Demo (Julia)")
 
 run_fft_cpu()
 
 if gpu_available()
-    run_fft_gpu()
+    try
+        run_fft_gpu()
+    catch e
+        println("\n[GPU not available: $e]")
+    end
 else
     println("\n[GPU not available, skipping GPU FFT demo]")
 end

@@ -71,7 +71,7 @@ jobs:
 
       - name: Run C++ demos
         run: |
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
           cd build/bin/demos
           ./demo_basic_ops
           ./demo_linalg
