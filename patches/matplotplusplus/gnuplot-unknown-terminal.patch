@@ -1,5 +1,5 @@
 diff --git a/source/matplot/backend/gnuplot.cpp b/source/matplot/backend/gnuplot.cpp
-index 1e4a330..b979b21 100644
+index 1e4a330..61907fc 100644
 --- a/source/matplot/backend/gnuplot.cpp
 +++ b/source/matplot/backend/gnuplot.cpp
 @@ -69,11 +69,35 @@ namespace matplot::backend {
@@ -7,14 +7,14 @@ index 1e4a330..b979b21 100644
          }
  
 -        // Open the gnuplot pipe_
-+        // When terminal is "unknown" (headless, no display), try "png"
-+        // first which uses libgd (no cairo/pango dependency). Fall back to
-+        // "pngcairo" (requires cairo/pango, may crash in headless) then "dumb".
++        // When terminal is "unknown" (headless, no display), try "pngcairo"
++        // first which supports full gnuplot features including pm3d/image.
++        // Fall back to "png" (libgd, fewer features) then "dumb".
 +        if (terminal_ == "unknown") {
-+            if (terminal_is_available("png")) {
-+                terminal_ = "png";
-+            } else if (terminal_is_available("pngcairo")) {
++            if (terminal_is_available("pngcairo")) {
 +                terminal_ = "pngcairo";
++            } else if (terminal_is_available("png")) {
++                terminal_ = "png";
 +            } else {
 +                terminal_ = "dumb";
 +            }

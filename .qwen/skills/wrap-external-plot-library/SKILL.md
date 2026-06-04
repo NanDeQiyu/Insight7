@@ -195,24 +195,23 @@ SV_CONSTEXPR std::string_view blacklist[] = {
     "dxf", "eepic", ..., "pdf", "unknown"};  // ← add "unknown"
 ```
 
-2. Fallback from "unknown" to "png" terminal (uses libgd, no cairo dependency):
+2. Fallback from "unknown" to "pngcairo" terminal (supports full features):
 ```cpp
-// Prefer "png" over "pngcairo" — pngcairo depends on cairo/pango
-// which crashes in headless environments (SIGSEGV in imshow/contour).
-// "png" uses libgd which works without a display.
+// pngcairo supports pm3d/image rendering (required for imshow/contour).
+// "png" (libgd) lacks pm3d support — crashes on imshow.
 if (terminal_ == "unknown") {
-    if (terminal_is_available("png")) {
-        terminal_ = "png";
-    } else if (terminal_is_available("pngcairo")) {
+    if (terminal_is_available("pngcairo")) {
         terminal_ = "pngcairo";
+    } else if (terminal_is_available("png")) {
+        terminal_ = "png";
     } else {
         terminal_ = "dumb";
     }
 }
 ```
 
-**CRITICAL**: Do NOT check pngcairo first — cairo crashes on imshow/contour
-in headless CI. Always prefer "png" (libgd) over "pngcairo" (cairo/pango).
+**Why pngcairo first**: "png" uses libgd which does NOT support `set pm3d map`
+(required by imshow/contour). Using "png" causes SIGSEGV on image rendering.
 
 3. **Redirect gnuplot stdout to /dev/null (CRITICAL — fixes binary output leak)**:
 ```cpp

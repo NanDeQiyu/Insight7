@@ -97,14 +97,23 @@ function(apply_patch SOURCE_DIR PATCH_FILE)
         return()
     endif()
 
-    # All methods failed
-    message(WARNING "Patch ${PATCH_NAME} FAILED to apply — expect build errors!")
-    # Do NOT write stamp — allow retry on next configure
+    # All methods failed — FATAL_ERROR stops the build (patch is required)
+    message(FATAL_ERROR
+        "[patch] ${PATCH_NAME}: FAILED to apply!\n"
+        "  Source: ${SOURCE_DIR}\n"
+        "  Patch:  ${PATCH_FILE}\n"
+        "  git apply error: ${E1}\n"
+        "  patch -p1 error: ${E2}\n"
+        "  This must be fixed — the patch is required for headless CI.")
 endfunction()
 ```
 
 **Why 3 methods**: `git apply` fails on some FetchContent shallow clones.
 `patch -p1` works without git. Reverse check detects already-applied patches.
+
+**Why FATAL_ERROR**: If a patch fails silently, the build continues with unpatched
+source, causing runtime crashes (e.g., gnuplot segfault in headless CI). A loud
+cmake error is always better than a silent runtime crash.
 
 ### 3. Use in CMakeLists.txt — PaddlePaddle style
 
