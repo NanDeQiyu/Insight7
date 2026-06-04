@@ -195,20 +195,24 @@ SV_CONSTEXPR std::string_view blacklist[] = {
     "dxf", "eepic", ..., "pdf", "unknown"};  // ← add "unknown"
 ```
 
-2. Fallback from "unknown" to "pngcairo" terminal (supports file output):
+2. Fallback from "unknown" to "png" terminal (uses libgd, no cairo dependency):
 ```cpp
-// pngcairo supports saving to PNG files. Fall back to "dumb" only if
-// pngcairo is not available (no fonts installed).
+// Prefer "png" over "pngcairo" — pngcairo depends on cairo/pango
+// which crashes in headless environments (SIGSEGV in imshow/contour).
+// "png" uses libgd which works without a display.
 if (terminal_ == "unknown") {
-    if (terminal_is_available("pngcairo")) {
-        terminal_ = "pngcairo";
-    } else if (terminal_is_available("png")) {
+    if (terminal_is_available("png")) {
         terminal_ = "png";
+    } else if (terminal_is_available("pngcairo")) {
+        terminal_ = "pngcairo";
     } else {
         terminal_ = "dumb";
     }
 }
 ```
+
+**CRITICAL**: Do NOT check pngcairo first — cairo crashes on imshow/contour
+in headless CI. Always prefer "png" (libgd) over "pngcairo" (cairo/pango).
 
 3. **Redirect gnuplot stdout to /dev/null (CRITICAL — fixes binary output leak)**:
 ```cpp
@@ -258,53 +262,40 @@ competition's 1000-frame batch processing workflow.
 **Patch management**: Save as `patches/matplotplusplus/gnuplot-unknown-terminal.patch`
 and register in CMakeLists.txt for both local and FetchContent builds.
 
-## Python plot tests crash with pytest stdout capture
+## Python plot tests: imshow/contour run directly (no subprocess)
 
-**Problem**: `ins.plot.imshow()` triggers gnuplot to write binary PNG data to stdout.
-When pytest captures stdout, the binary data corrupts pytest's capture buffer → segfault.
+**Problem**: `ins.plot.imshow()` and `ins.plot.contour()` crashed in headless CI.
 
-**Root cause (FIXED at C++ level)**: gnuplot's stdout was connected to the parent
-process's stdout. Fixed by redirecting gnuplot's stdout to /dev/null:
+**Root cause**: The gnuplot terminal fallback checked `pngcairo` first. pngcairo
+depends on cairo/pango which SIGSEGV in headless environments on image rendering.
 
-```cpp
-// gnuplot.cpp constructor:
-pipe_ = POPEN("gnuplot >/dev/null 2>&1", "w");
-```
+**Fix**: Swap the terminal fallback order — prefer `png` (libgd) over `pngcairo`
+(cairo/pango). libgd works without a display and supports image rendering.
 
-This redirects gnuplot's stdout/stderr to /dev/null. When `save()` sends
-`set output "filename"`, gnuplot writes to the file. Any other output goes
-to /dev/null. **All languages benefit from this C++ level fix.**
-
-**Remaining issue**: `imshow` crashes in headless environments due to
-matplotplusplus/cairo rendering bugs. This is a SIGSEGV, not a C++ exception.
-
-**Fix for tests**: Use `multiprocessing.Process` (portable, not `os.fork()`):
+With this fix, imshow/contour run directly in the test (no subprocess isolation needed):
 
 ```python
-from multiprocessing import Process
-
-def _run_in_subprocess(self, target):
-    """Run a plot function in a subprocess (portable crash isolation)."""
-    p = Process(target=target)
-    p.start()
-    p.join()
-    # Subprocess may crash (matplotplusplus/cairo bug) — that's OK
-
 def test_imshow_basic(self):
     data = ins.from_numpy(np.random.rand(5, 5))
-    def do():
-        ins.plot.save(_TMP_PNG)
-        ins.plot.imshow(data)
-        ins.plot.clf()
-    self._run_in_subprocess(do)
+    self._save_first()
+    ins.plot.imshow(data)
+    ins.plot.clf()
+
+def test_contour_basic(self):
+    X = ins.from_numpy(xx)
+    Y = ins.from_numpy(yy)
+    Z = ins.from_numpy(zz)
+    self._save_first()
+    ins.plot.contour(X, Y, Z)
+    ins.plot.clf()
 ```
 
-**Why `multiprocessing.Process` not `os.fork()`**: `fork()` is Linux-only.
-`multiprocessing.Process` works on Windows too (uses `CreateProcess`).
-Don't create platform-specific code for future Windows support.
+**Why NOT subprocess isolation**: Subprocess (fork) inherits the parent's gnuplot
+pipe state, causing pipe corruption. Even with `spawn`, subprocess isolation hides
+crashes — the test shows "PASSED" while the subprocess segfaults. Direct execution
+is honest: if it crashes, the test fails.
 
-**CI workflow**: Remove `--ignore=tests/cpu/python/test_plot.py`. Plot tests
-now pass (13/13) with subprocess isolation for imshow/contour.
+**CI workflow**: No special handling needed. Plot tests pass directly.
 
 ## Plot to PNG files (not console)
 

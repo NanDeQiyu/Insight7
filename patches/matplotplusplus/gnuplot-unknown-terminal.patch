@@ -7,16 +7,14 @@ index 1e4a330..ba5e109 100644
          }
  
 -        // Open the gnuplot pipe_
-+        // When terminal is "unknown" (headless, no display), try "pngcairo"
-+        // first which supports saving to PNG files. Only fall back to "dumb"
-+        // if pngcairo is not available (no fonts installed).
-+        // Prefer "png" over "pngcairo" — pngcairo depends on cairo/pango
-+        // which may crash in headless environments. "png" uses libgd.
++        // When terminal is "unknown" (headless, no display), try "png"
++        // first which uses libgd (no cairo/pango dependency). Fall back to
++        // "pngcairo" (requires cairo/pango, may crash in headless) then "dumb".
 +        if (terminal_ == "unknown") {
-+            if (terminal_is_available("pngcairo")) {
-+                terminal_ = "pngcairo";
-+            } else if (terminal_is_available("png")) {
++            if (terminal_is_available("png")) {
 +                terminal_ = "png";
++            } else if (terminal_is_available("pngcairo")) {
++                terminal_ = "pngcairo";
 +            } else {
 +                terminal_ = "dumb";
 +            }

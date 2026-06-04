@@ -100,38 +100,12 @@ class TestPlotCPU:
         ins.plot.hist(data, bins=10)
         ins.plot.clf()
 
-    def _run_in_subprocess(self, target):
-        """Run a plot function in a subprocess (portable crash isolation)."""
-        import signal
-        from multiprocessing import Process
-
-        p = Process(target=target)
-        p.start()
-        p.join(timeout=30)
-        if p.is_alive():
-            p.terminate()
-            p.join()
-            pytest.fail("Subprocess timed out after 30s")
-        if p.exitcode is not None and p.exitcode != 0:
-            if p.exitcode < 0:
-                sig = signal.Signals(-p.exitcode)
-                pytest.skip(
-                    f"Subprocess killed by {sig.name} "
-                    f"(matplotplusplus/cairo crash in headless CI)"
-                )
-            else:
-                pytest.fail(f"Subprocess exited with code {p.exitcode}")
-
     def test_imshow_basic(self):
         """Test 5: imshow without crashing."""
         data = ins.from_numpy(np.random.rand(5, 5))
-
-        def do():
-            ins.plot.save(_TMP_PNG)
-            ins.plot.imshow(data)
-            ins.plot.clf()
-
-        self._run_in_subprocess(do)
+        self._save_first()
+        ins.plot.imshow(data)
+        ins.plot.clf()
 
     def test_contour_basic(self):
         """Test 6: contour plot without crashing."""
@@ -142,13 +116,9 @@ class TestPlotCPU:
         X = ins.from_numpy(xx)
         Y = ins.from_numpy(yy)
         Z = ins.from_numpy(zz)
-
-        def do():
-            ins.plot.save(_TMP_PNG)
-            ins.plot.contour(X, Y, Z)
-            ins.plot.clf()
-
-        self._run_in_subprocess(do)
+        self._save_first()
+        ins.plot.contour(X, Y, Z)
+        ins.plot.clf()
 
     def test_subplot_basic(self):
         """Test 7: subplot without crashing."""
