@@ -1394,6 +1394,9 @@ Transfer array to a different device. device_type: 0=CPU, 1=GPU.
 function to(x::InsightArray, device_type::Int)::InsightArray
     ptr = ccall((:insight_jl_to_device, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32), x, Int32(device_type))
+    if ptr == C_NULL
+        error("Insight: device transfer failed (GPU backend not available?)")
+    end
     arr = InsightArray(ptr)
     finalizer(_free, arr)
     return arr

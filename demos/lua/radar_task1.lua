@@ -241,14 +241,25 @@ for _, tgt in ipairs(targets) do
 end
 
 -- GPU — silent skip when not available
-local ok_gpu = pcall(function()
-  ins.load_backend("cuda")
-end)
-if ok_gpu then
+local has_gpu = false
+do
+  local ok, _ = pcall(function()
+    ins.load_backend("cuda")
+    -- Verify GPU actually works by trying a device transfer
+    local test = ins.from_table({ 1.0 }):to(ins.GPUPlace(0))
+    test:to(ins.CPUPlace())
+  end)
+  has_gpu = ok
+end
+
+if has_gpu then
   print("\n============================================================")
   print("  GPU 信息")
   print("============================================================")
-  print(string.format("  设备: %s", ins.device_name("gpu")))
+  local dev = ins.device_name("gpu")
+  if dev and dev ~= "" then
+    print(string.format("  设备: %s", dev))
+  end
 end
 
 print("\n完成！")

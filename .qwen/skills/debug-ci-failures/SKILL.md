@@ -53,6 +53,9 @@ Group errors across jobs. Common patterns in Insight7:
 | Lua radar demo 0 targets | RNG overflow (double can't store LCG integers) → NaN → all zero detections | fix-cross-language-demo-gotchas |
 | Python `ValueError: could not convert string to float: 'Array(shape=...'` | `float(str(ins.sum(arr)))` fails because Array __repr__ includes metadata; use `.numpy()` | fix-cross-language-demo-gotchas |
 | Language binding CI not triggered on PR | `pull_request.paths` missing `backends/**`; must match `push.paths` | fix-ci-workflow-path-triggers |
+| C++ demo `Failed to load CPU backend` after `cd build/bin/demos` | `LD_LIBRARY_PATH=build/backends/cpu` is relative; after `cd` it resolves to wrong dir. Use `$GITHUB_WORKSPACE/build/backends/cpu` | debug-ci-failures |
+| Python/Lua/Julia linalg/fft demo crashes with `GPUPlace: GPU backend is not available` | `gpu_available()` uses `load_backend("cuda")` which returns true even without GPU (silently fails). Wrap `run_gpu_*()` in try-catch | fix-cross-language-demo-gotchas |
+| Python plot test segfaults on imshow/contour | gnuplot terminal fallback checked pngcairo (cairo/pango) before png (libgd); cairo SIGSEGV on image rendering in headless. Fix: swap order to prefer png, run imshow/contour directly (no subprocess) | wrap-external-plot-library |
 
 ## Step 3: Fix in dependency order
 

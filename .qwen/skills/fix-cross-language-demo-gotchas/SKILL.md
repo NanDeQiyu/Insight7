@@ -233,6 +233,61 @@ function gpu_available()
 end
 ```
 
+## GPU section pattern (ALL languages)
+
+`gpu_available()` using `load_backend("cuda")` is unreliable — `load_backend` silently
+fails when the .so doesn't exist (returns void/true), so `gpu_available()` returns `true`
+even without a GPU. The actual failure happens later when `.to(GPUPlace(0))` is called.
+
+**Fix**: Always wrap GPU section calls in try-catch, even when `gpu_available()` returns true.
+
+```python
+# Python
+if gpu_available():
+    try:
+        run_gpu_linalg()
+    except Exception as e:
+        print(f"\n[GPU not available: {e}]")
+else:
+    print("\n[GPU not available, skipping GPU linalg demo]")
+```
+
+```lua
+-- Lua
+if gpu_available() then
+  local ok, err = pcall(run_gpu_linalg)
+  if not ok then
+    print("\n[GPU not available: " .. tostring(err) .. "]")
+  end
+else
+  print("\n[GPU not available, skipping GPU linalg demo]")
+end
+```
+
+```julia
+# Julia
+if gpu_available()
+    try
+        run_gpu_linalg()
+    catch e
+        println("\n[GPU not available: $e]")
+    end
+else
+    println("\n[GPU not available, skipping GPU linalg demo]")
+end
+```
+
+**Why:** In CI with `-DINSIGHT_WITH_CUDA=OFF`, `load_backend("cuda")` doesn't throw
+(it just fails to find the .so). The Lua/Python wrappers return `true` (success).
+Then `GPUPlace(0)` → `to(GPUPlace(0))` throws because no GPU backend is registered.
+
+**Symptom**: `RuntimeError: GPUPlace: GPU backend is not available` (Python)
+or `luajit: C++ exception` (Lua) or `signal 6: Aborted` (Julia).
+
+**How to apply**: Every demo with a GPU section must have try-catch around the call,
+not just a `gpu_available()` check. This applies to linalg_demo, fft_demo, and any
+future demo with GPU operations.
+
 ## C++ demos
 
 ### Guard plot calls with `#ifdef INSIGHT_USE_MATPLOT`

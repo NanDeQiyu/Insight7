@@ -25,7 +25,7 @@ function(apply_patch SOURCE_DIR PATCH_FILE)
         WORKING_DIRECTORY "${SOURCE_DIR}"
         RESULT_VARIABLE CHECK_RESULT
         OUTPUT_QUIET
-        ERROR_QUIET
+        ERROR_VARIABLE CHECK_ERROR
     )
 
     if(CHECK_RESULT EQUAL 0)
@@ -33,16 +33,29 @@ function(apply_patch SOURCE_DIR PATCH_FILE)
             COMMAND git apply "${PATCH_FILE}"
             WORKING_DIRECTORY "${SOURCE_DIR}"
             RESULT_VARIABLE APPLY_RESULT
+            ERROR_VARIABLE APPLY_ERROR
         )
         if(APPLY_RESULT EQUAL 0)
             file(WRITE "${PATCH_STAMP}" "Applied on ${CMAKE_CURRENT_LIST_LINE}")
             message(STATUS "Patch ${PATCH_NAME} applied successfully")
         else()
-            message(WARNING "Failed to apply patch ${PATCH_NAME}")
+            message(WARNING "Failed to apply patch ${PATCH_NAME}: ${APPLY_ERROR}")
         endif()
     else()
-        # Patch may already be applied (e.g. from local clone)
-        message(STATUS "Patch ${PATCH_NAME} check failed (may already be applied)")
-        file(WRITE "${PATCH_STAMP}" "Skipped (already applied or incompatible)")
+        # Check if patch is already applied by trying reverse check
+        execute_process(
+            COMMAND git apply --check -R "${PATCH_FILE}"
+            WORKING_DIRECTORY "${SOURCE_DIR}"
+            RESULT_VARIABLE REVERSE_RESULT
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+        if(REVERSE_RESULT EQUAL 0)
+            file(WRITE "${PATCH_STAMP}" "Already applied")
+            message(STATUS "Patch ${PATCH_NAME} already applied (detected via reverse check)")
+        else()
+            message(WARNING "Patch ${PATCH_NAME} cannot be applied and is not already applied: ${CHECK_ERROR}")
+            # Do NOT write stamp — allow retry on next configure
+        endif()
     endif()
 endfunction()

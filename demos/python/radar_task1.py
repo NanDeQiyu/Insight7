@@ -148,10 +148,13 @@ def save_plots(r, prefix):
         db = 20 * np.log10(energy_np + 1e-8)
 
         plt.figure()
-        # Use contour instead of imshow — imshow crashes in headless environments
-        range_arr = ins.from_numpy(r["range_bins"].astype(np.float64))
-        doppler_arr = ins.from_numpy(r["doppler_bins"].astype(np.float64))
-        plt.contour(range_arr, doppler_arr, ins.from_numpy(db.astype(np.float64)))
+        # contour needs 2D X/Y — use meshgrid
+        rr, dd = np.meshgrid(r["range_bins"], r["doppler_bins"])
+        plt.contour(
+            ins.from_numpy(rr.astype(np.float64)),
+            ins.from_numpy(dd.astype(np.float64)),
+            ins.from_numpy(db.astype(np.float64)),
+        )
         plt.title("Range-Doppler Map")
         plt.xlabel("Range [m]")
         plt.ylabel("Doppler [Hz]")

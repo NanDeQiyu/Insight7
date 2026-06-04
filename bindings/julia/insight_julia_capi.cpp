@@ -778,12 +778,20 @@ Array *insight_jl_randn(const int64_t *dims, int32_t ndim, int32_t dtype,
 // ============================================================================
 
 Array *insight_jl_cast(const Array *x, int32_t dtype) {
-  return new Array(cast(*x, static_cast<DType>(dtype)));
+  try {
+    return new Array(cast(*x, static_cast<DType>(dtype)));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 Array *insight_jl_to_device(const Array *x, int32_t device_type) {
-  Place place = device_type == 1 ? GPUPlace(0) : CPUPlace();
-  return new Array(x->to(place));
+  try {
+    Place place = device_type == 1 ? GPUPlace(0) : CPUPlace();
+    return new Array(x->to(place));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 // ============================================================================
@@ -792,14 +800,28 @@ Array *insight_jl_to_device(const Array *x, int32_t device_type) {
 
 Array *insight_jl_take(const Array *x, const Array *indices, int32_t has_axis,
                        int32_t axis) {
-  std::optional<int> ax = has_axis ? std::optional<int>(axis) : std::nullopt;
-  return new Array(take(*x, *indices, ax));
+  try {
+    std::optional<int> ax = has_axis ? std::optional<int>(axis) : std::nullopt;
+    return new Array(take(*x, *indices, ax));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
-Array *insight_jl_nonzero(const Array *x) { return new Array(nonzero(*x)); }
+Array *insight_jl_nonzero(const Array *x) {
+  try {
+    return new Array(nonzero(*x));
+  } catch (...) {
+    return nullptr;
+  }
+}
 
 Array *insight_jl_sort(const Array *x, int32_t axis, int32_t descending) {
-  return new Array(sort(*x, axis, descending != 0));
+  try {
+    return new Array(sort(*x, axis, descending != 0));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 // ============================================================================
@@ -807,25 +829,49 @@ Array *insight_jl_sort(const Array *x, int32_t axis, int32_t descending) {
 // ============================================================================
 
 Array *insight_jl_concat(const Array **arrays, int32_t count, int32_t axis) {
-  std::vector<Array> vec;
-  for (int32_t i = 0; i < count; i++) {
-    vec.push_back(*arrays[i]);
+  try {
+    std::vector<Array> vec;
+    for (int32_t i = 0; i < count; i++) {
+      vec.push_back(*arrays[i]);
+    }
+    return new Array(concat(vec, axis));
+  } catch (...) {
+    return nullptr;
   }
-  return new Array(concat(vec, axis));
 }
 
 Array *insight_jl_reshape(const Array *x, const int64_t *dims, int32_t ndim) {
-  Shape shape(std::vector<int64_t>(dims, dims + ndim));
-  return new Array(x->reshape(shape));
+  try {
+    Shape shape(std::vector<int64_t>(dims, dims + ndim));
+    return new Array(x->reshape(shape));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 Array *insight_jl_transpose(const Array *x) {
-  return new Array(x->transpose());
+  try {
+    return new Array(x->transpose());
+  } catch (...) {
+    return nullptr;
+  }
 }
 
-Array *insight_jl_copy(const Array *x) { return new Array(x->copy()); }
+Array *insight_jl_copy(const Array *x) {
+  try {
+    return new Array(x->copy());
+  } catch (...) {
+    return nullptr;
+  }
+}
 
-Array *insight_jl_squeeze(const Array *x) { return new Array(squeeze(*x)); }
+Array *insight_jl_squeeze(const Array *x) {
+  try {
+    return new Array(squeeze(*x));
+  } catch (...) {
+    return nullptr;
+  }
+}
 
 // ============================================================================
 // Additional Unary (Phase D)
