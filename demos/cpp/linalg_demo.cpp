@@ -13,15 +13,6 @@ static void separator(const char *title) {
   printf("========================================\n");
 }
 
-static bool gpu_available() {
-  try {
-    set_device(GPUPlace(0));
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
 static void run_cpu_linalg() {
   separator("CPU Linear Algebra");
 
@@ -98,8 +89,6 @@ static void run_cpu_linalg() {
 }
 
 static void run_gpu_linalg() {
-  separator("GPU Linear Algebra");
-
   // MatMul F64 on GPU
   {
     Array A =
@@ -167,7 +156,8 @@ int main() {
 
   run_cpu_linalg();
 
-  if (gpu_available()) {
+  if (ins::has_device(DeviceKind::GPU)) {
+    separator("GPU Linear Algebra");
     run_gpu_linalg();
   }
 

@@ -63,6 +63,13 @@ int32_t insight_jl_load_backend(const char *backend) {
   }
 }
 
+// Check if a device kind is available. 0=cpu, 1=gpu. Returns 1 if available.
+int32_t insight_jl_has_device(int32_t device_type) {
+  return ins::has_device(device_type == 1 ? DeviceKind::GPU : DeviceKind::CPU)
+             ? 1
+             : 0;
+}
+
 // ============================================================================
 // Device information
 // ============================================================================

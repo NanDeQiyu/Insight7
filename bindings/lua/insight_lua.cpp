@@ -260,6 +260,15 @@ extern "C" int luaopen__insight(lua_State *L) {
     }
   };
 
+  // Check if a device kind is available (e.g., "cpu", "gpu")
+  m["has_device"] = [](const std::string &kind) -> bool {
+    if (kind == "cpu")
+      return ins::has_device(DeviceKind::CPU);
+    if (kind == "gpu")
+      return ins::has_device(DeviceKind::GPU);
+    return false;
+  };
+
   // ===== Device information =====
   m["device_name"] = [](sol::optional<std::string> kind,
                         sol::optional<int> device_id) {
@@ -309,7 +318,14 @@ extern "C" int luaopen__insight(lua_State *L) {
   place_type["device_id"] = &Place::device_id;
 
   m["CPUPlace"] = []() { return CPUPlace(); };
-  m["GPUPlace"] = [](int id) { return GPUPlace(id); };
+  m["GPUPlace"] = [](int id, sol::this_state ts) -> Place {
+    try {
+      return GPUPlace(id);
+    } catch (const std::exception &e) {
+      luaL_error(ts, "%s", e.what());
+      return CPUPlace();
+    }
+  };
 
   // ===== Shape helper =====
   m["Shape"] = [](sol::table dims) { return Shape(table_to_shape(dims)); };

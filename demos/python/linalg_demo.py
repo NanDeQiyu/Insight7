@@ -22,14 +22,6 @@ def separator(title):
     print(f"{'=' * 40}")
 
 
-def gpu_available():
-    try:
-        ins.load_backend("cuda")
-        return True
-    except Exception:
-        return False
-
-
 def run_cpu_linalg():
     separator("CPU Linear Algebra")
 
@@ -79,8 +71,6 @@ def run_cpu_linalg():
 
 
 def run_gpu_linalg():
-    separator("GPU Linear Algebra")
-
     # MatMul F64 on GPU
     A = ins.from_array([[1.0, 2.0], [3.0, 4.0]]).to(ins.GPUPlace(0))
     B = ins.from_array([[5.0, 6.0], [7.0, 8.0]]).to(ins.GPUPlace(0))
@@ -125,7 +115,8 @@ def main():
 
     run_cpu_linalg()
 
-    if gpu_available():
+    if ins.has_device("gpu"):
+        separator("GPU Linear Algebra")
         try:
             run_gpu_linalg()
         except Exception:

@@ -312,6 +312,17 @@ PYBIND11_MODULE(_insight, m) {
       py::arg("backend"),
       "Load an additional backend after init() (e.g., 'cuda', 'rocm')");
 
+  m.def(
+      "has_device",
+      [](const std::string &kind) -> bool {
+        if (kind == "cpu")
+          return ins::has_device(DeviceKind::CPU);
+        if (kind == "gpu")
+          return ins::has_device(DeviceKind::GPU);
+        return false;
+      },
+      py::arg("kind"), "Check if a device kind is available ('cpu' or 'gpu')");
+
   // ===== Device information =====
   m.def(
       "device_name",

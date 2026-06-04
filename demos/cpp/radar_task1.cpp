@@ -29,15 +29,6 @@ static void separator(const char *title) {
   printf("============================================================\n");
 }
 
-static bool gpu_available() {
-  try {
-    set_device(GPUPlace(0));
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
 // RNG: use Insight's native seed + randn for cross-language alignment
 static void init_rng() { ins::seed(42); }
 static const double *noise_r_data = nullptr;

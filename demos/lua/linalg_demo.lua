@@ -9,13 +9,6 @@ local function separator(title)
   print(string.rep("=", 40))
 end
 
-local function gpu_available()
-  local ok, result = pcall(function()
-    return ins.load_backend("cuda")
-  end)
-  return ok and result
-end
-
 local function run_cpu_linalg()
   separator("CPU Linear Algebra")
 
@@ -74,8 +67,6 @@ local function run_cpu_linalg()
 end
 
 local function run_gpu_linalg()
-  separator("GPU Linear Algebra")
-
   local A = ins.from_table({ { 1, 2 }, { 3, 4 } }):to(ins.GPUPlace(0))
   local B = ins.from_table({ { 5, 6 }, { 7, 8 } }):to(ins.GPUPlace(0))
   local C = ins.matmul(A, B)
@@ -122,7 +113,8 @@ print("Insight7 Linear Algebra Demo (Lua)")
 
 run_cpu_linalg()
 
-if gpu_available() then
+if ins.has_device("gpu") then
+  separator("GPU Linear Algebra")
   pcall(run_gpu_linalg)
 end
 

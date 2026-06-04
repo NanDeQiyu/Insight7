@@ -9,13 +9,6 @@ local function separator(title)
   print(string.rep("=", 40))
 end
 
-local function gpu_available()
-  local ok, result = pcall(function()
-    return ins.load_backend("cuda")
-  end)
-  return ok and result
-end
-
 local function run_fft_cpu()
   separator("CPU FFT")
 
@@ -81,8 +74,6 @@ local function run_fft_cpu()
 end
 
 local function run_fft_gpu()
-  separator("GPU FFT")
-
   local n = 64
   local sig = {}
   for i = 0, n - 1 do
@@ -136,7 +127,8 @@ print("Insight7 FFT Demo (Lua)")
 
 run_fft_cpu()
 
-if gpu_available() then
+if ins.has_device("gpu") then
+  separator("GPU FFT")
   pcall(run_fft_gpu)
 end
 

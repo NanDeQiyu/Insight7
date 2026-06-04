@@ -12,14 +12,6 @@ function separator(title)
     println("="^40)
 end
 
-function gpu_available()
-    try
-        return Insight.load_backend("cuda")
-    catch
-        return false
-    end
-end
-
 function run_fft_cpu()
     separator("CPU FFT")
 
@@ -67,8 +59,6 @@ function run_fft_cpu()
 end
 
 function run_fft_gpu()
-    separator("GPU FFT")
-
     n = 64
     t_vals = collect(0:n-1) ./ n
     signal = sin.(2π * 5 .* t_vals) .+ 0.5 .* sin.(2π * 12 .* t_vals)
@@ -102,7 +92,8 @@ println("Insight7 FFT Demo (Julia)")
 
 run_fft_cpu()
 
-if gpu_available()
+if Insight.has_device(1)
+    separator("GPU FFT")
     try
         run_fft_gpu()
     catch

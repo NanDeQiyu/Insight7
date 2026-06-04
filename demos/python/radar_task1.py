@@ -203,19 +203,18 @@ if __name__ == "__main__":
     print_result(cpu)
     save_plots(cpu, "task1_cpu")
 
-    # GPU — silent skip when not available
-    try:
-        ins.load_backend("cuda")
+    if ins.has_device("gpu"):
         print("\n" + "=" * 60 + "\n  GPU 运行\n" + "=" * 60)
-        gpu = run_task1("gpu")
-        print_result(gpu)
-        save_plots(gpu, "task1_gpu")
+        try:
+            gpu = run_task1("gpu")
+            print_result(gpu)
+            save_plots(gpu, "task1_gpu")
 
-        print("\n" + "=" * 60 + "\n  性能对比\n" + "=" * 60)
-        speedup = cpu["total_ms"] / gpu["total_ms"]
-        print(f"  CPU: {cpu['total_ms']:.2f} ms, GPU: {gpu['total_ms']:.2f} ms")
-        print(f"  加速比: {speedup:.2f}x {'✅ GPU 更快' if speedup > 1 else '⚠️ 需优化'}")
-    except Exception:
-        pass  # Silent skip when GPU not available
+            print("\n" + "=" * 60 + "\n  性能对比\n" + "=" * 60)
+            speedup = cpu["total_ms"] / gpu["total_ms"]
+            print(f"  CPU: {cpu['total_ms']:.2f} ms, GPU: {gpu['total_ms']:.2f} ms")
+            print(f"  加速比: {speedup:.2f}x {'✅ GPU 更快' if speedup > 1 else '⚠️ 需优化'}")
+        except Exception:
+            pass
 
     print("\n完成！")

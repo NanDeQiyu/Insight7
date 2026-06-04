@@ -12,24 +12,11 @@ function separator(title)
     println("="^40)
 end
 
-function gpu_available()
-    try
-        return Insight.load_backend("cuda")
-    catch
-        return false
-    end
-end
-
-try
-catch
+if !Insight.has_device(1)
+    exit(0)
 end
 
 println("Insight7 GPU Transfer Demo (Julia)")
-
-if !gpu_available()
-    println("GPU not available. This demo requires a CUDA device.")
-    exit(0)
-end
 
 # --- CPU to GPU transfer ---
 separator("CPU -> GPU Transfer")

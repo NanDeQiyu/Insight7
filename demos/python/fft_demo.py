@@ -23,14 +23,6 @@ def separator(title):
     print(f"{'=' * 40}")
 
 
-def gpu_available():
-    try:
-        ins.load_backend("cuda")
-        return True
-    except Exception:
-        return False
-
-
 def run_fft_cpu():
     separator("CPU FFT")
 
@@ -71,8 +63,6 @@ def run_fft_cpu():
 
 
 def run_fft_gpu():
-    separator("GPU FFT")
-
     n = 64
     t = np.arange(n) / n
     signal = (np.sin(2 * math.pi * 5 * t) + 0.5 * np.sin(2 * math.pi * 12 * t)).astype(np.float32)
@@ -102,7 +92,8 @@ def main():
 
     run_fft_cpu()
 
-    if gpu_available():
+    if ins.has_device("gpu"):
+        separator("GPU FFT")
         try:
             run_fft_gpu()
         except Exception:

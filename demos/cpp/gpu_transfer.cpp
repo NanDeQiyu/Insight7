@@ -12,24 +12,14 @@ static void separator(const char *title) {
   printf("========================================\n");
 }
 
-static bool gpu_available() {
-  try {
-    set_device(GPUPlace(0));
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
 int main() {
   ins::init();
 
-  printf("Insight7 GPU Transfer Demo\n");
-
-  if (!gpu_available()) {
-    printf("GPU not available. This demo requires a CUDA device.\n");
+  if (!ins::has_device(DeviceKind::GPU)) {
     return 0;
   }
+
+  printf("Insight7 GPU Transfer Demo\n");
 
   // --- CPU to GPU transfer ---
   separator("CPU -> GPU Transfer");

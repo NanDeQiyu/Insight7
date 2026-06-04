@@ -81,7 +81,11 @@ if(OpenMP_CXX_FOUND)
 endif()
 
 # ========== Thrust ==========
-option(INSIGHT_USE_THRUST "Use Thrust for GPU algorithms (sort, scan, etc.)" ON)
+if(INSIGHT_WITH_CUDA)
+    option(INSIGHT_USE_THRUST "Use Thrust for GPU algorithms (sort, scan, etc.)" ON)
+else()
+    set(INSIGHT_USE_THRUST OFF CACHE BOOL "" FORCE)
+endif()
 
 # ========== OpenBLAS ==========
 option(INSIGHT_USE_OPENBLAS "Use OpenBLAS for linear algebra" ON)
@@ -374,14 +378,11 @@ if(INSIGHT_USE_MATPLOT)
         set(MATPLOTPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(MATPLOTPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
         set(MATPLOTPP_WITH_INTERACTIVE_BACKENDS OFF CACHE BOOL "" FORCE)
-        # Step 1: Download source only (like PaddlePaddle's ExternalProject)
         FetchContent_Populate(matplotplusplus)
-        # Step 2: Apply patches BEFORE add_subdirectory (like PaddlePaddle PATCH_COMMAND)
         apply_patch("${matplotplusplus_SOURCE_DIR}"
             "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gcc-compat.patch")
         apply_patch("${matplotplusplus_SOURCE_DIR}"
             "${CMAKE_CURRENT_SOURCE_DIR}/patches/matplotplusplus/gnuplot-unknown-terminal.patch")
-        # Step 3: Process patched source
         add_subdirectory("${matplotplusplus_SOURCE_DIR}" "${matplotplusplus_BINARY_DIR}")
     endif()
     if(TARGET matplot)

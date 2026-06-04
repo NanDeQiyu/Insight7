@@ -25,7 +25,7 @@ cd third_party/matplotplusplus
 git diff > patches/matplotplusplus/gcc-compat.patch
 ```
 
-### 2. Create `cmake/ApplyPatch.cmake`
+### 2. Create `cmake/ApplyPatch.cmake` — 3 fallback methods
 
 ```cmake
 function(apply_patch SOURCE_DIR PATCH_FILE)
@@ -43,31 +43,68 @@ function(apply_patch SOURCE_DIR PATCH_FILE)
     endif()
 
     message(STATUS "Applying patch ${PATCH_NAME} to ${SOURCE_DIR}")
+
+    # Method 1: git apply (preferred for git repos)
     execute_process(
         COMMAND git apply --check "${PATCH_FILE}"
         WORKING_DIRECTORY "${SOURCE_DIR}"
-        RESULT_VARIABLE CHECK_RESULT
-        OUTPUT_QUIET ERROR_QUIET
+        RESULT_VARIABLE GIT_CHECK OUTPUT_QUIET ERROR_QUIET
     )
-
-    if(CHECK_RESULT EQUAL 0)
+    if(GIT_CHECK EQUAL 0)
         execute_process(
             COMMAND git apply "${PATCH_FILE}"
             WORKING_DIRECTORY "${SOURCE_DIR}"
-            RESULT_VARIABLE APPLY_RESULT
+            RESULT_VARIABLE GIT_APPLY ERROR_VARIABLE GIT_ERROR
         )
-        if(APPLY_RESULT EQUAL 0)
-            file(WRITE "${PATCH_STAMP}" "Applied")
-            message(STATUS "Patch ${PATCH_NAME} applied successfully")
-        else()
-            message(WARNING "Failed to apply patch ${PATCH_NAME}")
+        if(GIT_APPLY EQUAL 0)
+            file(WRITE "${PATCH_STAMP}" "Applied via git apply")
+            message(STATUS "Patch ${PATCH_NAME} applied successfully (git apply)")
+            return()
         endif()
-    else()
-        message(STATUS "Patch ${PATCH_NAME} check failed (may already be applied)")
-        file(WRITE "${PATCH_STAMP}" "Skipped")
     endif()
+
+    # Method 2: patch -p1 (fallback, works without git)
+    execute_process(
+        COMMAND patch -p1 --forward --dry-run
+        INPUT_FILE "${PATCH_FILE}"
+        WORKING_DIRECTORY "${SOURCE_DIR}"
+        RESULT_VARIABLE PATCH_CHECK OUTPUT_QUIET ERROR_QUIET
+    )
+    if(PATCH_CHECK EQUAL 0)
+        execute_process(
+            COMMAND patch -p1 --forward
+            INPUT_FILE "${PATCH_FILE}"
+            WORKING_DIRECTORY "${SOURCE_DIR}"
+            RESULT_VARIABLE PATCH_APPLY ERROR_VARIABLE PATCH_ERROR
+        )
+        if(PATCH_APPLY EQUAL 0)
+            file(WRITE "${PATCH_STAMP}" "Applied via patch -p1")
+            message(STATUS "Patch ${PATCH_NAME} applied successfully (patch -p1)")
+            return()
+        endif()
+    endif()
+
+    # Method 3: Check if already applied (reverse dry-run)
+    execute_process(
+        COMMAND patch -p1 --forward -R --dry-run
+        INPUT_FILE "${PATCH_FILE}"
+        WORKING_DIRECTORY "${SOURCE_DIR}"
+        RESULT_VARIABLE REVERSE_CHECK OUTPUT_QUIET ERROR_QUIET
+    )
+    if(REVERSE_CHECK EQUAL 0)
+        file(WRITE "${PATCH_STAMP}" "Already applied")
+        message(STATUS "Patch ${PATCH_NAME} already applied (detected via reverse check)")
+        return()
+    endif()
+
+    # All methods failed
+    message(WARNING "Patch ${PATCH_NAME} FAILED to apply — expect build errors!")
+    # Do NOT write stamp — allow retry on next configure
 endfunction()
 ```
+
+**Why 3 methods**: `git apply` fails on some FetchContent shallow clones.
+`patch -p1` works without git. Reverse check detects already-applied patches.
 
 ### 3. Use in CMakeLists.txt — PaddlePaddle style
 

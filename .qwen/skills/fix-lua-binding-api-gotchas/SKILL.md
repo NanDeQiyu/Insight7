@@ -347,3 +347,36 @@ m["fft2"] = [](const Array &x, sol::optional<sol::table> s,
     return fft::fft2(x, s_vec, axes_vec, norm.value_or("backward"));
 };
 ```
+
+## 13. `to()` must wrap device transfer in try/catch (sol2 lambda limitation)
+
+sol2 does NOT catch C++ exceptions from lambdas. If `Array::to(Place)` throws
+(e.g., GPU backend not available), the exception crosses the sol2 boundary
+and causes `std::terminate` — Lua's `pcall` cannot catch it.
+
+**Fix**: Wrap `to()` with `sol::this_state` + `luaL_error`:
+
+```cpp
+array_type["to"] = sol::overload(
+    [](const Array &a, const Place &p, sol::this_state ts) -> Array {
+      try {
+        return a.to(p);
+      } catch (const std::exception &e) {
+        luaL_error(ts, "%s", e.what());
+        return Array();  // never reached
+      }
+    },
+    [](const Array &a, DType dt) { return a.to(dt); }
+);
+```
+
+**Why `sol::this_state`**: sol2 automatically injects `lua_State*` when the
+lambda has a `sol::this_state` parameter. `luaL_error` then raises a proper
+Lua error that `pcall` can catch.
+
+**Symptom**: `terminate called after throwing an instance of 'ins::Exception'`
+when calling `a:to(ins.GPUPlace(0))` without GPU backend. Process crashes
+instead of Lua error.
+
+**Also applies to**: Any C++ function bound via sol2 lambda that can throw
+exceptions crossing the FFI boundary (e.g., `ins.init()`, `ins.set_device()`).

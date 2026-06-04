@@ -104,6 +104,15 @@ function load_backend(name::String)::Bool
     ccall((:insight_jl_load_backend, LIB_INSIGHT), Int32, (Cstring,), name) == 1
 end
 
+"""
+    has_device(device_type::Int) -> Bool
+
+Check if a device kind is available. 0=CPU, 1=GPU.
+"""
+function has_device(device_type::Int)::Bool
+    ccall((:insight_jl_has_device, LIB_INSIGHT), Int32, (Int32,), Int32(device_type)) == 1
+end
+
 # DType enum mapping (matches InsightDType in c_api/dtype.h)
 function _dtype_code(dt::DataType)::Int32
     dt === Bool && return Int32(1)      # INSIGHT_DTYPE_BOOL

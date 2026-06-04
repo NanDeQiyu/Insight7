@@ -12,14 +12,6 @@ function separator(title)
     println("="^40)
 end
 
-function gpu_available()
-    try
-        return Insight.load_backend("cuda")
-    catch
-        return false
-    end
-end
-
 function run_cpu_linalg()
     separator("CPU Linear Algebra")
 
@@ -77,8 +69,6 @@ function run_cpu_linalg()
 end
 
 function run_gpu_linalg()
-    separator("GPU Linear Algebra")
-
     A = Insight.from_data(reshape([1.0, 2.0, 3.0, 4.0], 2, 2), Insight.float64)
     B = Insight.from_data(reshape([5.0, 6.0, 7.0, 8.0], 2, 2), Insight.float64)
     A_gpu = Insight.to(A, 1)  # GPUPlace(0)
@@ -122,7 +112,8 @@ println("Insight7 Linear Algebra Demo (Julia)")
 
 run_cpu_linalg()
 
-if gpu_available()
+if Insight.has_device(1)
+    separator("GPU Linear Algebra")
     try
         run_gpu_linalg()
     catch

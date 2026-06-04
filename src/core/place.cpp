@@ -210,7 +210,11 @@ DeviceMemoryInfo device_memory(int device_id) {
 
 Place CPUPlace(int device_id) { return Place(DeviceKind::CPU, device_id); }
 
-Place GPUPlace(int device_id) { return Place(DeviceKind::GPU, device_id); }
+Place GPUPlace(int device_id) {
+  INS_CHECK(is_device_available(DeviceKind::GPU),
+            "GPUPlace: GPU backend is not available");
+  return Place(DeviceKind::GPU, device_id);
+}
 
 // ========================================================================
 // Global default device

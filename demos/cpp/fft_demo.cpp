@@ -17,15 +17,6 @@ static void separator(const char *title) {
   printf("========================================\n");
 }
 
-static bool gpu_available() {
-  try {
-    set_device(GPUPlace(0));
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
 static void run_fft_cpu() {
   separator("CPU FFT");
 
@@ -89,8 +80,6 @@ static void run_fft_cpu() {
 }
 
 static void run_fft_gpu() {
-  separator("GPU FFT");
-
   int n = 64;
   std::vector<float> signal(n);
   for (int i = 0; i < n; ++i) {
@@ -145,7 +134,8 @@ int main() {
 
   run_fft_cpu();
 
-  if (gpu_available()) {
+  if (ins::has_device(DeviceKind::GPU)) {
+    separator("GPU FFT");
     run_fft_gpu();
   }
 
