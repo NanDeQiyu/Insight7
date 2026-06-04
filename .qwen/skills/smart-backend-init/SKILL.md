@@ -128,14 +128,21 @@ extern "C" int luaopen__insight(lua_State *L) {
     if (!ins::is_initialized()) {
         ins::init();  // Smart discovery
     }
-    m["init"] = [](sol::table backends) {
-        std::vector<std::string> be;
-        for (size_t i = 1; i <= backends.size(); i++)
-            be.push_back(backends.get<std::string>(i));
-        ins::init(be);
+    // Supports no-arg (auto-discover) and table of backend names
+    m["init"] = [](sol::optional<sol::table> backends) {
+        if (!backends.has_value()) {
+            ins::init();  // auto-discover
+        } else {
+            std::vector<std::string> be;
+            for (size_t i = 1; i <= backends->size(); i++)
+                be.push_back(backends->get<std::string>(i));
+            ins::init(be);
+        }
     };
 }
 ```
+**Note**: `sol::optional<sol::table>` allows `ins.init()` with no args.
+Without it, sol2 requires the table argument and crashes on `ins.init()`.
 
 **Julia** (ccall):
 ```julia
@@ -145,48 +152,63 @@ end
 ```
 Where `insight_jl_init_cpu` calls `ins::init()` (smart discovery).
 
-### Demo pattern — GPU silent skip
+### Demo pattern — GPU silent skip with has_device
 
-All demos use smart init and silent GPU skip:
+All demos use `has_device` to check GPU availability BEFORE any GPU code.
+The GPU section (including title/separator) is entirely inside the if block.
+
+**CRITICAL**: Do NOT use `load_backend("cuda")` to check GPU — it returns true
+even when no GPU is available (just loads the .so). Use `has_device("gpu")` which
+checks if the GPU device interface is actually registered.
 
 ```cpp
 // C++
 ins::init();  // Smart: CPU + first GPU if available
 // ... CPU work ...
-if (has_device(DeviceKind::GPU)) {
-    // GPU work — only shown when GPU available
+if (ins::has_device(DeviceKind::GPU)) {
+    separator("GPU Section Title");  // Title INSIDE if block
+    // GPU work
 }
+// No else — completely silent when no GPU
 ```
 
 ```python
 # Python
 ins.init()  # Smart discovery
 # ... CPU work ...
-try:
-    ins.load_backend("cuda")
+if ins.has_device("gpu"):
+    separator("GPU Section Title")
     # GPU work
-except Exception:
-    pass  # Silent skip
+# No else — completely silent
 ```
 
 ```lua
--- Lua (auto-init on require, no explicit call needed)
+-- Lua
+ins.init()  -- Smart discovery
 -- ... CPU work ...
-local ok = pcall(function() ins.load_backend("cuda") end)
-if ok then
+if ins.has_device("gpu") then
+    separator("GPU Section Title")
     -- GPU work
 end
+-- No else — completely silent
 ```
 
 ```julia
 # Julia (auto-init via __init__)
 # ... CPU work ...
-if Insight.load_backend("cuda")
+if Insight.has_device(1)  # 1 = GPU
+    separator("GPU Section Title")
     # GPU work
 end
 ```
 
-**Why:** CI has no GPU → silent skip. User with GPU → full benchmark output.
+**Why has_device, not load_backend**: `load_backend("cuda")` just loads the .so file.
+It returns true even without a physical GPU. `has_device("gpu")` checks if the GPU
+device interface is registered AND functional. This is the only reliable check.
+
+**Why title inside if block**: If the title is printed before the if check, CI output
+shows "GPU Section Title" followed by nothing — confusing. Everything GPU-related
+must be inside the if block.
 
 ### Convenience overload for backward compatibility
 
