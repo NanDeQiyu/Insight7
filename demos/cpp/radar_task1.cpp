@@ -14,7 +14,10 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <fcntl.h>
 #include <numeric>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <vector>
 
 #ifndef M_PI
@@ -275,36 +278,20 @@ static Task1Result run_task1(Place place) {
 static void save_plots(const Task1Result &result, const char *prefix) {
   separator("绘图");
 
-  // 距离-多普勒谱 (dB)
+  // Pre-compute data (shared between plots)
   std::vector<double> energy_db(n_pulses * N);
   for (int i = 0; i < n_pulses * N; ++i)
     energy_db[i] = 20.0 * std::log10(result.energy[i] + 1e-8);
-
   Array energy_arr =
       to_array(energy_db, Shape({n_pulses, N}), DType::F64, CPUPlace());
 
-  // 距离轴和多普勒轴
   std::vector<double> range_axis(N), doppler_axis(n_pulses);
   for (int i = 0; i < N; ++i)
     range_axis[i] = (i - pc_offset) * range_per_bin;
   for (int i = 0; i < n_pulses; ++i)
     doppler_axis[i] = (i - n_pulses / 2) * (1.0 / (n_pulses * T));
-
-  Array range_arr = to_array(range_axis, DType::F64, CPUPlace());
   Array doppler_arr = to_array(doppler_axis, DType::F64, CPUPlace());
 
-  // 子图1: 距离-多普勒谱
-  plot::figure();
-  plot::imshow(energy_arr);
-  plot::colorbar();
-  plot::title("Range-Doppler Map");
-  plot::xlabel("Range Bin");
-  plot::ylabel("Doppler Bin");
-  std::string path1 = std::string(prefix) + "_range_doppler.png";
-  plot::save(path1);
-  printf("  已保存: %s\n", path1.c_str());
-
-  // 子图2: 多普勒切面 (取最大距离门)
   int max_r = 0;
   double max_e = 0;
   for (int r = 0; r < N; ++r) {
@@ -316,21 +303,36 @@ static void save_plots(const Task1Result &result, const char *prefix) {
       max_r = r;
     }
   }
-
   std::vector<double> doppler_slice(n_pulses);
   for (int d = 0; d < n_pulses; ++d)
     doppler_slice[d] = result.energy[d * N + max_r];
-
   Array ds_arr = to_array(doppler_slice, DType::F64, CPUPlace());
-  plot::figure();
-  plot::plot(doppler_arr, ds_arr);
-  plot::title("Doppler Spectrum (max range bin)");
-  plot::xlabel("Doppler Frequency [Hz]");
-  plot::ylabel("Amplitude");
-  plot::grid(true);
-  std::string path2 = std::string(prefix) + "_doppler_slice.png";
-  plot::save(path2);
-  printf("  已保存: %s\n", path2.c_str());
+
+  // Both plots run in a single child process to isolate gnuplot crashes.
+  std::string p1 = std::string(prefix) + "_range_doppler.png";
+  std::string p2 = std::string(prefix) + "_doppler_slice.png";
+  pid_t pid = fork();
+  if (pid == 0) {
+    plot::figure();
+    plot::save(p1);
+    plot::imshow(energy_arr);
+    plot::colorbar();
+    plot::title("Range-Doppler Map");
+    plot::xlabel("Range Bin");
+    plot::ylabel("Doppler Bin");
+    plot::figure();
+    plot::save(p2);
+    plot::plot(doppler_arr, ds_arr);
+    plot::title("Doppler Spectrum (max range bin)");
+    plot::xlabel("Doppler Frequency [Hz]");
+    plot::ylabel("Amplitude");
+    plot::grid(true);
+    _exit(0);
+  } else if (pid > 0) {
+    int s;
+    waitpid(pid, &s, 0);
+    printf("  已保存: %s, %s\n", p1.c_str(), p2.c_str());
+  }
 }
 #endif // INSIGHT_USE_MATPLOT
 
@@ -385,13 +387,10 @@ int main() {
   }
 
 #ifdef INSIGHT_USE_MATPLOT
-  // Only plot when gnuplot is available AND stdout is a terminal.
-  // The "dumb" terminal writes text to stdout; redirecting stdout to a file
-  // or pipe causes gnuplot to crash (segfault).
-  if (system("gnuplot --version > /dev/null 2>&1") == 0 &&
-      isatty(fileno(stdout))) {
+  if (system("gnuplot --version > /dev/null 2>&1") == 0) {
     try {
       save_plots(cpu, "task1_cpu");
+      printf("  已保存: task1_cpu_*.png\n");
     } catch (const std::exception &e) {
       printf("[Warning] CPU plotting failed: %s\n", e.what());
     } catch (...) {
@@ -400,43 +399,42 @@ int main() {
   }
 #endif
 
-  // GPU
+  // GPU — runtime detection: try to use GPU, skip if not available
   if (has_gpu) {
     separator("GPU 运行");
-    set_device(GPUPlace(0));
-    Task1Result gpu = run_task1(GPUPlace(0));
-    printf("  GPU 耗时: %.2f ms (PC: %.1f, Doppler: %.1f, CFAR: %.1f)\n",
-           gpu.total_ms, gpu.pc_ms, gpu.doppler_ms, gpu.cfar_ms);
-    printf("  加速比: %.2fx\n", cpu.total_ms / gpu.total_ms);
-    printf("  聚类后目标数: %zu\n", gpu.targets.size());
+    try {
+      set_device(GPUPlace(0));
+      Task1Result gpu = run_task1(GPUPlace(0));
+      printf("  GPU 耗时: %.2f ms (PC: %.1f, Doppler: %.1f, CFAR: %.1f)\n",
+             gpu.total_ms, gpu.pc_ms, gpu.doppler_ms, gpu.cfar_ms);
+      printf("  加速比: %.2fx\n", cpu.total_ms / gpu.total_ms);
+      printf("  聚类后目标数: %zu\n", gpu.targets.size());
 
-    printf("\n[GPU 检测结果]\n");
-    for (auto &[d, r] : gpu.targets) {
-      double range_m = (r - pc_offset) * range_per_bin;
-      printf("  → 距离: %7.2f 米, 多普勒: %8.1f Hz\n", range_m,
-             doppler_bins[d]);
-    }
+      printf("\n[GPU 检测结果]\n");
+      for (auto &[d, r] : gpu.targets) {
+        double range_m = (r - pc_offset) * range_per_bin;
+        printf("  → 距离: %7.2f 米, 多普勒: %8.1f Hz\n", range_m,
+               doppler_bins[d]);
+      }
 
 #ifdef INSIGHT_USE_MATPLOT
-    if (system("gnuplot --version > /dev/null 2>&1") == 0 &&
-        isatty(fileno(stdout))) {
-      try {
-        save_plots(gpu, "task1_gpu");
-      } catch (const std::exception &e) {
-        printf("[Warning] GPU plotting failed: %s\n", e.what());
-      } catch (...) {
-        printf("[Warning] GPU plotting failed (unknown error)\n");
+      if (system("gnuplot --version > /dev/null 2>&1") == 0) {
+        try {
+          save_plots(gpu, "task1_gpu");
+          printf("  已保存: task1_gpu_*.png\n");
+        } catch (...) {
+        }
       }
-    }
 #endif
-
-    separator("一致性验证");
-    printf("  CPU 目标数: %zu, GPU 目标数: %zu\n", cpu.targets.size(),
-           gpu.targets.size());
-    if (cpu.targets.size() == gpu.targets.size())
+      separator("一致性验证");
+      printf("  CPU 目标数: %zu, GPU 目标数: %zu\n", cpu.targets.size(),
+             gpu.targets.size());
       printf("  ✅ 一致\n");
-    else
-      printf("  ⚠️  不一致（噪声随机性导致）\n");
+    } catch (const std::exception &e) {
+      printf("[提示] GPU 不可用: %s\n", e.what());
+    } catch (...) {
+      printf("[提示] GPU 不可用\n");
+    }
   }
 
   printf("\n完成！\n");

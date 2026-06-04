@@ -139,9 +139,11 @@ def print_result(r):
 def save_plots(r, prefix):
     """Save radar analysis plots using Insight7 plot API (no matplotlib)."""
     try:
-        import insight.plot as plt
+        plt = ins.plot  # insight.plot is an attribute, not a submodule
 
         energy_np = r["energy"].numpy()
+        if energy_np.dtype.kind == "c":
+            energy_np = np.abs(energy_np)
         db = 20 * np.log10(energy_np + 1e-8)
 
         # Figure 1: Range-Doppler Map
