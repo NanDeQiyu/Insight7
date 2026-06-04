@@ -74,9 +74,9 @@ static void run_fft_cpu() {
 
   // next_fast_len
   separator("FFT Length Optimization");
-  printf("next_fast_len(64)  = %ld\n", fft::next_fast_len(64));
-  printf("next_fast_len(100) = %ld\n", fft::next_fast_len(100));
-  printf("next_fast_len(127) = %ld\n", fft::next_fast_len(127));
+  printf("next_fast_len(64)  = %d\n", fft::next_fast_len(64));
+  printf("next_fast_len(100) = %d\n", fft::next_fast_len(100));
+  printf("next_fast_len(127) = %d\n", fft::next_fast_len(127));
 }
 
 static void run_fft_gpu() {

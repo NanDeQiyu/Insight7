@@ -42,7 +42,8 @@ jobs:
             libomp-dev \
             cmake \
             build-essential \
-            gnuplot-nox
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure CMake
         run: |
@@ -99,7 +100,8 @@ jobs:
             build-essential \
             python3-dev \
             python3-numpy \
-            gnuplot-nox
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure and build
         run: |
@@ -146,7 +148,8 @@ jobs:
             build-essential \
             luajit \
             libluajit-5.1-dev \
-            gnuplot-nox
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure and build
         run: |
@@ -197,7 +200,8 @@ jobs:
             libomp-dev \
             cmake \
             build-essential \
-            gnuplot-nox
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure and build
         run: |

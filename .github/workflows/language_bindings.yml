@@ -47,7 +47,8 @@ jobs:
             python3-dev \
             python3-numpy \
             python3-pytest \
-            gnuplot-nox
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure CMake
         run: |
@@ -106,7 +107,8 @@ jobs:
             luajit \
             libluajit-5.1-dev \
             luarocks \
-            gnuplot-nox
+            gnuplot-nox \
+            fonts-dejavu-core
           sudo luarocks install busted
 
       - name: Configure CMake
@@ -166,7 +168,8 @@ jobs:
             lua5.3 \
             liblua5.3-dev \
             luarocks \
-            gnuplot-nox
+            gnuplot-nox \
+            fonts-dejavu-core
           sudo luarocks install --lua-version=5.3 busted
 
       - name: Configure CMake
@@ -229,7 +232,8 @@ jobs:
             libomp-dev \
             cmake \
             build-essential \
-            gnuplot-nox
+            gnuplot-nox \
+            fonts-dejavu-core
 
       - name: Configure CMake
         run: |

@@ -35,7 +35,8 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           cmake g++ libopenblas-dev liblapacke-dev libfftw3-dev libsndfile1-dev \
-          gnuplot-nox
+          gnuplot-nox \
+          fonts-dejavu-core
         # gnuplot-nox for headless rendering (no X11)
 
     - name: Clone third_party sources
