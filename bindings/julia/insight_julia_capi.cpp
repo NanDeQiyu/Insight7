@@ -95,6 +95,14 @@ int32_t insight_jl_gpu_count() {
 // ============================================================================
 
 // Create a new array. Returns heap-allocated Array*. Caller must free with
+// Helper: reverse dims for Julia column-major → Insight row-major
+static std::vector<int64_t> julia_to_insight_dims(const int64_t *dims,
+                                                  int32_t ndim) {
+  std::vector<int64_t> rdims(dims, dims + ndim);
+  std::reverse(rdims.begin(), rdims.end());
+  return rdims;
+}
+
 // insight_jl_array_free().
 Array *insight_jl_zeros(const int64_t *dims, int32_t ndim, int32_t dtype,
                         int32_t device_type) {
@@ -121,9 +129,13 @@ Array *insight_jl_full(const int64_t *dims, int32_t ndim, double fill_value,
 }
 
 // Create array from raw data (Julia-owned memory, copied into Insight).
+// Julia is column-major, Insight is row-major. Reverse dims to match memory
+// layout.
 Array *insight_jl_from_data(const void *data, const int64_t *dims, int32_t ndim,
                             int32_t dtype, int32_t device_type) {
-  Shape shape(std::vector<int64_t>(dims, dims + ndim));
+  std::vector<int64_t> rdims(dims, dims + ndim);
+  std::reverse(rdims.begin(), rdims.end());
+  Shape shape(rdims);
   DType dt = static_cast<DType>(dtype);
   Place place = device_type == 1 ? GPUPlace(0) : CPUPlace();
   Array *arr = new Array(shape, dt, CPUPlace());
@@ -140,12 +152,12 @@ void insight_jl_to_data(const Array *arr, void *dst) {
   std::memcpy(dst, cpu.data(), cpu.nbytes());
 }
 
-// Return shape (no reversal — Julia callers handle layout explicitly).
+// Return reversed shape (for Julia column-major layout).
 void insight_jl_shape_reversed(const Array *arr, int64_t *out,
                                int32_t max_ndim) {
   int nd = arr->shape().ndim();
   for (int i = 0; i < nd && i < max_ndim; ++i)
-    out[i] = arr->shape().dims()[i];
+    out[i] = arr->shape().dims()[nd - 1 - i];
 }
 
 void insight_jl_array_free(Array *arr) { delete arr; }

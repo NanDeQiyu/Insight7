@@ -42,10 +42,9 @@ noise_sigma = sqrt(sig_power / 10^(SNR_DB/10) / 2)
 println("[2/6] 模拟回波信号...")
 # 使用 Insight 原生 RNG 确保跨语言一致
 Insight.seed(42)
-noise_r_arr = Insight.randn(Int64[N_PULSES, N], Insight.float64) * noise_sigma
-noise_i_arr = Insight.randn(Int64[N_PULSES, N], Insight.float64) * noise_sigma
-noise_r = Insight.to_data(noise_r_arr)  # Julia (N_PULSES, N) 列优先
-noise_i = Insight.to_data(noise_i_arr)
+# 生成 1D 噪声数组避免列优先布局问题
+noise_r_flat = Insight.to_data(Insight.randn(Int64[N_PULSES * N], Insight.float64) * noise_sigma)
+noise_i_flat = Insight.to_data(Insight.randn(Int64[N_PULSES * N], Insight.float64) * noise_sigma)
 s_rx = Base.zeros(Complex{Float64}, N_PULSES, N)
 
 for p in 1:N_PULSES
@@ -63,7 +62,7 @@ for p in 1:N_PULSES
         pulse .+= tgt
     end
 
-    noise = noise_r[p, :] .+ 1im .* noise_i[p, :]
+    noise = noise_r_flat[(p-1)*N+1 : p*N] .+ 1im .* noise_i_flat[(p-1)*N+1 : p*N]
     s_rx[p, :] .= pulse .+ noise
 end
 
@@ -106,18 +105,19 @@ println("[5/6] CFAR 目标检测...")
 t0 = time()
 
 energy = Base.abs.(doppler_fft_jl)
+# 直接传入 CFAR（与 C++ 相同的 (N_PULSES, N) 形状）
 energy_ins = Insight.from_data(energy)
 
 threshold, detections = Insight.signal.ca_cfar(energy_ins, Int32[2, 2], Int32[4, 4], 1e-5)
 det_data = Insight.to_data(detections)
-det_np = Base.reshape(det_data .!= 0, N_PULSES, N)
+det_jl = Base.reshape(det_data .!= 0, N_PULSES, N)
 
 println("  耗时: $(Base.round(time() - t0, digits=2)) 秒")
 
 # ========== 6. 目标聚类 ==========
 println("[6/6] 聚类目标...")
 
-target_indices = findall(det_np)
+target_indices = findall(det_jl)
 raw_count = Base.length(target_indices)
 
 visited = Base.falses(raw_count)

@@ -244,8 +244,8 @@ end
 function shape(arr::InsightArray)::Vector{Int64}
     n = ndim(arr)
     dims = Vector{Int64}(undef, n)
-    ccall((:insight_jl_shape, LIB_INSIGHT), Cvoid,
-          (Ptr{Cvoid}, Ptr{Int64}), arr, dims)
+    ccall((:insight_jl_shape_reversed, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Int64}, Int32), arr, dims, Int32(n))
     return dims
 end
 
@@ -572,22 +572,27 @@ end
 # Additional Reduction (Phase D)
 # ============================================================================
 
+# Helper: convert Julia 1-based axis to Insight 0-based axis.
+# With dim reversal: Julia axis k = Insight axis (ndim - k).
+# axis <= 0 means "all axes" — pass through unchanged.
+_julia_axis(arr::InsightArray, axis::Int) = axis <= 0 ? axis : ndim(arr) - axis
+
 function cummax(x::InsightArray, axis::Int)::InsightArray
     ptr = ccall((:insight_jl_cummax, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32), x, Int32(axis))
+                (Ptr{Cvoid}, Int32), x, Int32(_julia_axis(x, axis)))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
 function cummin(x::InsightArray, axis::Int)::InsightArray
     ptr = ccall((:insight_jl_cummin, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32), x, Int32(axis))
+                (Ptr{Cvoid}, Int32), x, Int32(_julia_axis(x, axis)))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
 function sem(x::InsightArray; axis::Union{Int,Nothing}=nothing,
              keepdims::Bool=false, ddof::Int=0)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_sem, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32, Int32),
@@ -598,7 +603,7 @@ end
 function count_nonzero(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                        keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_count_nonzero, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -608,7 +613,7 @@ end
 function median(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_median, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -619,7 +624,7 @@ function quantile(x::InsightArray, q::Float64;
                   axis::Union{Int,Nothing}=nothing,
                   keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_quantile, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Float64, Int32, Int32, Int32),
@@ -631,7 +636,7 @@ function percentile(x::InsightArray, q::Float64;
                     axis::Union{Int,Nothing}=nothing,
                     keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_percentile, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Float64, Int32, Int32, Int32),
@@ -642,7 +647,7 @@ end
 function nansum(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nansum, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -652,7 +657,7 @@ end
 function nanmean(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                  keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanmean, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -662,7 +667,7 @@ end
 function nanmax(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanmax, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -672,7 +677,7 @@ end
 function nanmin(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanmin, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -682,7 +687,7 @@ end
 function nanstd(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false, ddof::Int=0)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanstd, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32, Int32),
@@ -693,7 +698,7 @@ end
 function nanvar(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false, ddof::Int=0)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_nanvar, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32, Int32),
@@ -721,7 +726,7 @@ Sum of array elements over a given axis.
 function sum(x::InsightArray; axis::Union{Int,Nothing}=nothing,
              keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_sum, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -746,7 +751,7 @@ Mean of array elements over a given axis.
 function mean(x::InsightArray; axis::Union{Int,Nothing}=nothing,
               keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_mean, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -842,7 +847,7 @@ function fft(x::InsightArray; n::Union{Int,Nothing}=nothing, axis::Union{Int,Not
     if axis !== nothing
         nv = n !== nothing ? Int64(n) : Int64(-1)
         ptr = ccall((:insight_jl_fft_axis, LIB_INSIGHT), Ptr{Cvoid},
-                    (Ptr{Cvoid}, Int64, Int32), x, nv, Int32(axis))
+                    (Ptr{Cvoid}, Int64, Int32), x, nv, Int32(_julia_axis(x, axis)))
     else
         has_n = n !== nothing ? Int32(1) : Int32(0)
         nv = n !== nothing ? Int64(n) : Int64(-1)
@@ -1043,7 +1048,7 @@ end
 
 function diff_fn(x::InsightArray; n::Int=1, axis::Int=-1)::InsightArray
     ptr = ccall((:insight_jl_diff, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32, Int32), x, Int32(n), Int32(axis))
+                (Ptr{Cvoid}, Int32, Int32), x, Int32(n), Int32(_julia_axis(x, axis)))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
@@ -1235,13 +1240,13 @@ end
 
 function fftshift(x::InsightArray; axis::Int=-1)::InsightArray
     ptr = ccall((:insight_jl_fftshift, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32), x, Int32(axis))
+                (Ptr{Cvoid}, Int32), x, Int32(_julia_axis(x, axis)))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
 function ifftshift(x::InsightArray; axis::Int=-1)::InsightArray
     ptr = ccall((:insight_jl_ifftshift, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32), x, Int32(axis))
+                (Ptr{Cvoid}, Int32), x, Int32(_julia_axis(x, axis)))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
@@ -1494,7 +1499,7 @@ round(x::InsightArray) = round_fn(x)
 function max(x::InsightArray; axis::Union{Int,Nothing}=nothing,
              keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_max, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -1506,7 +1511,7 @@ end
 function min(x::InsightArray; axis::Union{Int,Nothing}=nothing,
              keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_min, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -1518,7 +1523,7 @@ end
 function argmax(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_argmax, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -1530,7 +1535,7 @@ end
 function argmin(x::InsightArray; axis::Union{Int,Nothing}=nothing,
                 keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_argmin, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -1542,7 +1547,7 @@ end
 function prod(x::InsightArray; axis::Union{Int,Nothing}=nothing,
               keepdims::Bool=false)::InsightArray
     has_axis = axis !== nothing ? Int32(1) : Int32(0)
-    ax = axis !== nothing ? Int32(axis) : Int32(0)
+    ax = axis !== nothing ? Int32(_julia_axis(x, axis)) : Int32(0)
     kd = keepdims ? Int32(1) : Int32(0)
     ptr = ccall((:insight_jl_prod, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Int32, Int32, Int32), x, has_axis, ax, kd)
@@ -1793,7 +1798,7 @@ end
 function unwrap(p::InsightArray; axis::Int=-1, discont::Real=Float64(π),
                 period::Real=Float64(2π))::InsightArray
     ptr = ccall((:insight_jl_unwrap, LIB_INSIGHT), Ptr{Cvoid},
-                (Ptr{Cvoid}, Int32, Float64, Float64), p, Int32(axis),
+                (Ptr{Cvoid}, Int32, Float64, Float64), p, Int32(_julia_axis(p, axis)),
                 Float64(discont), Float64(period))
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
