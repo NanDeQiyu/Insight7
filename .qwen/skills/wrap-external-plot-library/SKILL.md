@@ -263,13 +263,27 @@ and register in CMakeLists.txt for both local and FetchContent builds.
 
 ## Python plot tests: imshow/contour run directly (no subprocess)
 
-**Problem**: `ins.plot.imshow()` and `ins.plot.contour()` crashed in headless CI.
+**Problem**: `ins.plot.imshow()` crashed with SIGSEGV in all environments.
 
-**Root cause**: The gnuplot terminal fallback checked `pngcairo` first. pngcairo
-depends on cairo/pango which SIGSEGV in headless environments on image rendering.
+**Root cause**: `plot::imshow()` in `src/ops/plot.cpp` called `mp::imshow(to_matrix(data))`.
+But matplotplusplus's `axes_type::imshow()` template is designed for `unsigned char`
+grayscale images, NOT `double` matrices. When called with `vector_2d` (double),
+`to_vector_2d` is a no-op, causing infinite recursion → stack overflow → SIGSEGV.
 
-**Fix**: Swap the terminal fallback order — prefer `png` (libgd) over `pngcairo`
-(cairo/pango). libgd works without a display and supports image rendering.
+**Fix**: Use `mp::image()` instead of `mp::imshow()`. The `image()` function correctly
+accepts `std::vector<std::vector<double>>`. This is a matplotplusplus API design issue —
+`imshow()` should SFINAE out for non-unsigned-char types.
+
+```cpp
+// ❌ WRONG — infinite recursion for double data
+void imshow(const Array &data) { mp::imshow(to_matrix(data)); }
+
+// ✅ CORRECT — image() accepts double matrices
+void imshow(const Array &data) { mp::image(to_matrix(data)); }
+```
+
+**Note**: `mp::imshow()` works correctly with `std::vector<std::vector<unsigned char>>`
+(grayscale images). Only the double overload is broken.
 
 With this fix, imshow/contour run directly in the test (no subprocess isolation needed):
 
