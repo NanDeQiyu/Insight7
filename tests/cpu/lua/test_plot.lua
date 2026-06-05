@@ -11,6 +11,7 @@ describe("Plot CPU Tests", function()
 
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   -- Verify the plot module is loaded

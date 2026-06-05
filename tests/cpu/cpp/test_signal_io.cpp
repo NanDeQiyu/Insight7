@@ -1,5 +1,6 @@
 // tests/cpu/test_signal_io.cpp
 #include "insight/insight.h"
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -15,19 +16,26 @@ protected:
   static void SetUpTestSuite() {
     ins::init({"cpu"});
     set_device(CPUPlace());
-    std::filesystem::create_directories("/tmp/insight_io_test");
+    auto ts = std::chrono::steady_clock::now().time_since_epoch().count();
+    tmp_base = (std::filesystem::temp_directory_path() /
+                ("insight_io_test_" + std::to_string(ts)))
+                   .string();
+    std::filesystem::create_directories(tmp_base);
   }
   static void TearDownTestSuite() {
     std::error_code ec;
-    std::filesystem::remove_all("/tmp/insight_io_test", ec);
+    std::filesystem::remove_all(tmp_base, ec);
   }
   void SetUp() override {
-    tmp_dir = "/tmp/insight_io_test";
+    tmp_dir = tmp_base;
     std::filesystem::create_directories(tmp_dir);
   }
 
+  static std::string tmp_base;
   std::string tmp_dir;
 };
+
+std::string SignalIOTestCPU::tmp_base;
 
 // ============================================================================
 // pack_bin / unpack_bin

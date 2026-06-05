@@ -26,34 +26,91 @@
 --     ins.GPUPlace(0)      -- GPU device 0
 
 -- Try to load the native C++ module (_insight.so)
--- Pre-load backend .so from the parent directory (where _insight.so lives)
-local _this_dir = debug.getinfo(1, "S").source:match("@?(.*/)")
-if _this_dir then
-  -- _this_dir is .../bindings/lua/insight/, backend is in .../bindings/lua/
-  local _parent_dir = _this_dir:match("(.*/)[^/]+/$") or _this_dir
-  local _backend = _parent_dir .. "libinsight_cpu_backend.so"
-  local f = io.open(_backend, "r")
-  if f then
-    f:close()
-    local ok_ffi, ffi = pcall(require, "ffi")
-    if ok_ffi and ffi then
-      local ok_cdef = pcall(
-        ffi.cdef,
-        [[
-        int setenv(const char *name, const char *value, int overwrite);
-        void *dlopen(const char *filename, int flag);
-      ]]
-      )
-      if ok_cdef then
-        local _ld = os.getenv("LD_LIBRARY_PATH") or ""
-        if not _ld:find(_parent_dir, 1, true) then
-          ffi.C.setenv("LD_LIBRARY_PATH", _parent_dir .. ":" .. _ld, 1)
+-- Pre-load ALL backend .so files (CPU + GPU) from various possible locations
+local function _find_and_load_backends()
+  local dirs = {}
+  -- 1. Parent of this script's directory (dev/source layout)
+  local _this_dir = debug.getinfo(1, "S").source:match("@?(.*/)")
+  if _this_dir then
+    local _parent = _this_dir:match("(.*/)[^/]+/$") or _this_dir
+    table.insert(dirs, _parent)
+  end
+  -- 2. Same directory as _insight.so (package.cpath)
+  for path in package.cpath:gmatch("[^;]+") do
+    local dir = path:gsub("%?.*$", "")
+    if dir ~= "" then
+      table.insert(dirs, dir)
+    end
+  end
+  -- 3. Resolve _insight.so symlink → actual lib directory
+  for path in package.cpath:gmatch("[^;]+") do
+    local candidate = path:gsub("%?", "_insight")
+    local f = io.open(candidate, "r")
+    if f then
+      f:close()
+      local pipe = io.popen('readlink -f "' .. candidate .. '" 2>/dev/null')
+      if pipe then
+        local target = pipe:read("*l")
+        pipe:close()
+        if target and target ~= "" and target ~= candidate then
+          local dir = target:match("(.*/)") or ""
+          if dir ~= "" then
+            table.insert(dirs, dir)
+          end
         end
-        ffi.C.dlopen(_backend, 258) -- RTLD_NOW | RTLD_GLOBAL
       end
     end
   end
+  -- 4. LD_LIBRARY_PATH directories
+  local _ld = os.getenv("LD_LIBRARY_PATH") or ""
+  for dir in _ld:gmatch("[^:]+") do
+    if dir ~= "" then
+      table.insert(dirs, dir)
+    end
+  end
+
+  -- Scan all candidate dirs for backend .so/.dll and pre-load them
+  -- Uses package.loadlib (standard Lua 5.1+) with * prefix for RTLD_GLOBAL
+  -- Falls back to ffi.C.dlopen (LuaJIT) if available
+  local ok_ffi, ffi_lib = pcall(require, "ffi")
+  local use_ffi = ok_ffi and ffi_lib ~= nil
+  if use_ffi then
+    pcall(
+      ffi_lib.cdef,
+      [[
+      void *dlopen(const char *filename, int flag);
+    ]]
+    )
+  end
+
+  local seen = {}
+  for _, dir in ipairs(dirs) do
+    local cmd = 'ls "' .. dir .. '"/libinsight_*_backend.so "' .. dir .. '"/insight_*_backend.dll 2>/dev/null'
+    local pipe = io.popen(cmd)
+    if pipe then
+      for line in pipe:lines() do
+        if not seen[line] then
+          seen[line] = true
+          local f2 = io.open(line, "r")
+          if f2 then
+            f2:close()
+            if use_ffi then
+              -- LuaJIT: use ffi for reliable RTLD_GLOBAL
+              ffi_lib.C.dlopen(line, 258) -- RTLD_NOW | RTLD_GLOBAL
+            else
+              -- Lua 5.3+: package.loadlib with * prefix loads with RTLD_GLOBAL
+              -- even if function doesn't exist, library stays loaded
+              pcall(package.loadlib, line, "*luaopen_dummy")
+            end
+          end
+        end
+      end
+      pipe:close()
+    end
+  end
 end
+
+_find_and_load_backends()
 
 local ok, native = pcall(require, "_insight")
 if not ok then

@@ -5,7 +5,9 @@
 #include "insight/core/exception.h"
 #include "insight/core/place.h"
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -186,6 +188,42 @@ void init(std::optional<std::vector<std::string>> backends) {
       if (try_load_backend(DeviceKind::GPU,
                            ("insight_" + name + "_backend").c_str())) {
         break;
+      }
+    }
+    // 3. If no GPU backend found via scan, scan LD_LIBRARY_PATH directories
+    //    for any libinsight_*_backend.so (cuda, npu, rocm, etc.)
+    if (!get_device_interface(DeviceKind::GPU)) {
+      const char *ld_path = getenv("LD_LIBRARY_PATH");
+      if (ld_path) {
+        std::string ld(ld_path);
+        std::istringstream ss(ld);
+        std::string dir;
+        while (std::getline(ss, dir, ':')) {
+          if (dir.empty())
+            continue;
+          auto *dp = opendir(dir.c_str());
+          if (!dp)
+            continue;
+          struct dirent *entry;
+          while ((entry = readdir(dp)) != nullptr) {
+            std::string name(entry->d_name);
+            // Match libinsight_*_backend.so (any GPU backend)
+            if (name.find("libinsight_") == 0 &&
+                name.find("_backend.so") != std::string::npos &&
+                name.find("_cpu_") == std::string::npos) {
+              std::string backend_name =
+                  name.substr(11, name.find("_backend") - 11);
+              if (try_load_backend(
+                      DeviceKind::GPU,
+                      ("insight_" + backend_name + "_backend").c_str())) {
+                closedir(dp);
+                goto gpu_found;
+              }
+            }
+          }
+          closedir(dp);
+        }
+      gpu_found:;
       }
     }
   } else if (backends->empty()) {

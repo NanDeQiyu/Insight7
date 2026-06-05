@@ -691,3 +691,83 @@ TEST_F(IndexingTest, StringSliceInvalidThrows) {
   Array a = arange(6, DType::F32, CPUPlace()).reshape({2, 3});
   EXPECT_THROW(a["abc"], std::exception);
 }
+
+// ========== Partial indexing (NumPy-style a[1] on multi-dim) ==========
+
+TEST_F(IndexingTest, PartialIndex2DRow) {
+  // 4x5 array: a[1] should return row 1, shape (5,)
+  Array a = arange(20, DType::F32, CPUPlace()).reshape({4, 5});
+
+  // operator[](int64_t)
+  Array row = a[1];
+  EXPECT_EQ(row.shape().ndim(), 1);
+  EXPECT_EQ(row.numel(), 5);
+  EXPECT_FLOAT_EQ(row.at({0}).item<float>(), 5.0f); // a[1,0]
+  EXPECT_FLOAT_EQ(row.at({1}).item<float>(), 6.0f); // a[1,1]
+  EXPECT_FLOAT_EQ(row.at({4}).item<float>(), 9.0f); // a[1,4]
+
+  // Negative index
+  Array last = a[-1];
+  EXPECT_EQ(last.numel(), 5);
+  EXPECT_FLOAT_EQ(last.at({0}).item<float>(), 15.0f); // a[3,0]
+}
+
+TEST_F(IndexingTest, PartialIndex2DString) {
+  // a["1"] on 2D should also return row
+  Array a = arange(20, DType::F32, CPUPlace()).reshape({4, 5});
+
+  Array row = a["1"];
+  EXPECT_EQ(row.shape().ndim(), 1);
+  EXPECT_EQ(row.numel(), 5);
+  EXPECT_FLOAT_EQ(row.at({0}).item<float>(), 5.0f);
+  EXPECT_FLOAT_EQ(row.at({4}).item<float>(), 9.0f);
+}
+
+TEST_F(IndexingTest, PartialIndex3D) {
+  // 2x3x4 array: a[1] should return shape (3,4)
+  Array a = arange(24, DType::F32, CPUPlace()).reshape({2, 3, 4});
+
+  Array slab = a[1];
+  EXPECT_EQ(slab.shape().ndim(), 2);
+  EXPECT_EQ(slab.shape().dim(0), 3);
+  EXPECT_EQ(slab.shape().dim(1), 4);
+  // a[1,0,0] = 12
+  EXPECT_FLOAT_EQ(slab.at({0, 0}).item<float>(), 12.0f);
+  // a[1,2,3] = 12 + 2*4 + 3 = 23
+  EXPECT_FLOAT_EQ(slab.at({2, 3}).item<float>(), 23.0f);
+
+  // a["0"] on 3D
+  Array slab0 = a["0"];
+  EXPECT_EQ(slab0.shape().ndim(), 2);
+  EXPECT_FLOAT_EQ(slab0.at({0, 0}).item<float>(), 0.0f);
+}
+
+TEST_F(IndexingTest, PartialIndex3DTwoIndices) {
+  // 2x3x4: a.at({1, 2}) should return shape (4,) — first two dims indexed
+  Array a = arange(24, DType::F32, CPUPlace()).reshape({2, 3, 4});
+
+  Array row = a.at({1, 2});
+  EXPECT_EQ(row.shape().ndim(), 1);
+  EXPECT_EQ(row.numel(), 4);
+  // a[1,2,0] = 12 + 2*4 + 0 = 20
+  EXPECT_FLOAT_EQ(row.at({0}).item<float>(), 20.0f);
+  EXPECT_FLOAT_EQ(row.at({3}).item<float>(), 23.0f);
+}
+
+TEST_F(IndexingTest, PartialIndex1DStillScalar) {
+  // 1D: a["3"] should still return scalar (not slice)
+  Array a = arange(10, DType::F32, CPUPlace());
+  Array val = a["3"];
+  EXPECT_EQ(val.numel(), 1);
+  EXPECT_FLOAT_EQ(val.item<float>(), 3.0f);
+
+  Array val2 = a[5];
+  EXPECT_EQ(val2.numel(), 1);
+  EXPECT_FLOAT_EQ(val2.item<float>(), 5.0f);
+}
+
+TEST_F(IndexingTest, PartialIndexTooManyThrows) {
+  Array a = arange(6, DType::F32, CPUPlace()).reshape({2, 3});
+  // 3 indices on 2D array should throw
+  EXPECT_THROW(a.at({0, 1, 2}), std::exception);
+}

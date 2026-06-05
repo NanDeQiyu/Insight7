@@ -7,6 +7,7 @@ describe("DType CPU Tests", function()
   local ins
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   it("dtype_shortcuts", function()

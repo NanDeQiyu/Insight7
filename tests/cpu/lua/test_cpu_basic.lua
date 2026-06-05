@@ -7,6 +7,7 @@ describe("CPU Binding Tests", function()
   local ins
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   -- ========================================================================
@@ -299,6 +300,9 @@ describe("CPU Binding Tests", function()
   -- ========================================================================
 
   it("gpu_throws_without_backend", function()
+    if ins.has_device("gpu") then
+      pending("GPU available")
+    end
     local a = ins.ones({ 3 }, ins.float32)
     assert.has_error(function()
       a:to(ins.GPUPlace(0))
@@ -306,6 +310,9 @@ describe("CPU Binding Tests", function()
   end)
 
   it("set_device_gpu_throws", function()
+    if ins.has_device("gpu") then
+      pending("GPU available")
+    end
     assert.has_error(function()
       ins.set_device(ins.GPUPlace(0))
     end)

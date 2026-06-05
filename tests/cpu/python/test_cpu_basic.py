@@ -298,12 +298,14 @@ class TestSignal:
     # GPU not available: must throw
     # ========================================================================
 
+    @pytest.mark.skipif(ins.has_device("gpu"), reason="GPU available")
     def test_gpu_throws_without_backend(self):
         """Only CPU backend loaded — .to(GPUPlace(0)) must throw."""
         a = ins.ones(ins.Shape([3]), ins.float32)
         with pytest.raises(Exception):
             a.to(ins.GPUPlace(0))
 
+    @pytest.mark.skipif(ins.has_device("gpu"), reason="GPU available")
     def test_set_device_gpu_throws(self):
         """set_device(GPUPlace(0)) must throw without GPU backend."""
         with pytest.raises(Exception):

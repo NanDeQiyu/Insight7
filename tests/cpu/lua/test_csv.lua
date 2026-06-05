@@ -9,6 +9,7 @@ describe("CSV CPU Tests", function()
   local ins
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   it("roundtrip_1d", function()

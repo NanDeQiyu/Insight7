@@ -75,6 +75,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        # Device info
        device_name, cuda_version, driver_version, compute_capability,
        device_memory, gpu_count, load_backend,
+       get_device, set_device,
        # Signal submodule
        signal
 
@@ -97,17 +98,22 @@ end
 
 # Auto-initialize CPU backend on module load
 function __init__()
-    # Pre-load backend .so so that C++ dlopen finds it
+    # Pre-load ALL backend .so files (CPU + GPU) so that C++ dlopen finds them
     _dir = @__DIR__
     _parent = joinpath(_dir, "..")
     for _d in (_dir, _parent)
-        _backend = joinpath(_d, "libinsight_cpu_backend.so")
-        if isfile(_backend)
-            if !(_d in Libdl.DL_LOAD_PATH)
-                push!(Libdl.DL_LOAD_PATH, _d)
+        if isdir(_d)
+            for _f in readdir(_d; join=true)
+                if occursin("libinsight_", _f) && endswith(_f, "_backend.so")
+                    try
+                        Libdl.dlopen(_f, Libdl.RTLD_GLOBAL)
+                    catch
+                    end
+                end
             end
-            Libdl.dlopen(_backend, Libdl.RTLD_GLOBAL)
-            break
+        end
+        if !(_d in Libdl.DL_LOAD_PATH)
+            push!(Libdl.DL_LOAD_PATH, _d)
         end
     end
     ccall((:insight_jl_init_cpu, LIB_INSIGHT), Cvoid, ())
@@ -129,6 +135,31 @@ Check if a device kind is available. 0=CPU, 1=GPU.
 """
 function has_device(device_type::Int)::Bool
     ccall((:insight_jl_has_device, LIB_INSIGHT), Int32, (Int32,), Int32(device_type)) == 1
+end
+
+"""
+    get_device() -> (device_type::Int, device_id::Int)
+
+Get the current default device. Returns (0, 0) for CPU, (1, id) for GPU.
+"""
+function get_device()::Tuple{Int,Int}
+    dtype = Int(ccall((:insight_jl_get_device_type, LIB_INSIGHT), Int32, ()))
+    did = Int(ccall((:insight_jl_get_device_id, LIB_INSIGHT), Int32, ()))
+    return (dtype, did)
+end
+
+"""
+    set_device(device_type::Int, device_id::Int=0)
+
+Set the current default device. 0=CPU, 1=GPU.
+Throws if the requested device is not available.
+"""
+function set_device(device_type::Int, device_id::Int=0)
+    ok = ccall((:insight_jl_set_device, LIB_INSIGHT), Int32,
+               (Int32, Int32), Int32(device_type), Int32(device_id))
+    if ok == 0
+        error("Insight: device not available (type=$device_type, id=$device_id)")
+    end
 end
 
 # DType enum mapping (matches InsightDType in c_api/dtype.h)
@@ -1407,6 +1438,26 @@ function item(arr::InsightArray, idx::Int)
 end
 
 """
+    Base.getindex(arr::InsightArray, indices::Int...) -> InsightArray
+
+Index an InsightArray with integer indices (1-based, Julia convention).
+When fewer indices than dimensions are given, remaining dimensions are
+kept as full slices (NumPy-style partial indexing).
+"""
+function Base.getindex(arr::InsightArray, indices::Int...)
+    c_indices = [Int64(i - 1) for i in indices]
+    n = Int32(length(c_indices))
+    ptr = ccall((:insight_jl_at_index, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Int64}, Int32), arr, c_indices, n)
+    if ptr == C_NULL
+        error("Insight: indexing failed (out of range or invalid indices)")
+    end
+    result = InsightArray(ptr)
+    finalizer(_free, result)
+    return result
+end
+
+"""
     to_data(arr::InsightArray) -> Array
 
 Alias for `to_array`. Copies data from an InsightArray to a Julia Array.
@@ -1837,6 +1888,22 @@ function sinc(x::InsightArray)::InsightArray
     ptr = ccall((:insight_jl_sinc, LIB_INSIGHT), Ptr{Cvoid}, (Ptr{Cvoid},), x)
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
+
+# ============================================================================
+# Module documentation (stubs with docstrings for non-signal functions)
+# ============================================================================
+const _modules_dir = joinpath(@__DIR__, "modules")
+include(joinpath(_modules_dir, "types.jl"))
+include(joinpath(_modules_dir, "cast.jl"))
+include(joinpath(_modules_dir, "elementwise.jl"))
+include(joinpath(_modules_dir, "unary.jl"))
+include(joinpath(_modules_dir, "complex.jl"))
+include(joinpath(_modules_dir, "reduction.jl"))
+include(joinpath(_modules_dir, "manipulation.jl"))
+include(joinpath(_modules_dir, "linalg.jl"))
+include(joinpath(_modules_dir, "fft.jl"))
+include(joinpath(_modules_dir, "random.jl"))
+include(joinpath(_modules_dir, "indexing.jl"))
 
 # ============================================================================
 # Signal processing (split into sub-module files aligned with C++ structure)

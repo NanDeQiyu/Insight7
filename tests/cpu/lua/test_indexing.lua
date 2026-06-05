@@ -7,6 +7,7 @@ describe("Indexing CPU Tests", function()
   local ins
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   it("take 1d", function()
