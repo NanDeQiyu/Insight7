@@ -32,8 +32,8 @@ class TestDeviceInfoCUDA:
         assert isinstance(name, str)
         assert len(name) > 0
 
-    def test_cuda_version_positive(self):
-        ver = ins.cuda_version()
+    def test_gpu_version_positive(self):
+        ver = ins.gpu_version()
         assert ver > 0
 
     def test_driver_version_positive(self):
@@ -60,8 +60,8 @@ class TestDeviceInfoCUDA:
         cc = ins.compute_capability(0)
         assert 30 <= cc <= 100  # reasonable range for modern GPUs
 
-    def test_cuda_version_format(self):
-        ver = ins.cuda_version()
+    def test_gpu_version_format(self):
+        ver = ins.gpu_version()
         major = ver // 1000
         assert major >= 11  # CUDA 11+
 

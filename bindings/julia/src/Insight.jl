@@ -73,7 +73,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        csd, coherence, spectrogram, stft, vectorstrength,
        choose_conv_method, firfilter_zi_state,
        # Device info
-       device_name, cuda_version, driver_version, compute_capability,
+       device_name, gpu_version, driver_version, compute_capability,
        device_memory, gpu_count, load_backend,
        get_device, set_device,
        # Signal submodule
@@ -189,7 +189,8 @@ function device_name(device_id::Int=0)::String
     return String(buf[1:findfirst(==(0x00), buf)-1])
 end
 
-function cuda_version()::Int
+"""Get the GPU runtime version (major*1000+minor*10, 0 if not available)."""
+function gpu_version()::Int
     Int(ccall((:insight_jl_cuda_version, LIB_INSIGHT), Int32, ()))
 end
 

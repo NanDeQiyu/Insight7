@@ -306,7 +306,7 @@ extern "C" int luaopen__insight(lua_State *L) {
         (k == "gpu" || k == "cuda") ? DeviceKind::GPU : DeviceKind::CPU;
     return device_name(dk, device_id.value_or(0));
   };
-  m["cuda_version"] = []() { return cuda_version(); };
+  m["gpu_version"] = []() { return cuda_version(); };
   m["driver_version"] = []() { return driver_version(); };
   m["compute_capability"] = [](sol::optional<int> device_id) {
     return compute_capability(device_id.value_or(0));
@@ -455,6 +455,15 @@ extern "C" int luaopen__insight(lua_State *L) {
   array_type["to"] = sol::overload(
       [](const Array &a, const Place &p, sol::this_state ts) -> Array {
         try {
+          return a.to(p);
+        } catch (const std::exception &e) {
+          luaL_error(ts, "%s", e.what());
+          return Array();
+        }
+      },
+      [](const Array &a, int device_type, sol::this_state ts) -> Array {
+        try {
+          Place p = device_type == 1 ? GPUPlace(0) : CPUPlace();
           return a.to(p);
         } catch (const std::exception &e) {
           luaL_error(ts, "%s", e.what());

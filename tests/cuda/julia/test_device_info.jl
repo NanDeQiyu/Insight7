@@ -35,9 +35,9 @@ println("=== Device Info CUDA ===")
 name = Insight.device_name(0)
 check("device_name", typeof(name) == String && length(name) > 0)
 
-# cuda_version positive
-ver = Insight.cuda_version()
-check("cuda_version_positive", ver > 0)
+# gpu_version positive
+ver = Insight.gpu_version()
+check("gpu_version_positive", ver > 0)
 
 # driver_version positive
 dver = Insight.driver_version()
@@ -58,9 +58,9 @@ check("device_memory", mem.total > 0 && mem.free > 0 && mem.total >= mem.free)
 # compute_capability range
 check("compute_capability_range", 30 <= cc <= 100)
 
-# cuda_version format
+# gpu_version format
 major = div(ver, 1000)
-check("cuda_version_format", major >= 11)
+check("gpu_version_format", major >= 11)
 
 # device_name stable
 name2 = Insight.device_name(0)

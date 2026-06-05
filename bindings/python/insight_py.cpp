@@ -346,8 +346,8 @@ PYBIND11_MODULE(_insight, m) {
       py::arg("kind") = "cpu", py::arg("device_id") = 0,
       "Get the name of a device");
   m.def(
-      "cuda_version", []() { return cuda_version(); },
-      "Get the CUDA runtime version (major*1000+minor*10, 0 if not available)");
+      "gpu_version", []() { return cuda_version(); },
+      "Get the GPU runtime version (major*1000+minor*10, 0 if not available)");
   m.def(
       "driver_version", []() { return driver_version(); },
       "Get the CUDA driver version (major*1000+minor*10, 0 if not available)");

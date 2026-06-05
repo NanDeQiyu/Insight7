@@ -26,9 +26,9 @@ println("=== Device Info ===")
 name = Insight.device_name(0)
 check("device_name", typeof(name) == String)
 
-# cuda_version
-ver = Insight.cuda_version()
-check("cuda_version", typeof(ver) == Int && ver >= 0)
+# gpu_version
+ver = Insight.gpu_version()
+check("gpu_version", typeof(ver) == Int && ver >= 0)
 
 # driver_version
 dver = Insight.driver_version()
@@ -58,8 +58,8 @@ check("device_name_default", typeof(name2) == String)
 cc2 = Insight.compute_capability()
 check("compute_capability_default", typeof(cc2) == Int)
 
-# cuda_version nonneg
-check("cuda_version_nonneg", ver >= 0)
+# gpu_version nonneg
+check("gpu_version_nonneg", ver >= 0)
 
 # driver_version nonneg
 check("driver_version_nonneg", dver >= 0)
