@@ -7,6 +7,7 @@ describe("Print CPU Tests", function()
   local ins
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   it("tostring_1d", function()

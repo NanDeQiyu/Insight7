@@ -7,6 +7,7 @@ describe("Complex CPU Tests", function()
   local ins
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   it("is_complex on real array", function()

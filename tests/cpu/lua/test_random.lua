@@ -7,6 +7,7 @@ describe("Random CPU Tests", function()
   local ins
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   it("rand shape", function()

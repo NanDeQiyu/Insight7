@@ -7,6 +7,7 @@ describe("Cast CPU Tests", function()
   local ins
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   it("cast float64 to float32", function()

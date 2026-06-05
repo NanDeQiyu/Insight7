@@ -7,6 +7,7 @@ describe("Linalg CPU Tests", function()
   local ins
   setup(function()
     ins = require("_insight")
+    ins.set_device(ins.CPUPlace())
   end)
 
   it("matmul 2x2", function()

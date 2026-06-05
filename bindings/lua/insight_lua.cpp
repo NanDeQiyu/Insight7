@@ -356,6 +356,9 @@ extern "C" int luaopen__insight(lua_State *L) {
     }
   };
 
+  m["set_device"] = [](const Place &p) { set_device(p); };
+  m["get_device"] = []() { return get_device(); };
+
   // ===== Shape helper =====
   m["Shape"] = [](sol::table dims) { return Shape(table_to_shape(dims)); };
 
