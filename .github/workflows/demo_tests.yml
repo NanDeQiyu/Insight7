@@ -6,6 +6,8 @@ on:
     paths:
       - 'demos/**'
       - 'bindings/**'
+      - '!bindings/**/*.md'
+      - '!bindings/**/*.txt'
       - 'include/**'
       - 'src/**'
       - 'backends/**'
@@ -16,6 +18,8 @@ on:
     paths:
       - 'demos/**'
       - 'bindings/**'
+      - '!bindings/**/*.md'
+      - '!bindings/**/*.txt'
       - 'backends/**'
       - 'include/**'
       - 'src/**'
