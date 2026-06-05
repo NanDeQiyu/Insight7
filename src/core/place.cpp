@@ -222,11 +222,24 @@ Place GPUPlace(int device_id) {
 
 namespace {
 thread_local Place g_default_device = CPUPlace();
+thread_local bool g_device_explicitly_set = false;
+} // namespace
+
+// Lazy GPU default: if user hasn't explicitly set device and GPU is available,
+// default to GPUPlace(0) — matches PaddlePaddle behavior.
+Place get_device() {
+  if (!g_device_explicitly_set && g_default_device.kind() == DeviceKind::CPU) {
+    if (is_device_available(DeviceKind::GPU)) {
+      g_default_device = GPUPlace(0);
+    }
+  }
+  return g_default_device;
 }
 
-Place get_device() { return g_default_device; }
-
-void set_device(const Place &place) { g_default_device = place; }
+void set_device(const Place &place) {
+  g_default_device = place;
+  g_device_explicitly_set = true;
+}
 
 // ========================================================================
 // Place class implementation
