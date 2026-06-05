@@ -273,10 +273,8 @@ PYBIND11_MODULE(_insight, m) {
   m.doc() = "Insight7 — lightweight scientific computing framework";
   m.attr("__version__") = "1.0.0";
 
-  // Auto-initialize with smart backend discovery
-  if (!ins::is_initialized()) {
-    ins::init();
-  }
+  // NOTE: No auto-init here. Python __init__.py handles initialization
+  // after setting up LD_LIBRARY_PATH and pre-loading backend .so files.
 
   // Smart init: no args = auto-discover, list = specified backends
   m.def(
@@ -552,6 +550,12 @@ PYBIND11_MODULE(_insight, m) {
       .def("__truediv__", [](const Array &a, const Array &b) { return a / b; })
       .def("__truediv__", [](const Array &a, double b) { return a / b; })
       .def("__rtruediv__", [](const Array &a, double b) { return b / a; })
+      .def("__floordiv__",
+           [](const Array &a, const Array &b) { return floor(a / b); })
+      .def("__floordiv__",
+           [](const Array &a, double b) { return floor(a / b); })
+      .def("__rfloordiv__",
+           [](const Array &a, double b) { return floor(b / a); })
       .def("__mod__", [](const Array &a, const Array &b) { return a % b; })
       .def("__mod__", [](const Array &a, double b) { return a % b; })
       .def("__pow__", [](const Array &a, const Array &b) { return pow(a, b); })

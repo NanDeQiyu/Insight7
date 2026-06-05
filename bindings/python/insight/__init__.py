@@ -73,6 +73,13 @@ try:
 
     _os.chdir(_saved_cwd)
 
+    # Explicitly initialize backends (smart discovery: CPU + auto GPU)
+    # This must happen AFTER pre-loading .so files and setting LD_LIBRARY_PATH
+    from ._insight import init as _native_init, is_initialized as _is_init
+
+    if not _is_init():
+        _native_init()
+
     # Core types and infrastructure (native)
     from ._insight import (
         init,
