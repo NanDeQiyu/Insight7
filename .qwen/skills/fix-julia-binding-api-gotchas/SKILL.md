@@ -374,3 +374,43 @@ using Insight
 # Use Insight.to_data(arr) for Julia array conversion
 # Use Base.abs() for number operations
 ```
+
+## 16. C API must catch exceptions (ccall boundary)
+
+C++ exceptions crossing `ccall` boundary cause `std::terminate` (process crash),
+NOT a catchable Julia error. Every C API function that can throw must use
+try-catch and return a status code.
+
+**Bad** (crashes on no-GPU CI):
+```cpp
+void insight_jl_set_device(int32_t device_type, int32_t device_id) {
+  Place p = device_type == 1 ? GPUPlace(device_id) : CPUPlace();
+  ins::set_device(p);  // GPUPlace throws → std::terminate
+}
+```
+
+**Good** (returns status, Julia side throws):
+```cpp
+int32_t insight_jl_set_device(int32_t device_type, int32_t device_id) {
+  try {
+    Place p = device_type == 1 ? GPUPlace(device_id) : CPUPlace();
+    ins::set_device(p);
+    return 1;
+  } catch (...) { return 0; }
+}
+```
+
+Julia side:
+```julia
+function set_device(device_type::Int, device_id::Int=0)
+    ok = ccall((:insight_jl_set_device, LIB_INSIGHT), Int32,
+               (Int32, Int32), Int32(device_type), Int32(device_id))
+    if ok == 0
+        error("Insight: device not available (type=$device_type, id=$device_id)")
+    end
+end
+```
+
+**Pattern**: C API returns `int32_t` (1=success, 0=failure). Julia checks and
+throws a proper Julia error. This applies to ANY C API that might throw:
+`set_device`, `load_backend`, `to_device`, indexing, etc.
