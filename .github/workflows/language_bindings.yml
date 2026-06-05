@@ -46,6 +46,7 @@ jobs:
             build-essential \
             python3-dev \
             python3-numpy \
+            python3-pip \
             python3-pytest \
             gnuplot-nox \
             fonts-dejavu-core
@@ -81,10 +82,12 @@ jobs:
 
       - name: Test Python binding
         run: |
-          export PYTHONPATH=bindings/python
-          export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
-          python3 -m pytest tests/cpu/python/ -v --tb=short --ignore=tests/cpu/python/test_plot.py
-          python3 -m pytest tests/cpu/python/test_plot.py -v --tb=short --capture=no
+          # Install Insight via pip (simulates user experience)
+          pip install -e .
+          # Run tests from an unrelated directory to verify system-wide install
+          cd /tmp
+          python3 -m pytest $GITHUB_WORKSPACE/tests/cpu/python/ -v --tb=short --ignore=$GITHUB_WORKSPACE/tests/cpu/python/test_plot.py
+          python3 -m pytest $GITHUB_WORKSPACE/tests/cpu/python/test_plot.py -v --tb=short
 
   lua:
     name: Lua Binding (LuaJIT)
@@ -142,10 +145,14 @@ jobs:
 
       - name: Test Lua binding
         run: |
-          export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
+          # Use source dir .so files (cmake POST_BUILD copies them there)
+          # init.lua pre-loads backend, but LD_LIBRARY_PATH still needed for dlopen fallback
+          export LUA_CPATH="$GITHUB_WORKSPACE/bindings/lua/?.so;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
-          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
-          cd tests/cpu/lua && busted --no-auto-insulate --pattern="test_.+%.lua" .
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/bindings/lua:$LD_LIBRARY_PATH
+          # Run tests from an unrelated directory to verify system-wide install
+          cd /tmp
+          busted --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
 
   lua53:
     name: Lua Binding (Lua 5.3)
@@ -204,10 +211,13 @@ jobs:
 
       - name: Test Lua 5.3 binding
         run: |
-          export LUA_CPATH="$GITHUB_WORKSPACE/build/bindings/lua/?.so;;"
+          # Use source dir .so files (cmake POST_BUILD copies them there)
+          export LUA_CPATH="$GITHUB_WORKSPACE/bindings/lua/?.so;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
-          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
-          cd tests/cpu/lua && busted --lua=lua5.3 --no-auto-insulate --pattern="test_.+%.lua" .
+          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/bindings/lua:$LD_LIBRARY_PATH
+          # Run tests from an unrelated directory to verify system-wide install
+          cd /tmp
+          busted --lua=lua5.3 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
 
   julia:
     name: Julia Binding
@@ -266,13 +276,13 @@ jobs:
 
       - name: Test Julia binding
         run: |
-          cp bindings/julia/Insight.jl build/bindings/julia/Insight.jl
-          cp -r bindings/julia/modules build/bindings/julia/modules
-          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$GITHUB_WORKSPACE/build/bindings/julia:$LD_LIBRARY_PATH
+          # Insight.jl auto-preloads backend via Libdl.dlopen — no LD_LIBRARY_PATH needed
+          # Run tests from an unrelated directory to verify system-wide install
+          cd /tmp
           total_pass=0; total_fail=0; fail_list=""
-          for f in tests/cpu/julia/test_*.jl; do
+          for f in $GITHUB_WORKSPACE/tests/cpu/julia/test_*.jl; do
             echo "=== Running $f ==="
-            if julia "$f"; then
+            if julia -e "push!(LOAD_PATH, \"$GITHUB_WORKSPACE/bindings/julia\"); include(\"$f\")"; then
               total_pass=$((total_pass + 1))
             else
               total_fail=$((total_fail + 1))
