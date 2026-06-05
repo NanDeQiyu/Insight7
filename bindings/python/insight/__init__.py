@@ -46,12 +46,57 @@ try:
     import glob as _gl
 
     _pkg_dir = _os.path.dirname(_os.path.abspath(__file__))
-    for _so in _gl.glob(_os.path.join(_pkg_dir, "libinsight_*_backend.so")):
-        try:
-            _ct.CDLL(_so, mode=_ct.RTLD_GLOBAL)
-        except OSError:
-            pass
+
+    # Ensure package directory is in LD_LIBRARY_PATH so ins::init() can
+    # discover backend .so files regardless of current working directory
+    _ld = _os.environ.get("LD_LIBRARY_PATH", "")
+    if _pkg_dir not in _ld.split(":"):
+        _os.environ["LD_LIBRARY_PATH"] = _pkg_dir + ":" + _ld if _ld else _pkg_dir
+
+    # Also chdir to package dir so discover_backends() (which scans ".")
+    # finds the backends — needed for editable installs (pip install -e .)
+    _saved_cwd = _os.getcwd()
+    _os.chdir(_pkg_dir)
+
+    _backend_patterns = [
+        "libinsight_*_backend.so",  # Linux
+        "libinsight_*_backend.dylib",  # macOS
+        "insight_*_backend.dll",  # Windows
+    ]
+    for _pat in _backend_patterns:
+        for _so in _gl.glob(_os.path.join(_pkg_dir, _pat)):
+            try:
+                _ct.CDLL(_so, mode=_ct.RTLD_GLOBAL)
+            except OSError:
+                pass
     from ._insight import *  # noqa: F401,F403
+
+    _os.chdir(_saved_cwd)
+
+    # Register package directory as backend search path, then init
+    from ._insight import (
+        init as _native_init,
+        is_initialized as _is_init,
+        add_backend_search_path as _add_search_path,
+    )
+
+    _add_search_path(_pkg_dir)
+
+    # Also search directory of _insight.so (may differ in editable installs)
+    _native_dir = None
+    try:
+        import importlib.util as _ilu
+
+        _spec = _ilu.find_spec("insight._insight")
+        if _spec and _spec.origin:
+            _native_dir = _os.path.dirname(_os.path.abspath(_spec.origin))
+            if _native_dir != _pkg_dir:
+                _add_search_path(_native_dir)
+    except Exception:
+        pass
+
+    if not _is_init():
+        _native_init()
 
     # Core types and infrastructure (native)
     from ._insight import (

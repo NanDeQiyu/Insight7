@@ -27,6 +27,7 @@ from insight._insight import (
     beta as _native_beta,
     binomial as _native_binomial,
     poisson as _native_poisson,
+    get_device as _get_device,
 )
 
 
@@ -77,7 +78,7 @@ def rand(
     if dtype is None:
         dtype = _f32
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_rand(_to_shape(shape), dtype, place)
 
 
@@ -104,7 +105,7 @@ def randn(
     if dtype is None:
         dtype = _f32
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_randn(_to_shape(shape), dtype, place)
 
 
@@ -132,7 +133,7 @@ def randint(
     if dtype is None:
         dtype = _i64
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_randint(low, high, _to_shape(shape), dtype, place)
 
 
@@ -162,7 +163,7 @@ def normal(
     if dtype is None:
         dtype = _f32
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_normal(mean, std, _to_shape(shape), dtype, place)
 
 
@@ -192,7 +193,7 @@ def uniform(
     if dtype is None:
         dtype = _f32
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_uniform(low, high, _to_shape(shape), dtype, place)
 
 
@@ -217,7 +218,7 @@ def randperm(
     if dtype is None:
         dtype = _i64
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_randperm(n, dtype, place)
 
 
@@ -278,7 +279,7 @@ def exponential(
     if dtype is None:
         dtype = _f32
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_exponential(scale, _to_shape(shape), dtype, place)
 
 
@@ -306,7 +307,7 @@ def gamma(
     if dtype is None:
         dtype = _f32
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_gamma(shape, rate, _to_shape(out_shape), dtype, place)
 
 
@@ -334,7 +335,7 @@ def beta(
     if dtype is None:
         dtype = _f32
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_beta(a, b, _to_shape(shape), dtype, place)
 
 
@@ -362,7 +363,7 @@ def binomial(
     if dtype is None:
         dtype = _i64
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_binomial(n, p, _to_shape(shape), dtype, place)
 
 
@@ -388,7 +389,7 @@ def poisson(
     if dtype is None:
         dtype = _i64
     if place is None:
-        place = _cpu()
+        place = _get_device()
     return _native_poisson(lam, _to_shape(shape), dtype, place)
 
 

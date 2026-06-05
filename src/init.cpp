@@ -25,6 +25,11 @@
 namespace ins {
 
 static bool g_initialized = false;
+static std::vector<std::string> g_extra_search_paths;
+
+void add_backend_search_path(const std::string &path) {
+  g_extra_search_paths.push_back(path);
+}
 
 // ========================================================================
 // Dynamic library loading helpers
@@ -76,7 +81,7 @@ static const char *backend_extension() { return ".so"; }
 // Backend discovery — scan current directory for libinsight_*_backend.so
 // ========================================================================
 
-static std::vector<std::string> discover_backends() {
+static std::vector<std::string> scan_dir_for_backends(const char *dir_path) {
   std::vector<std::string> found;
   const char *prefix = "libinsight_";
   const char *suffix = "_backend";
@@ -86,12 +91,12 @@ static std::vector<std::string> discover_backends() {
   size_t ext_len = strlen(ext);
 
 #ifdef _WIN32
+  std::string pattern = std::string(dir_path) + "\\insight_*_backend.dll";
   WIN32_FIND_DATAA fd;
-  HANDLE h = FindFirstFileA("insight_*_backend.dll", &fd);
+  HANDLE h = FindFirstFileA(pattern.c_str(), &fd);
   if (h != INVALID_HANDLE_VALUE) {
     do {
       std::string name(fd.cFileName);
-      // Extract backend name: "insight_<name>_backend.dll"
       size_t p = name.find("insight_");
       size_t e = name.rfind("_backend.dll");
       if (p != std::string::npos && e != std::string::npos && e > p + 8) {
@@ -101,13 +106,12 @@ static std::vector<std::string> discover_backends() {
     FindClose(h);
   }
 #else
-  DIR *dir = opendir(".");
+  DIR *dir = opendir(dir_path);
   if (!dir)
     return found;
   struct dirent *entry;
   while ((entry = readdir(dir)) != nullptr) {
     std::string name(entry->d_name);
-    // Match libinsight_*_backend.so
     if (name.size() > prefix_len + suffix_len + ext_len &&
         name.compare(0, prefix_len, prefix) == 0 &&
         name.compare(name.size() - ext_len, ext_len, ext) == 0) {
@@ -121,7 +125,32 @@ static std::vector<std::string> discover_backends() {
   closedir(dir);
 #endif
 
+  return found;
+}
+
+static std::vector<std::string> discover_backends() {
+  std::vector<std::string> found;
+
+  // 1. Current directory
+  auto cwd = scan_dir_for_backends(".");
+  found.insert(found.end(), cwd.begin(), cwd.end());
+
+  // 2. LD_LIBRARY_PATH directories
+  const char *ld_path = getenv("LD_LIBRARY_PATH");
+  if (ld_path) {
+    std::string ld(ld_path);
+    std::istringstream ss(ld);
+    std::string dir;
+    while (std::getline(ss, dir, ':')) {
+      if (!dir.empty()) {
+        auto ld_found = scan_dir_for_backends(dir.c_str());
+        found.insert(found.end(), ld_found.begin(), ld_found.end());
+      }
+    }
+  }
+
   std::sort(found.begin(), found.end());
+  found.erase(std::unique(found.begin(), found.end()), found.end());
   return found;
 }
 
@@ -130,11 +159,22 @@ static std::vector<std::string> discover_backends() {
 // ========================================================================
 
 static bool try_load_backend(DeviceKind kind, const char *lib_name) {
-  char lib_path[512];
-  snprintf(lib_path, sizeof(lib_path), "%s%s%s", backend_prefix(), lib_name,
-           backend_extension());
+  std::string lib_filename =
+      std::string(backend_prefix()) + lib_name + backend_extension();
 
-  LibHandle lib = load_library(lib_path);
+  // Try default search (LD_LIBRARY_PATH, system paths)
+  LibHandle lib = load_library(lib_filename.c_str());
+
+  // Try extra search paths (e.g. Python package directory)
+  if (!lib) {
+    for (const auto &path : g_extra_search_paths) {
+      std::string full = path + "/" + lib_filename;
+      lib = load_library(full.c_str());
+      if (lib)
+        break;
+    }
+  }
+
   if (!lib)
     return false;
 

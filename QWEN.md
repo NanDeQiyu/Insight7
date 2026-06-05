@@ -462,3 +462,4 @@ LD_LIBRARY_PATH=build/backends/cpu julia tests/bindings/test_binding.jl
 11. **绑定 `load_backend` 必须 catch 异常**：找不到 CUDA .so 时 `ins::load_backend()` 抛异常，未捕获会崩溃进程。Lua 用 `try/catch + return bool`，Python 用 `try/catch + throw py::value_error`。
 12. **测试临时目录**：用 `std::filesystem::create_directories` / `remove_all`，不要用 `system("mkdir -p ...")`。目录管理放在 `SetUpTestSuite`/`TearDownTestSuite`（suite 级别），不要放在 `SetUp`/`TearDown`（per-test 级别），避免 CI 文件系统延迟导致竞态。
 13. **`write_bin` 必须显式 `ofs.close()`**：CI 文件系统可能不在 `ofstream` 析构时立即 flush，后续 `read_bin` 会读到空文件。
+14. **CMake `file(GLOB)` 在 configure 时运行**：不能用 `file(GLOB)` 找 build-time 产出的文件（如 backend `.so`）。必须用 `cmake -P` 脚本在 build 时 glob + copy，或用 `$<TARGET_FILE:target>` 生成器表达式。

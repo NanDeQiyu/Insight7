@@ -29,12 +29,29 @@ add_custom_command(TARGET insight_python POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:insight_python>
         "${CMAKE_SOURCE_DIR}/bindings/python/insight/$<TARGET_FILE_NAME:insight_python>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_BINARY_DIR}/backends/cpu/libinsight_cpu_backend.so"
-        "${CMAKE_SOURCE_DIR}/bindings/python/insight/libinsight_cpu_backend.so"
-    COMMENT "Copying Python binding + CPU backend"
+    COMMENT "Copying Python binding"
 )
+
+# Copy ALL backend .so/.dll files to package directory for auto-discovery
+# Cross-platform: Linux/macOS use libinsight_*_backend.so, Windows uses insight_*_backend.dll
+file(GLOB _INSIGHT_BACKEND_SO_FILES
+    "${CMAKE_BINARY_DIR}/backends/*/libinsight_*_backend.so"
+    "${CMAKE_BINARY_DIR}/backends/*/libinsight_*_backend.dylib"
+    "${CMAKE_BINARY_DIR}/backends/*/insight_*_backend.dll"
+)
+foreach(_backend_so ${_INSIGHT_BACKEND_SO_FILES})
+    get_filename_component(_backend_name ${_backend_so} NAME)
+    add_custom_command(TARGET insight_python POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_backend_so}"
+            "${CMAKE_SOURCE_DIR}/bindings/python/insight/${_backend_name}"
+        COMMENT "Copying ${_backend_name} to Python package"
+    )
+endforeach()
 ```
+
+**IMPORTANT**: Do NOT hardcode `libinsight_cpu_backend.so` — glob ALL backends.
+On Windows there's no `lib` prefix and the extension is `.dll`.
 
 Same pattern for Lua (`bindings/lua/`) and Julia (`bindings/julia/`).
 
@@ -54,11 +71,17 @@ importing the native module. This matches C++ `discover_backends()` behavior.
 ```python
 import ctypes as _ct, os as _os, glob as _gl
 _pkg_dir = _os.path.dirname(_os.path.abspath(__file__))
-for _so in _gl.glob(_os.path.join(_pkg_dir, "libinsight_*_backend.so")):
-    try:
-        _ct.CDLL(_so, mode=_ct.RTLD_GLOBAL)
-    except OSError:
-        pass
+_backend_patterns = [
+    "libinsight_*_backend.so",      # Linux
+    "libinsight_*_backend.dylib",   # macOS
+    "insight_*_backend.dll",        # Windows
+]
+for _pat in _backend_patterns:
+    for _so in _gl.glob(_os.path.join(_pkg_dir, _pat)):
+        try:
+            _ct.CDLL(_so, mode=_ct.RTLD_GLOBAL)
+        except OSError:
+            pass
 from ._insight import *
 ```
 
