@@ -46,11 +46,17 @@ try:
     import glob as _gl
 
     _pkg_dir = _os.path.dirname(_os.path.abspath(__file__))
-    for _so in _gl.glob(_os.path.join(_pkg_dir, "libinsight_*_backend.so")):
-        try:
-            _ct.CDLL(_so, mode=_ct.RTLD_GLOBAL)
-        except OSError:
-            pass
+    _backend_patterns = [
+        "libinsight_*_backend.so",  # Linux
+        "libinsight_*_backend.dylib",  # macOS
+        "insight_*_backend.dll",  # Windows
+    ]
+    for _pat in _backend_patterns:
+        for _so in _gl.glob(_os.path.join(_pkg_dir, _pat)):
+            try:
+                _ct.CDLL(_so, mode=_ct.RTLD_GLOBAL)
+            except OSError:
+                pass
     from ._insight import *  # noqa: F401,F403
 
     # Core types and infrastructure (native)

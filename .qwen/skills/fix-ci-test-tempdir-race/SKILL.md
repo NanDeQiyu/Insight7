@@ -74,11 +74,37 @@ std::filesystem::remove_all("/tmp/my_test", ec);
 ### 3. Use unique temp paths per test (best)
 
 ```cpp
-void SetUp() override {
-  tmp_dir = "/tmp/insight_test_" + std::to_string(getpid());
-  std::filesystem::create_directories(tmp_dir);
-}
+// ✅ Cross-platform: no <unistd.h>, uses std::chrono
+#include <chrono>
+#include <filesystem>
+
+class MyTest : public ::testing::Test {
+protected:
+  static std::string tmp_base;
+  std::string tmp_dir;
+
+  static void SetUpTestSuite() {
+    auto ts = std::chrono::steady_clock::now().time_since_epoch().count();
+    tmp_base = (std::filesystem::temp_directory_path() /
+                ("insight_test_" + std::to_string(ts)))
+                   .string();
+    std::filesystem::create_directories(tmp_base);
+  }
+  static void TearDownTestSuite() {
+    std::error_code ec;
+    std::filesystem::remove_all(tmp_base, ec);
+  }
+  void SetUp() override {
+    tmp_dir = tmp_base;
+    std::filesystem::create_directories(tmp_dir);
+  }
+};
+std::string MyTest::tmp_base;
 ```
+
+**Why `std::chrono` instead of `getpid()`**: `<unistd.h>` is Linux-only.
+`std::filesystem::temp_directory_path()` + `std::chrono::steady_clock` is
+cross-platform (C++17). Avoids Windows portability issues.
 
 ## Verification
 

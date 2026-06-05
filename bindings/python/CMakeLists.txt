@@ -38,11 +38,24 @@ add_custom_command(TARGET insight_python POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:insight_python>
         "${CMAKE_SOURCE_DIR}/bindings/python/insight/$<TARGET_FILE_NAME:insight_python>"
-    # Copy CPU backend .so to package directory for dlopen
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_BINARY_DIR}/backends/cpu/libinsight_cpu_backend.so"
-        "${CMAKE_SOURCE_DIR}/bindings/python/insight/libinsight_cpu_backend.so"
-    COMMENT "Copying Python binding + CPU backend"
+    COMMENT "Copying Python binding"
 )
+
+# Copy ALL backend .so/.dll files to package directory for auto-discovery
+# Cross-platform: Linux/macOS use libinsight_*_backend.so, Windows uses insight_*_backend.dll
+file(GLOB _INSIGHT_BACKEND_SO_FILES
+    "${CMAKE_BINARY_DIR}/backends/*/libinsight_*_backend.so"
+    "${CMAKE_BINARY_DIR}/backends/*/libinsight_*_backend.dylib"
+    "${CMAKE_BINARY_DIR}/backends/*/insight_*_backend.dll"
+)
+foreach(_backend_so ${_INSIGHT_BACKEND_SO_FILES})
+    get_filename_component(_backend_name ${_backend_so} NAME)
+    add_custom_command(TARGET insight_python POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_backend_so}"
+            "${CMAKE_SOURCE_DIR}/bindings/python/insight/${_backend_name}"
+        COMMENT "Copying ${_backend_name} to Python package"
+    )
+endforeach()
 
 message(STATUS "Python bindings enabled (pybind11, Python ${Python3_VERSION})")

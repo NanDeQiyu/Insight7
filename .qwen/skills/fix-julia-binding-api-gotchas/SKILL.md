@@ -25,20 +25,23 @@ b = Insight.from_data([1.0, 2.0, 3.0])
 A = Insight.from_data(reshape([1.0, 2.0, 3.0, 4.0], 2, 2), Insight.float64)
 ```
 
-## 2. `getindex` not defined for InsightArray
+## 2. `getindex` IS defined (as of 2026-06-05)
 
-Can't use `arr[1]` on InsightArray — `getindex` is not implemented.
+`Base.getindex` is implemented via C API `insight_jl_at_index`. Supports
+1-based integer indexing with NumPy-style partial indexing:
 
 ```julia
-# ❌ WRONG
-val = arr[1]  # MethodError: no method matching getindex(::InsightArray, ::Int64)
+a = Insight.reshape(Insight.arange(0.0, 20.0, 1.0, Insight.float32), Int64[4, 5])
+row = a[1]          # partial index → shape (5,)
+val = a[1, 3]       # full index → scalar
+slab = Insight.reshape(Insight.arange(0.0, 24.0, 1.0, Insight.float32), Int64[2, 3, 4])
+slab2 = slab[2]     # partial → shape (4, 3)
+```
 
-# ✅ CORRECT — use item() for scalar extraction (0-based)
-val = Insight.item(arr, 0)
-
-# ✅ For converting to Julia array
+For converting to Julia array (still useful for bulk data access):
+```julia
 data = Insight.to_data(arr)  # returns Julia Vector
-val = data[1]  # now 1-based indexing works
+val = data[1]  # 1-based Julia indexing
 ```
 
 ## 3. `Base.abs` shadowed by `Insight.abs`
@@ -68,6 +71,19 @@ Insight.init(["cpu"])  # UndefVarError: init not defined
 # ✅ CORRECT — just use the module
 using Insight
 ```
+
+## 4b. `get_device` / `set_device` (as of 2026-06-05)
+
+```julia
+dt, id = Insight.get_device()  # returns (0, 0) for CPU, (1, 0) for GPU
+
+Insight.set_device(0)       # switch to CPU
+Insight.set_device(0, 0)    # explicit CPU device 0
+Insight.set_device(1, 0)    # switch to GPU 0 (throws if no GPU)
+```
+
+`set_device` throws a catchable Julia error (not a crash) when the device
+is unavailable. The C API `insight_jl_set_device` returns 0 on failure.
 
 ## 5. Function name conflicts
 
@@ -298,6 +314,33 @@ in `libinsight_julia.so`.
 insight_jl_take, insight_jl_nonzero, insight_jl_sort, insight_jl_concat,
 insight_jl_reshape, insight_jl_transpose, insight_jl_copy, insight_jl_squeeze,
 and any other function that calls C++ operations that may throw.
+
+### Special case: `set_device` returns int32 (not Array*)
+
+For functions that don't return `Array*`, use a return code pattern:
+
+```cpp
+// ✅ Returns 1 on success, 0 on failure (no nullptr needed)
+int32_t insight_jl_set_device(int32_t device_type, int32_t device_id) {
+  try {
+    Place p = device_type == 1 ? GPUPlace(device_id) : CPUPlace();
+    ins::set_device(p);
+    return 1;
+  } catch (...) {
+    return 0;
+  }
+}
+```
+
+```julia
+function set_device(device_type::Int, device_id::Int=0)
+    ok = ccall((:insight_jl_set_device, LIB_INSIGHT), Int32,
+               (Int32, Int32), Int32(device_type), Int32(device_id))
+    if ok == 0
+        error("Insight: device not available (type=$device_type, id=$device_id)")
+    end
+end
+```
 
 ### Julia side: check for C_NULL after ccall
 
