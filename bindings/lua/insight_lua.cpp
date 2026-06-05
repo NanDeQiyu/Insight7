@@ -234,7 +234,11 @@ extern "C" int luaopen__insight(lua_State *L) {
 
   // Auto-initialize with smart backend discovery
   if (!ins::is_initialized()) {
-    ins::init();
+    try {
+      ins::init();
+    } catch (...) {
+      // Backend not available — user must call init() manually
+    }
   }
 
   // Manual init — supports no args (auto-discover) or table of backend names

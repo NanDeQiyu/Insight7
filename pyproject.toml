@@ -23,5 +23,8 @@ dev = [
 where = ["bindings/python"]
 include = ["insight*"]
 
+[tool.setuptools.package-data]
+"insight" = ["*.so", "*.dll", "*.dylib"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests/bindings"]

@@ -1,0 +1,7 @@
+name = "Insight"
+uuid = "19aa4069-8d8a-42a6-a452-50ed6b3e13b4"
+version = "1.0.0"
+authors = ["PlumBlossomMaid"]
+
+[deps]
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"

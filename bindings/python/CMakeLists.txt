@@ -26,6 +26,9 @@ target_link_libraries(insight_python PRIVATE
     insight_core
 )
 
+# Ensure backend .so is built before POST_BUILD copy
+add_dependencies(insight_python insight_cpu_backend)
+
 # Copy the shared library for easy import
 add_custom_command(TARGET insight_python POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -35,7 +38,11 @@ add_custom_command(TARGET insight_python POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:insight_python>
         "${CMAKE_SOURCE_DIR}/bindings/python/insight/$<TARGET_FILE_NAME:insight_python>"
-    COMMENT "Copying insight Python module"
+    # Copy CPU backend .so to package directory for dlopen
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_BINARY_DIR}/backends/cpu/libinsight_cpu_backend.so"
+        "${CMAKE_SOURCE_DIR}/bindings/python/insight/libinsight_cpu_backend.so"
+    COMMENT "Copying Python binding + CPU backend"
 )
 
 message(STATUS "Python bindings enabled (pybind11, Python ${Python3_VERSION})")
