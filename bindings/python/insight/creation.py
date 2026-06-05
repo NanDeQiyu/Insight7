@@ -16,7 +16,7 @@ Functions:
 from insight._insight import zeros as _native_zeros
 from insight._insight import ones as _native_ones
 from insight._insight import full as _native_full
-from insight._insight import Shape, DType, CPUPlace
+from insight._insight import Shape, DType, CPUPlace, get_device
 
 # Import remaining functions directly (no Shape conversion needed)
 from insight._insight import (
@@ -50,7 +50,7 @@ def zeros(shape, dtype=DType.float32, place=None):
     """
     s = _to_shape(shape)
     if place is None:
-        return _native_zeros(s, dtype)
+        return _native_zeros(s, dtype, get_device())
     return _native_zeros(s, dtype, place)
 
 
@@ -67,7 +67,7 @@ def ones(shape, dtype=DType.float32, place=None):
     """
     s = _to_shape(shape)
     if place is None:
-        return _native_ones(s, dtype)
+        return _native_ones(s, dtype, get_device())
     return _native_ones(s, dtype, place)
 
 
@@ -85,7 +85,7 @@ def full(shape, fill_value, dtype=DType.float32, place=None):
     """
     s = _to_shape(shape)
     if place is None:
-        return _native_full(s, fill_value, dtype)
+        return _native_full(s, fill_value, dtype, get_device())
     return _native_full(s, fill_value, dtype, place)
 
 

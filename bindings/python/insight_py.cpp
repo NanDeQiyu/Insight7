@@ -323,6 +323,14 @@ PYBIND11_MODULE(_insight, m) {
       },
       py::arg("kind"), "Check if a device kind is available ('cpu' or 'gpu')");
 
+  m.def(
+      "set_device", [](const Place &p) { set_device(p); }, py::arg("place"),
+      "Set the default device for new arrays (e.g., CPUPlace(), GPUPlace(0))");
+
+  m.def(
+      "get_device", []() { return get_device(); },
+      "Get the current default device");
+
   // ===== Device information =====
   m.def(
       "device_name",
