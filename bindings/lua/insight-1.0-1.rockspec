@@ -35,7 +35,6 @@ build = {
         INSIGHT_BUILD_LUA_BINDING = "ON",
         INSIGHT_WITH_CUDA = "OFF",
         LUA_INCLUDE_DIR = "$(LUA_INCDIR)",
-        LUA_LIBDIR = "$(LUA_LIBDIR)",
         CMAKE_INSTALL_PREFIX = "$(PREFIX)",
         LUADIR = "$(LUADIR)",
         LIBDIR = "$(LIBDIR)",
