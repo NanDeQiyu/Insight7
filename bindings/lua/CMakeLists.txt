@@ -85,4 +85,16 @@ target_link_libraries(insight_lua PRIVATE
 
 target_compile_features(insight_lua PRIVATE cxx_std_17)
 
+# Copy .so to source wrapper directory for luarocks/pip install
+add_custom_command(TARGET insight_lua POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:insight_lua>
+        "${CMAKE_SOURCE_DIR}/bindings/lua/$<TARGET_FILE_NAME:insight_lua>"
+    # Copy CPU backend .so for dlopen
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_BINARY_DIR}/backends/cpu/libinsight_cpu_backend.so"
+        "${CMAKE_SOURCE_DIR}/bindings/lua/libinsight_cpu_backend.so"
+    COMMENT "Copying Lua binding + CPU backend"
+)
+
 message(STATUS "Lua bindings enabled")
