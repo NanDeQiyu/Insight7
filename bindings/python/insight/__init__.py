@@ -83,6 +83,7 @@ try:
     _add_search_path(_pkg_dir)
 
     # Also search directory of _insight.so (may differ in editable installs)
+    _native_dir = None
     try:
         import importlib.util as _ilu
 
@@ -93,6 +94,17 @@ try:
                 _add_search_path(_native_dir)
     except Exception:
         pass
+
+    # Debug: print search paths and found .so files (helps diagnose CI issues)
+    import sys as _sys
+
+    print(f"[insight] pkg_dir={_pkg_dir}", file=_sys.stderr)
+    print(f"[insight] native_dir={_native_dir}", file=_sys.stderr)
+    print(f"[insight] cwd={_os.getcwd()}", file=_sys.stderr)
+    for _d in [_pkg_dir, _native_dir]:
+        if _d and _os.path.isdir(_d):
+            _files = _gl.glob(_os.path.join(_d, "libinsight_*_backend.*"))
+            print(f"[insight] {_d}: {_files}", file=_sys.stderr)
 
     if not _is_init():
         _native_init()
