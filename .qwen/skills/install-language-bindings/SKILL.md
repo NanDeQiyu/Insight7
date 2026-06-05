@@ -38,6 +38,11 @@ add_custom_command(TARGET insight_python POST_BUILD
 
 Same pattern for Lua (`bindings/lua/`) and Julia (`bindings/julia/`).
 
+**CRITICAL**: Add `add_dependencies(insight_xxx insight_cpu_backend)` to each binding's
+CMakeLists.txt. Without this, the POST_BUILD copy runs before the backend .so is built,
+causing `Error copying file` in CI. The binding target links against `insight_core` (static),
+but that doesn't guarantee the backend .so is built first.
+
 ### 2. Backend .so Pre-loading
 
 The C++ `ins::init()` calls `dlopen("libinsight_cpu_backend.so")` which searches
@@ -84,7 +89,9 @@ Install: `pip install -e .`
 ### 4. Lua: rockspec
 
 Create `bindings/lua/insight-1.0-1.rockspec` with cmake build type.
-Install: `luarocks make bindings/lua/insight-1.0-1.rockspec`
+Enable ALL features (CUDA, OpenBLAS, FFTW, Matplot) — cmake auto-disables
+unavailable ones. Don't use `$(LUA_LIBDIR)` — not set on all systems.
+Install: `luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr CMAKE_BUILD_DIR=build --local`
 
 ### 5. Julia: Project.toml + src/ structure
 
@@ -132,3 +139,9 @@ Julia `__init__()` checks both `@__DIR__` and parent dir for .so files.
   if `Project.toml` exists without proper structure.
 - **Julia `src/` directory** is required for standard package structure.
   `Insight.jl` at root won't be found by `using Insight` via LOAD_PATH.
+- **Lua binding auto-init must catch exceptions** — `ins::init()` is called during
+  `luaopen__insight` (module loading). If it throws, sol2 can't catch it →
+  `std::terminate`. Always wrap in `try { ins::init(); } catch (...) {}`.
+- **CMake `option()` vs `set(... FORCE)`** — `option()` respects stale cache values.
+  Use `set(VAR ON CACHE BOOL "" FORCE)` when the value must be enforced regardless
+  of previous cmake runs (e.g., `INSIGHT_USE_THRUST` when CUDA is ON).
