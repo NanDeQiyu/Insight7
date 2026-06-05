@@ -152,10 +152,14 @@ end
     set_device(device_type::Int, device_id::Int=0)
 
 Set the current default device. 0=CPU, 1=GPU.
+Throws if the requested device is not available.
 """
 function set_device(device_type::Int, device_id::Int=0)
-    ccall((:insight_jl_set_device, LIB_INSIGHT), Cvoid,
-          (Int32, Int32), Int32(device_type), Int32(device_id))
+    ok = ccall((:insight_jl_set_device, LIB_INSIGHT), Int32,
+               (Int32, Int32), Int32(device_type), Int32(device_id))
+    if ok == 0
+        error("Insight: device not available (type=$device_type, id=$device_id)")
+    end
 end
 
 # DType enum mapping (matches InsightDType in c_api/dtype.h)

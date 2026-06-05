@@ -82,10 +82,15 @@ int32_t insight_jl_get_device_id() {
   return static_cast<int32_t>(p.device_id());
 }
 
-// Set current default device
-void insight_jl_set_device(int32_t device_type, int32_t device_id) {
-  Place p = device_type == 1 ? GPUPlace(device_id) : CPUPlace();
-  ins::set_device(p);
+// Set current default device. Returns 1 on success, 0 on failure.
+int32_t insight_jl_set_device(int32_t device_type, int32_t device_id) {
+  try {
+    Place p = device_type == 1 ? GPUPlace(device_id) : CPUPlace();
+    ins::set_device(p);
+    return 1;
+  } catch (...) {
+    return 0;
+  }
 }
 
 // Partial indexing: at(arr, indices, n_indices) → new Array* (NumPy-style)
