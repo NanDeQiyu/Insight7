@@ -53,6 +53,11 @@ try:
     if _pkg_dir not in _ld.split(":"):
         _os.environ["LD_LIBRARY_PATH"] = _pkg_dir + ":" + _ld if _ld else _pkg_dir
 
+    # Also chdir to package dir so discover_backends() (which scans ".")
+    # finds the backends — needed for editable installs (pip install -e .)
+    _saved_cwd = _os.getcwd()
+    _os.chdir(_pkg_dir)
+
     _backend_patterns = [
         "libinsight_*_backend.so",  # Linux
         "libinsight_*_backend.dylib",  # macOS
@@ -65,6 +70,8 @@ try:
             except OSError:
                 pass
     from ._insight import *  # noqa: F401,F403
+
+    _os.chdir(_saved_cwd)
 
     # Core types and infrastructure (native)
     from ._insight import (
