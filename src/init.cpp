@@ -188,6 +188,12 @@ void init(std::optional<std::vector<std::string>> backends) {
         break;
       }
     }
+    // 3. If no GPU backend found via scan, try common names directly
+    //    (dlopen uses LD_LIBRARY_PATH, works when .so is in another directory
+    //     e.g. luarocks install, pip install, or system packages)
+    if (!get_device_interface(DeviceKind::GPU)) {
+      try_load_backend(DeviceKind::GPU, "insight_cuda_backend");
+    }
   } else if (backends->empty()) {
     // === Empty vector: load nothing ===
   } else {
