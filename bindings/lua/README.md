@@ -6,6 +6,22 @@ for ergonomic signal processing and scientific computing in Lua.
 
 ## Installation
 
+### From luarocks (after CMake build)
+
+```bash
+# Build C++ backend + Lua binding first
+mkdir -p build && cd build
+cmake .. -DINSIGHT_WITH_CUDA=ON -DINSIGHT_USE_FFTW3=ON -DINSIGHT_USE_OPENBLAS=ON
+cmake --build . -j$(nproc) --target insight_lua
+
+# Install via luarocks
+cd ..
+# Lua 5.3
+luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr --local
+# LuaJIT
+luarocks make bindings/lua/insight-1.0-1.rockspec --local
+```
+
 ### Prerequisites
 
 - LuaJIT 2.1+ (recommended) or Lua 5.3+
@@ -141,15 +157,23 @@ luajit -e "local ins = require('insight'); print('Insight7 loaded')"
 
 ```lua
 local ins = require("insight")
+-- Backend auto-detected (GPU when available, no manual init needed)
 
--- Initialize backend
-ins.init({"cpu"})
--- ins.init({"gpu"})  -- if CUDA is available
+print(ins.get_device())       -- "cuda:0" or "cpu:0"
+print(ins.gpu_version())      -- 11080 (CUDA 11.8), 0 if no GPU
 
--- Array creation
+-- Array creation (default: current device)
 local a = ins.zeros({2, 3}, ins.float32)
 local b = ins.ones({2, 3}, ins.float32)
 local c = a + b
+
+-- NumPy-style indexing (1-based for Lua)
+local row = a[1]              -- partial indexing → shape (3,)
+local val = a[1][2]           -- scalar extraction
+
+-- Device management
+local a_gpu = a:to(1)         -- CPU → GPU (0=CPU, 1=GPU)
+local a_cpu = a_gpu:to(0)     -- GPU → CPU
 
 -- Reduction
 local s = ins.sum(c)
@@ -157,9 +181,9 @@ local s = ins.sum(c)
 -- Linear algebra
 local m = ins.matmul(a, ins.transpose(b))
 
--- Signal processing
+-- Signal processing (dual calling convention)
 local w = ins.signal.hann(256)
-local f, Pxx = ins.signal.welch(signal, 1000.0)
+local w2 = ins.signal.hann{n=256}
 ```
 
 ## Dual Calling Convention

@@ -5,6 +5,18 @@ Built with [pybind11](https://github.com/pybind/pybind11), providing a PaddlePad
 
 ## Installation
 
+### From pip (after CMake build)
+
+```bash
+# Build C++ backend + Python binding first
+mkdir -p build && cd build
+cmake .. -DINSIGHT_WITH_CUDA=ON -DINSIGHT_USE_FFTW3=ON -DINSIGHT_USE_OPENBLAS=ON
+cmake --build . -j$(nproc) --target insight_python
+
+# Install the Python package
+cd .. && pip install .
+```
+
 ### Prerequisites
 
 - Python 3.8+
@@ -106,9 +118,9 @@ PYTHONPATH=bindings/python LD_LIBRARY_PATH=build/backends/cpu \
 ```python
 import insight as ins
 
-# Initialize backend (CPU or GPU)
-ins.init(["cpu"])
-# ins.init(["gpu"])  # if CUDA is available
+# Backend auto-detected (GPU when available, PaddlePaddle behavior)
+print(ins.get_device())   # GPUPlace(0) or CPUPlace()
+print(ins.gpu_version())  # 11080 (CUDA 11.8), 0 if no GPU
 
 # --- Array Creation ---
 a = ins.zeros([2, 3], ins.float32)
@@ -117,10 +129,17 @@ c = ins.arange(0, 10, 1, ins.float64)
 d = ins.linspace(0.0, 1.0, 100, ins.float64)
 e = ins.randn([3, 3], ins.float32)
 
-# --- Arithmetic ---
-f = a + b           # elementwise add
-g = ins.mul(f, b)   # elementwise multiply
-h = ins.matmul(a, b.T)  # matrix multiplication
+# --- Operators: +, -, *, /, //, %, **, @ ---
+f = a + b               # elementwise add
+g = a @ b.T             # matrix multiplication (@)
+h = a ** 2              # elementwise power
+i = a // 3.0            # floor division
+j = a % 2.0             # modulo
+
+# --- NumPy-style Indexing ---
+row = a[1]              # partial indexing → shape (3,)
+val = a[1, 2]           # scalar extraction
+sub = a[1:, ::2]        # mixed slice indexing
 
 # --- Reductions ---
 s = ins.sum(a, axis=0)
