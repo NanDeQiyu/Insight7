@@ -121,8 +121,9 @@ jobs:
 
       - name: Run Python demos
         run: |
-          export PYTHONPATH=$GITHUB_WORKSPACE/bindings/python
-          export LD_LIBRARY_PATH=$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH
+          # Install Insight via pip (simulates user experience)
+          pip install -e .
+          # Run demos from an unrelated directory to verify system-wide install
           cd /tmp
           python3 $GITHUB_WORKSPACE/demos/python/basic_ops.py
           python3 $GITHUB_WORKSPACE/demos/python/linalg_demo.py

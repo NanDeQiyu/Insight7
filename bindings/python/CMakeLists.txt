@@ -41,21 +41,16 @@ add_custom_command(TARGET insight_python POST_BUILD
     COMMENT "Copying Python binding"
 )
 
-# Copy ALL backend .so/.dll files to package directory for auto-discovery
-# Cross-platform: Linux/macOS use libinsight_*_backend.so, Windows uses insight_*_backend.dll
-file(GLOB _INSIGHT_BACKEND_SO_FILES
-    "${CMAKE_BINARY_DIR}/backends/*/libinsight_*_backend.so"
-    "${CMAKE_BINARY_DIR}/backends/*/libinsight_*_backend.dylib"
-    "${CMAKE_BINARY_DIR}/backends/*/insight_*_backend.dll"
+# Copy ALL backend .so/.dll files to package directory for auto-discovery.
+# NOTE: file(GLOB) runs at configure time — if backends aren't built yet,
+# the glob is empty and no copy commands are registered. Instead, use a
+# CMake -P script that globs at BUILD time.
+add_custom_command(TARGET insight_python POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+        -DSRC_DIR="${CMAKE_BINARY_DIR}/backends"
+        -DDST_DIR="${CMAKE_SOURCE_DIR}/bindings/python/insight"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/copy_backends.cmake"
+    COMMENT "Copying backend .so files to Python package"
 )
-foreach(_backend_so ${_INSIGHT_BACKEND_SO_FILES})
-    get_filename_component(_backend_name ${_backend_so} NAME)
-    add_custom_command(TARGET insight_python POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${_backend_so}"
-            "${CMAKE_SOURCE_DIR}/bindings/python/insight/${_backend_name}"
-        COMMENT "Copying ${_backend_name} to Python package"
-    )
-endforeach()
 
 message(STATUS "Python bindings enabled (pybind11, Python ${Python3_VERSION})")
