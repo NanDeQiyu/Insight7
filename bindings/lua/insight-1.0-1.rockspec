@@ -27,6 +27,7 @@ build = {
 
     variables = {
         CMAKE_BUILD_TYPE = "Release",
+        CMAKE_SKIP_INSTALL_RULES = "ON",
         INSIGHT_BUILD_TESTS = "OFF",
         INSIGHT_BUILD_DEMOS = "OFF",
         INSIGHT_BUILD_BINDINGS = "ON",
