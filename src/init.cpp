@@ -25,6 +25,11 @@
 namespace ins {
 
 static bool g_initialized = false;
+static std::vector<std::string> g_extra_search_paths;
+
+void add_backend_search_path(const std::string &path) {
+  g_extra_search_paths.push_back(path);
+}
 
 // ========================================================================
 // Dynamic library loading helpers
@@ -154,11 +159,22 @@ static std::vector<std::string> discover_backends() {
 // ========================================================================
 
 static bool try_load_backend(DeviceKind kind, const char *lib_name) {
-  char lib_path[512];
-  snprintf(lib_path, sizeof(lib_path), "%s%s%s", backend_prefix(), lib_name,
-           backend_extension());
+  std::string lib_filename =
+      std::string(backend_prefix()) + lib_name + backend_extension();
 
-  LibHandle lib = load_library(lib_path);
+  // Try default search (LD_LIBRARY_PATH, system paths)
+  LibHandle lib = load_library(lib_filename.c_str());
+
+  // Try extra search paths (e.g. Python package directory)
+  if (!lib) {
+    for (const auto &path : g_extra_search_paths) {
+      std::string full = path + "/" + lib_filename;
+      lib = load_library(full.c_str());
+      if (lib)
+        break;
+    }
+  }
+
   if (!lib)
     return false;
 

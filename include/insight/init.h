@@ -39,4 +39,11 @@ bool has_device(DeviceKind kind);
  */
 void load_backend(const std::string &backend);
 
+/**
+ * @brief Add a directory to the backend search path.
+ * Called before init() so backends can be found in non-standard locations
+ * (e.g. Python package directory for pip-installed libraries).
+ */
+void add_backend_search_path(const std::string &path);
+
 } // namespace ins

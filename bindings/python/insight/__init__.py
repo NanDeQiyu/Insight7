@@ -73,10 +73,14 @@ try:
 
     _os.chdir(_saved_cwd)
 
-    # Explicitly initialize backends (smart discovery: CPU + auto GPU)
-    # This must happen AFTER pre-loading .so files and setting LD_LIBRARY_PATH
-    from ._insight import init as _native_init, is_initialized as _is_init
+    # Register package directory as backend search path, then init
+    from ._insight import (
+        init as _native_init,
+        is_initialized as _is_init,
+        add_backend_search_path as _add_search_path,
+    )
 
+    _add_search_path(_pkg_dir)
     if not _is_init():
         _native_init()
 

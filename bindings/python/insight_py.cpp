@@ -311,6 +311,12 @@ PYBIND11_MODULE(_insight, m) {
       "Load an additional backend after init() (e.g., 'cuda', 'rocm')");
 
   m.def(
+      "add_backend_search_path",
+      [](const std::string &path) { ins::add_backend_search_path(path); },
+      py::arg("path"),
+      "Add a directory to search for backend .so files before init()");
+
+  m.def(
       "has_device",
       [](const std::string &kind) -> bool {
         if (kind == "cpu")
