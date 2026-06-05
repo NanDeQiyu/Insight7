@@ -43,7 +43,6 @@ local function _find_and_load_backends()
     end
   end
   -- 3. Resolve _insight.so symlink → actual lib directory
-  --    (luarocks puts backends in rocks-X.Y/.../lib/ but only symlinks _insight.so)
   for path in package.cpath:gmatch("[^;]+") do
     local candidate = path:gsub("%?", "_insight")
     local f = io.open(candidate, "r")
@@ -70,19 +69,20 @@ local function _find_and_load_backends()
     end
   end
 
-  local ok_ffi, ffi = pcall(require, "ffi")
-  if not ok_ffi or not ffi then
-    return false
+  -- Scan all candidate dirs for backend .so/.dll and pre-load them
+  -- Uses package.loadlib (standard Lua 5.1+) with * prefix for RTLD_GLOBAL
+  -- Falls back to ffi.C.dlopen (LuaJIT) if available
+  local ok_ffi, ffi_lib = pcall(require, "ffi")
+  local use_ffi = ok_ffi and ffi_lib ~= nil
+  if use_ffi then
+    pcall(
+      ffi_lib.cdef,
+      [[
+      void *dlopen(const char *filename, int flag);
+    ]]
+    )
   end
-  pcall(
-    ffi.cdef,
-    [[
-    int setenv(const char *name, const char *value, int overwrite);
-    void *dlopen(const char *filename, int flag);
-  ]]
-  )
 
-  local found = false
   local seen = {}
   for _, dir in ipairs(dirs) do
     local cmd = 'ls "' .. dir .. '"/libinsight_*_backend.so "' .. dir .. '"/insight_*_backend.dll 2>/dev/null'
@@ -94,20 +94,20 @@ local function _find_and_load_backends()
           local f2 = io.open(line, "r")
           if f2 then
             f2:close()
-            local _d = line:match("(.*/)") or ""
-            local _ld2 = os.getenv("LD_LIBRARY_PATH") or ""
-            if not _ld2:find(_d, 1, true) then
-              pcall(ffi.C.setenv, "LD_LIBRARY_PATH", _d .. ":" .. _ld2, 1)
+            if use_ffi then
+              -- LuaJIT: use ffi for reliable RTLD_GLOBAL
+              ffi_lib.C.dlopen(line, 258) -- RTLD_NOW | RTLD_GLOBAL
+            else
+              -- Lua 5.3+: package.loadlib with * prefix loads with RTLD_GLOBAL
+              -- even if function doesn't exist, library stays loaded
+              pcall(package.loadlib, line, "*luaopen_dummy")
             end
-            ffi.C.dlopen(line, 258)
-            found = true
           end
         end
       end
       pipe:close()
     end
   end
-  return found
 end
 
 _find_and_load_backends()
