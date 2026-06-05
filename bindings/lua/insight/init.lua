@@ -137,6 +137,27 @@ for k, v in pairs(native) do
   M[k] = v
 end
 
+-- Lua 5.3 strictly distinguishes int/float. sol2 rejects 1e7 (float) for
+-- int64_t params. Provide a helper to auto-convert in wrapper functions.
+function M._toint(v)
+  if type(v) == "number" then
+    return math.floor(v)
+  end
+  return v
+end
+
+--- Auto-convert float table values to integers (for shape tables).
+function M._toint_table(t)
+  if type(t) ~= "table" then
+    return t
+  end
+  local out = {}
+  for i, v in ipairs(t) do
+    out[i] = math.floor(v)
+  end
+  return out
+end
+
 --- Create an Array from a nested Lua table.
 -- Strict validation: only number, boolean, and table allowed.
 -- nil, string, function, userdata → error. Max 10 dimensions.

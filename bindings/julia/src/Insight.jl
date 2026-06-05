@@ -73,7 +73,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        csd, coherence, spectrogram, stft, vectorstrength,
        choose_conv_method, firfilter_zi_state,
        # Device info
-       device_name, cuda_version, driver_version, compute_capability,
+       device_name, cuda_version, gpu_version, driver_version, compute_capability,
        device_memory, gpu_count, load_backend,
        get_device, set_device,
        # Signal submodule
@@ -192,6 +192,9 @@ end
 function cuda_version()::Int
     Int(ccall((:insight_jl_cuda_version, LIB_INSIGHT), Int32, ()))
 end
+
+"""Alias for `cuda_version()`."""
+gpu_version()::Int = cuda_version()
 
 function driver_version()::Int
     Int(ccall((:insight_jl_driver_version, LIB_INSIGHT), Int32, ()))

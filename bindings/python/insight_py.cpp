@@ -349,6 +349,9 @@ PYBIND11_MODULE(_insight, m) {
       "cuda_version", []() { return cuda_version(); },
       "Get the CUDA runtime version (major*1000+minor*10, 0 if not available)");
   m.def(
+      "gpu_version", []() { return cuda_version(); },
+      "Alias for cuda_version()");
+  m.def(
       "driver_version", []() { return driver_version(); },
       "Get the CUDA driver version (major*1000+minor*10, 0 if not available)");
   m.def(
