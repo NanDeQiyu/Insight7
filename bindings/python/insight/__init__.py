@@ -81,6 +81,19 @@ try:
     )
 
     _add_search_path(_pkg_dir)
+
+    # Also search directory of _insight.so (may differ in editable installs)
+    try:
+        import importlib.util as _ilu
+
+        _spec = _ilu.find_spec("insight._insight")
+        if _spec and _spec.origin:
+            _native_dir = _os.path.dirname(_os.path.abspath(_spec.origin))
+            if _native_dir != _pkg_dir:
+                _add_search_path(_native_dir)
+    except Exception:
+        pass
+
     if not _is_init():
         _native_init()
 
