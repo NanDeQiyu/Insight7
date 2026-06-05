@@ -39,15 +39,18 @@ Place Constructors::
 """
 
 try:
-    # Pre-load backend .so files from this package directory so that
-    # dlopen("libinsight_cpu_backend.so") inside the native module finds them.
+    # Pre-load ALL backend .so files (CPU + GPU) from this package directory
+    # so that dlopen inside the native module finds them.
     import ctypes as _ct
     import os as _os
+    import glob as _gl
 
     _pkg_dir = _os.path.dirname(_os.path.abspath(__file__))
-    _backend_so = _os.path.join(_pkg_dir, "libinsight_cpu_backend.so")
-    if _os.path.isfile(_backend_so):
-        _ct.CDLL(_backend_so, mode=_ct.RTLD_GLOBAL)
+    for _so in _gl.glob(_os.path.join(_pkg_dir, "libinsight_*_backend.so")):
+        try:
+            _ct.CDLL(_so, mode=_ct.RTLD_GLOBAL)
+        except OSError:
+            pass
     from ._insight import *  # noqa: F401,F403
 
     # Core types and infrastructure (native)

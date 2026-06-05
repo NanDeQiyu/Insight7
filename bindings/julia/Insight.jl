@@ -97,17 +97,22 @@ end
 
 # Auto-initialize CPU backend on module load
 function __init__()
-    # Pre-load backend .so so that C++ dlopen finds it
+    # Pre-load ALL backend .so files (CPU + GPU) so that C++ dlopen finds them
     _dir = @__DIR__
     _parent = joinpath(_dir, "..")
     for _d in (_dir, _parent)
-        _backend = joinpath(_d, "libinsight_cpu_backend.so")
-        if isfile(_backend)
-            if !(_d in Libdl.DL_LOAD_PATH)
-                push!(Libdl.DL_LOAD_PATH, _d)
+        if isdir(_d)
+            for _f in readdir(_d; join=true)
+                if occursin("libinsight_", _f) && endswith(_f, "_backend.so")
+                    try
+                        Libdl.dlopen(_f, Libdl.RTLD_GLOBAL)
+                    catch
+                    end
+                end
             end
-            Libdl.dlopen(_backend, Libdl.RTLD_GLOBAL)
-            break
+        end
+        if !(_d in Libdl.DL_LOAD_PATH)
+            push!(Libdl.DL_LOAD_PATH, _d)
         end
     end
     ccall((:insight_jl_init_cpu, LIB_INSIGHT), Cvoid, ())

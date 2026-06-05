@@ -26,53 +26,73 @@
 --     ins.GPUPlace(0)      -- GPU device 0
 
 -- Try to load the native C++ module (_insight.so)
--- Pre-load backend .so from various possible locations
-local function _find_and_load_backend()
-  local candidates = {}
+-- Pre-load ALL backend .so files (CPU + GPU) from various possible locations
+local function _find_and_load_backends()
+  -- Collect search directories
+  local dirs = {}
   -- 1. Parent of this script's directory (dev/source layout)
   local _this_dir = debug.getinfo(1, "S").source:match("@?(.*/)")
   if _this_dir then
     local _parent = _this_dir:match("(.*/)[^/]+/$") or _this_dir
-    table.insert(candidates, _parent .. "libinsight_cpu_backend.so")
+    table.insert(dirs, _parent)
   end
   -- 2. Same directory as _insight.so (luarocks lib layout)
   for path in package.cpath:gmatch("[^;]+") do
     local dir = path:gsub("%?.*$", "")
-    table.insert(candidates, dir .. "libinsight_cpu_backend.so")
+    if dir ~= "" then
+      table.insert(dirs, dir)
+    end
   end
   -- 3. LD_LIBRARY_PATH directories
   local _ld = os.getenv("LD_LIBRARY_PATH") or ""
   for dir in _ld:gmatch("[^:]+") do
-    table.insert(candidates, dir .. "/libinsight_cpu_backend.so")
-  end
-
-  for _, _backend in ipairs(candidates) do
-    local f = io.open(_backend, "r")
-    if f then
-      f:close()
-      local ok_ffi, ffi = pcall(require, "ffi")
-      if ok_ffi and ffi then
-        pcall(
-          ffi.cdef,
-          [[
-          int setenv(const char *name, const char *value, int overwrite);
-          void *dlopen(const char *filename, int flag);
-        ]]
-        )
-        local _dir = _backend:match("(.*/)") or ""
-        local _ld = os.getenv("LD_LIBRARY_PATH") or ""
-        if not _ld:find(_dir, 1, true) then
-          pcall(ffi.C.setenv, "LD_LIBRARY_PATH", _dir .. ":" .. _ld, 1)
-        end
-        ffi.C.dlopen(_backend, 258) -- RTLD_NOW | RTLD_GLOBAL
-        return true
-      end
+    if dir ~= "" then
+      table.insert(dirs, dir)
     end
   end
-  return false
+
+  local ok_ffi, ffi = pcall(require, "ffi")
+  if not ok_ffi or not ffi then
+    return false
+  end
+  pcall(
+    ffi.cdef,
+    [[
+    int setenv(const char *name, const char *value, int overwrite);
+    void *dlopen(const char *filename, int flag);
+  ]]
+  )
+
+  local found = false
+  local seen = {}
+  for _, dir in ipairs(dirs) do
+    -- Scan for all libinsight_*_backend.so files
+    local cmd = 'ls "' .. dir .. '"/libinsight_*_backend.so 2>/dev/null'
+    local pipe = io.popen(cmd)
+    if pipe then
+      for line in pipe:lines() do
+        if not seen[line] then
+          seen[line] = true
+          local f = io.open(line, "r")
+          if f then
+            f:close()
+            local _d = line:match("(.*/)") or ""
+            local _ld2 = os.getenv("LD_LIBRARY_PATH") or ""
+            if not _ld2:find(_d, 1, true) then
+              pcall(ffi.C.setenv, "LD_LIBRARY_PATH", _d .. ":" .. _ld2, 1)
+            end
+            ffi.C.dlopen(line, 258) -- RTLD_NOW | RTLD_GLOBAL
+            found = true
+          end
+        end
+      end
+      pipe:close()
+    end
+  end
+  return found
 end
 
-_find_and_load_backend()
+_find_and_load_backends()
 
 local ok, native = pcall(require, "_insight")
 if not ok then

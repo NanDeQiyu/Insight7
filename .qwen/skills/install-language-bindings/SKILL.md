@@ -60,11 +60,28 @@ from ._insight import *
 ```
 
 **Lua** (`bindings/lua/insight/init.lua`):
+Search for backend .so in multiple locations (dev layout, luarocks layout, LD_LIBRARY_PATH):
 ```lua
-local ffi = require("ffi")
-ffi.cdef[[int setenv(const char*, const char*, int); void *dlopen(const char*, int);]]
-ffi.C.setenv("LD_LIBRARY_PATH", _parent_dir .. ":" .. _ld, 1)
-ffi.C.dlopen(_backend, 258) -- RTLD_NOW | RTLD_GLOBAL
+local function _find_and_load_backend()
+  local candidates = {}
+  -- 1. Parent of this script's directory (dev/source layout)
+  local _this_dir = debug.getinfo(1, "S").source:match("@?(.*/)")
+  if _this_dir then
+    local _parent = _this_dir:match("(.*/)[^/]+/$") or _this_dir
+    table.insert(candidates, _parent .. "libinsight_cpu_backend.so")
+  end
+  -- 2. Same directory as _insight.so (luarocks lib layout)
+  for path in package.cpath:gmatch("[^;]+") do
+    local dir = path:gsub("%?.*$", "")
+    table.insert(candidates, dir .. "libinsight_cpu_backend.so")
+  end
+  -- 3. LD_LIBRARY_PATH directories
+  local _ld = os.getenv("LD_LIBRARY_PATH") or ""
+  for dir in _ld:gmatch("[^:]+") do
+    table.insert(candidates, dir .. "/libinsight_cpu_backend.so")
+  end
+  -- Try each candidate with ffi.C.dlopen(RTLD_GLOBAL)
+end
 ```
 
 **Julia** (`bindings/julia/Insight.jl`):
@@ -88,10 +105,62 @@ Install: `pip install -e .`
 
 ### 4. Lua: rockspec
 
-Create `bindings/lua/insight-1.0-1.rockspec` with cmake build type.
-Enable ALL features (CUDA, OpenBLAS, FFTW, Matplot) — cmake auto-disables
-unavailable ones. Don't use `$(LUA_LIBDIR)` — not set on all systems.
-Install: `luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr CMAKE_BUILD_DIR=build --local`
+Create `bindings/lua/insight-1.0-1.rockspec` with **command** build type (NOT cmake type).
+
+**Why not cmake type**: luarocks' cmake build type calls `cmake --install` which fails
+because codec dependencies (ogg/flac/vorbis) don't have install rules. The `command`
+type gives full control over build and install steps.
+
+**Why enable all features**: Set `INSIGHT_WITH_CUDA=ON`, `INSIGHT_USE_OPENBLAS=ON`, etc.
+cmake auto-disables unavailable features. One rockspec works everywhere.
+
+**Don't use `$(LUA_LIBDIR)`** — not set on all systems (e.g., system Lua 5.3).
+
+```lua
+build = {
+    type = "command",
+    build_command = [[
+        cmake -S . -B build.luarocks \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_BUILD_TESTS=OFF \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=ON \
+            -DINSIGHT_BUILD_PYTHON_BINDING=OFF \
+            -DINSIGHT_BUILD_JULIA_BINDING=OFF \
+            -DINSIGHT_BUILD_LUA_BINDING=ON \
+            -DINSIGHT_WITH_CUDA=ON \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_USE_MATPLOT=ON \
+            -DLUA_INCLUDE_DIR="$(LUA_INCDIR)" \
+            && cmake --build build.luarocks -j 24
+    ]],
+    install_command = [[
+        mkdir -p "$(LIBDIR)" "$(LUADIR)/insight" && \
+        cp build.luarocks/bindings/lua/_insight.so "$(LIBDIR)/" && \
+        cp build.luarocks/backends/cpu/libinsight_cpu_backend.so "$(LIBDIR)/" && \
+        cp bindings/lua/insight/init.lua "$(LUADIR)/insight/" && \
+        cp bindings/lua/insight/*.lua "$(LUADIR)/insight/" 2>/dev/null; true
+    ]],
+}
+```
+
+Install commands:
+```bash
+# With sudo
+sudo luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr CMAKE_BUILD_DIR=build.luarocks
+
+# Without sudo
+luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr CMAKE_BUILD_DIR=build.luarocks --local
+
+# Non-standard OpenBLAS path
+OPENBLAS_HOME=/path/to/OpenBLAS luarocks make ... --local
+
+# Faster build
+CMAKE_BUILD_PARALLEL_LEVEL=24 luarocks make ... --local
+```
+
+After install, `require("insight")` works from any directory (no LUA_CPATH/LD_LIBRARY_PATH).
 
 ### 5. Julia: Project.toml + src/ structure
 
