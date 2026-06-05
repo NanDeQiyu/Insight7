@@ -467,20 +467,51 @@ int64_t Array::offset() const { return layout_.offset; }
 Array Array::at(const std::vector<int64_t> &indices) const {
   INS_CHECK(defined(), "Array is not initialized");
   int ndim = shape_.ndim();
-  INS_CHECK(indices.size() == static_cast<size_t>(ndim),
-            "at(): index count mismatch");
+  INS_CHECK(indices.size() <= static_cast<size_t>(ndim),
+            "at(): too many indices (got ", indices.size(), ", array has ",
+            ndim, " dimensions)");
 
-  int64_t elem_offset = layout_.offset;
-  for (int i = 0; i < ndim; ++i) {
-    int64_t idx = indices[i];
-    int64_t dim_size = shape_.dim(i);
-    if (idx < 0)
-      idx += dim_size;
-    INS_CHECK(idx >= 0 && idx < dim_size, "at(): index out of range");
-    elem_offset += idx * strides_[i];
+  // Full indexing: return scalar view (original behavior)
+  if (static_cast<int>(indices.size()) == ndim) {
+    int64_t elem_offset = layout_.offset;
+    for (int i = 0; i < ndim; ++i) {
+      int64_t idx = indices[i];
+      int64_t dim_size = shape_.dim(i);
+      if (idx < 0)
+        idx += dim_size;
+      INS_CHECK(idx >= 0 && idx < dim_size, "at(): index out of range");
+      elem_offset += idx * strides_[i];
+    }
+    return Array(*this, Shape({}), Strides(), elem_offset);
   }
 
-  return Array(*this, Shape({}), Strides(), elem_offset);
+  // Partial indexing (NumPy-style): indexed dims become scalars,
+  // remaining dims are kept as full slices.
+  // e.g. a[1] on (3,4) → shape (4,), a[1] on (2,3,4) → shape (3,4)
+  std::vector<Slice> slices;
+  int64_t new_offset = layout_.offset;
+  for (int i = 0; i < ndim; ++i) {
+    if (i < static_cast<int>(indices.size())) {
+      int64_t idx = indices[i];
+      int64_t dim_size = shape_.dim(i);
+      if (idx < 0)
+        idx += dim_size;
+      INS_CHECK(idx >= 0 && idx < dim_size, "at(): index out of range");
+      new_offset += idx * strides_[i];
+    } else {
+      slices.push_back(Slice::all());
+    }
+  }
+
+  // Build result shape from remaining (non-indexed) dimensions
+  std::vector<int64_t> new_dims;
+  std::vector<int64_t> new_strides_vec;
+  for (int i = static_cast<int>(indices.size()); i < ndim; ++i) {
+    new_dims.push_back(shape_.dim(i));
+    new_strides_vec.push_back(strides_[i]);
+  }
+
+  return Array(*this, Shape(new_dims), Strides(new_strides_vec), new_offset);
 }
 
 // ========== Slicing (Views) ==========
@@ -534,6 +565,8 @@ Array Array::slice(const std::vector<Slice> &slices) const {
   Shape new_shape(new_dims);
   return Array(*this, new_shape, new_strides, new_offset);
 }
+
+Array Array::operator[](int64_t index) const { return at({index}); }
 
 Array Array::operator[](const Slice &slice) const {
   return this->slice(0, slice.start.value_or(0),

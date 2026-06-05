@@ -485,14 +485,57 @@ PYBIND11_MODULE(_insight, m) {
            py::arg("target"), py::arg("dtype"))
       .def("copy", &Array::copy)
       // --- slicing ---
+      .def("__getitem__", [](const Array &a, int64_t idx) { return a[idx]; })
+      .def("__getitem__",
+           [](const Array &a, py::tuple tup) {
+             // Build a comma-separated spec string from the tuple.
+             // Each element can be int or slice. Reuses string-based indexing.
+             std::string spec;
+             for (size_t i = 0; i < tup.size(); ++i) {
+               if (i > 0)
+                 spec += ',';
+               py::handle item = tup[i];
+               if (py::isinstance<py::slice>(item)) {
+                 // Extract start/stop/step from Python slice (preserves None)
+                 py::object s_start = item.attr("start");
+                 py::object s_stop = item.attr("stop");
+                 py::object s_step = item.attr("step");
+                 auto to_str = [](py::object o) -> std::string {
+                   if (o.is_none())
+                     return "";
+                   return std::to_string(o.cast<int64_t>());
+                 };
+                 spec += to_str(s_start);
+                 spec += ':';
+                 spec += to_str(s_stop);
+                 if (!s_step.is_none()) {
+                   spec += ':';
+                   spec += to_str(s_step);
+                 }
+               } else {
+                 spec += std::to_string(item.cast<int64_t>());
+               }
+             }
+             return a[spec];
+           })
       .def("__getitem__",
            [](const Array &a, const std::string &spec) { return a[spec]; })
       .def("__getitem__", [](const Array &a, const Slice &s) { return a[s]; })
       .def("__getitem__",
            [](const Array &a, py::slice pyslice) {
-             py::ssize_t start, stop, step, slicelength;
-             pyslice.compute(a.numel(), &start, &stop, &step, &slicelength);
-             return a[Slice((int64_t)start, (int64_t)stop, (int64_t)step)];
+             // Single-dim Python slice → slice dimension 0
+             py::object s_start = pyslice.attr("start");
+             py::object s_stop = pyslice.attr("stop");
+             py::object s_step = pyslice.attr("step");
+             std::optional<int64_t> start =
+                 s_start.is_none()
+                     ? std::nullopt
+                     : std::make_optional(s_start.cast<int64_t>());
+             std::optional<int64_t> stop =
+                 s_stop.is_none() ? std::nullopt
+                                  : std::make_optional(s_stop.cast<int64_t>());
+             int64_t step = s_step.is_none() ? 1 : s_step.cast<int64_t>();
+             return a[Slice(start, stop, step)];
            })
       .def("at",
            [](const Array &a, std::vector<int64_t> idx) { return a.at(idx); })

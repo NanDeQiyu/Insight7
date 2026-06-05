@@ -180,6 +180,7 @@ public:
   Array slice(const std::vector<Slice> &slices) const;
 
   // Python-style syntactic sugar
+  Array operator[](int64_t index) const;
   Array operator[](const std::string &spec) const;
   Array operator[](const Slice &slice) const;
 

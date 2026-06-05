@@ -70,6 +70,36 @@ int32_t insight_jl_has_device(int32_t device_type) {
              : 0;
 }
 
+// Get current default device type: 0=CPU, 1=GPU
+int32_t insight_jl_get_device_type() {
+  Place p = ins::get_device();
+  return p.is_gpu() ? 1 : 0;
+}
+
+// Get current default device ID
+int32_t insight_jl_get_device_id() {
+  Place p = ins::get_device();
+  return static_cast<int32_t>(p.device_id());
+}
+
+// Set current default device
+void insight_jl_set_device(int32_t device_type, int32_t device_id) {
+  Place p = device_type == 1 ? GPUPlace(device_id) : CPUPlace();
+  ins::set_device(p);
+}
+
+// Partial indexing: at(arr, indices, n_indices) → new Array* (NumPy-style)
+// When n_indices < ndim, remaining dims are kept as full slices.
+Array *insight_jl_at_index(const Array *arr, const int64_t *indices,
+                           int32_t n_indices) {
+  try {
+    std::vector<int64_t> idx(indices, indices + n_indices);
+    return new Array(arr->at(idx));
+  } catch (...) {
+    return nullptr;
+  }
+}
+
 // ============================================================================
 // Device information
 // ============================================================================
