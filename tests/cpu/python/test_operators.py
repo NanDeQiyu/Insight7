@@ -25,6 +25,7 @@ except ImportError:
 # Helpers
 # ============================================================================
 
+
 def _place_ids():
     """Return available places for parametrize."""
     places = [("CPU", ins.CPUPlace())]
@@ -44,6 +45,7 @@ def _np_to_ins(arr, place=None):
 # ============================================================================
 # Arithmetic Operators: +, -, *, /, //, %, **, @
 # ============================================================================
+
 
 class TestArithmetic:
     """Test all arithmetic operators with Array and scalar operands."""
@@ -142,19 +144,19 @@ class TestArithmetic:
         b_np = np.array([3, 2, 1], dtype=np.float64)
         a = _np_to_ins(a_np, place)
         b = _np_to_ins(b_np, place)
-        np.testing.assert_allclose((a ** b).numpy(), a_np ** b_np, rtol=1e-10)
+        np.testing.assert_allclose((a**b).numpy(), a_np**b_np, rtol=1e-10)
 
     @pytest.mark.parametrize("place_name,place", _place_ids())
     def test_pow_scalar(self, place_name, place):
         a_np = np.array([2, 3, 4], dtype=np.float64)
         a = _np_to_ins(a_np, place)
-        np.testing.assert_allclose((a ** 2).numpy(), a_np ** 2, rtol=1e-10)
+        np.testing.assert_allclose((a**2).numpy(), a_np**2, rtol=1e-10)
 
     @pytest.mark.parametrize("place_name,place", _place_ids())
     def test_rpow_scalar(self, place_name, place):
         a_np = np.array([1, 2, 3], dtype=np.float64)
         a = _np_to_ins(a_np, place)
-        np.testing.assert_allclose((2.0 ** a).numpy(), 2.0 ** a_np, rtol=1e-10)
+        np.testing.assert_allclose((2.0**a).numpy(), 2.0**a_np, rtol=1e-10)
 
     @pytest.mark.parametrize("place_name,place", _place_ids())
     def test_matmul_array_array(self, place_name, place):
@@ -176,6 +178,7 @@ class TestArithmetic:
 # ============================================================================
 # Unary Operators: -, +, abs, ~
 # ============================================================================
+
 
 class TestUnary:
     @pytest.mark.parametrize("place_name,place", _place_ids())
@@ -206,6 +209,7 @@ class TestUnary:
 # ============================================================================
 # Comparison Operators: ==, !=, <, <=, >, >=
 # ============================================================================
+
 
 class TestComparison:
     @pytest.mark.parametrize("place_name,place", _place_ids())
@@ -248,6 +252,7 @@ class TestComparison:
 # ============================================================================
 # Bitwise Operators: &, |, ^, <<, >>
 # ============================================================================
+
 
 class TestBitwise:
     @pytest.mark.parametrize("place_name,place", _place_ids())
@@ -303,6 +308,7 @@ class TestBitwise:
 # Scalar Conversion: len, int, float, bool
 # ============================================================================
 
+
 class TestScalarConversion:
     def test_len_2d(self):
         a = ins.zeros([3, 4, 5], ins.float32)
@@ -356,11 +362,12 @@ class TestScalarConversion:
 # Broadcasting
 # ============================================================================
 
+
 class TestBroadcasting:
     @pytest.mark.parametrize("place_name,place", _place_ids())
     def test_add_broadcast(self, place_name, place):
         a_np = np.array([[1, 2, 3]], dtype=np.float64)  # (1, 3)
-        b_np = np.array([[1], [2]], dtype=np.float64)    # (2, 1)
+        b_np = np.array([[1], [2]], dtype=np.float64)  # (2, 1)
         a = _np_to_ins(a_np, place)
         b = _np_to_ins(b_np, place)
         np.testing.assert_allclose((a + b).numpy(), a_np + b_np, rtol=1e-10)
@@ -377,6 +384,7 @@ class TestBroadcasting:
 # ============================================================================
 # Error Cases
 # ============================================================================
+
 
 class TestErrorCases:
     def test_matmul_string_raises(self):
@@ -402,13 +410,17 @@ class TestErrorCases:
 # DType Coverage: f32, f64, i32, i64
 # ============================================================================
 
+
 class TestDtypeCoverage:
-    @pytest.mark.parametrize("dtype,np_dtype", [
-        (ins.float32, np.float32),
-        (ins.float64, np.float64),
-        (ins.int32, np.int32),
-        (ins.int64, np.int64),
-    ])
+    @pytest.mark.parametrize(
+        "dtype,np_dtype",
+        [
+            (ins.float32, np.float32),
+            (ins.float64, np.float64),
+            (ins.int32, np.int32),
+            (ins.int64, np.int64),
+        ],
+    )
     def test_add_dtypes(self, dtype, np_dtype):
         a = ins.from_numpy(np.array([1, 2, 3], dtype=np_dtype))
         b = ins.from_numpy(np.array([4, 5, 6], dtype=np_dtype))
