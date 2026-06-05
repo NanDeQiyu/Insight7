@@ -41,15 +41,7 @@ insight/
 │   └── internal/       # Internal utilities
 ├── backends/
 │   ├── cpu/kernels/    # CPU kernels (OpenMP + FFTW + OpenBLAS)
-│   │   ├── cast/       ├── elementwise/   ├── fft/
-│   │   ├── creation/   ├── indexing/      ├── linalg/
-│   │   ├── manipulation/ ├── random/     ├── reduction/
-│   │   ├── unary/      └── signal/       (14 subdirectories)
 │   └── cuda/kernels/   # CUDA kernels (cuBLAS + cuFFT + Thrust)
-│       ├── cast/       ├── elementwise/   ├── fft/
-│       ├── creation/   ├── indexing/      ├── linalg/
-│       ├── manipulation/ ├── random/     ├── reduction/
-│       ├── unary/      └── signal/       (14 subdirectories)
 ├── bindings/
 │   ├── python/insight/ # pybind11 bindings (per-module wrappers)
 │   ├── lua/insight/    # sol2 bindings (dual calling convention)
@@ -57,7 +49,7 @@ insight/
 ├── tests/
 │   ├── cpu/            # CPU tests (630+ tests, 27 suites)
 │   ├── cuda/           # CUDA tests (510+ tests, 23 suites)
-│   └── python_align/   # NumPy precision alignment tests (194 CPU + 190 CUDA)
+│   └── python_align/   # NumPy precision alignment tests
 └── demos/              # Example programs (C++, Python, Lua, Julia)
 ```
 
@@ -66,105 +58,25 @@ insight/
 ### Build from Source
 
 ```bash
-git clone https://github.com/PlumBlossomMaid/insight.git
-cd insight
+git clone https://github.com/PlumBlossomMaid/Insight7.git
+cd Insight7
 mkdir build && cd build
-cmake .. -DINSIGHT_WITH_CUDA=ON   # enable CUDA backend
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DINSIGHT_WITH_CUDA=ON \
+    -DINSIGHT_USE_FFTW3=ON \
+    -DINSIGHT_USE_OPENBLAS=ON
 cmake --build . -j$(nproc)
 ```
 
-### C++ Example
+### Install Language Bindings
 
-```cpp
-#include "insight/insight.h"
-using namespace insight;
-
-int main() {
-    // Create arrays on GPU
-    Array a = ones({1000, 1000}, F32, GPUPlace(0));
-    Array b = randn({1000, 1000}, F32, GPUPlace(0));
-
-    // Matrix multiplication (automatically picks GPU kernel)
-    Array c = matmul(a, b);
-
-    // Move to CPU and access data
-    Array cpu_c = c.to(CPUPlace());
-    float value = cpu_c.at({0, 0}).item<float>();
-}
-```
-
-### Python Example
-
-```python
-import insight as ins
-
-a = ins.zeros([2, 3], ins.float32)
-b = ins.ones([2, 3], ins.float32)
-c = a + b
-s = ins.sum(c, axis=0)
-
-# NumPy-style indexing
-row = a[1]          # partial indexing → shape (3,)
-val = a[1, 2]       # scalar extraction
-sub = a[1:, ::2]    # mixed slice indexing
-
-# Signal processing
-w = ins.signal.hann(256)
-f, Pxx = ins.signal.welch(x, fs=1000)
-```
-
-### Lua Example
-
-```lua
-local ins = require("insight")
--- Backend auto-detected, no manual init needed
-
-local a = ins.zeros({2, 3}, ins.float32)
-local b = ins.ones({2, 3}, ins.float32)
-local c = a + b
-local s = ins.sum(c)
-
--- NumPy-style indexing (1-based for Lua)
-local row = a[1]        -- partial indexing → shape (3,)
-local val = a[1][2]     -- scalar extraction
-
--- Dual calling convention
-local w = ins.signal.hann(256)
-local w2 = ins.signal.hann{n=256}
-
--- Device management
-print(ins.get_device())  -- cuda:0 or cpu:0
-```
-
-### Julia Example
-
-```julia
-push!(LOAD_PATH, "/path/to/bindings/julia")
-using Insight
-
-a = Insight.zeros(Int64[2, 3], Insight.float32)
-b = Insight.ones(Int64[2, 3], Insight.float32)
-c = a + b
-s = Insight.sum(c)
-
-# NumPy-style indexing (1-based for Julia)
-row = a[1]          # partial indexing → shape (3,)
-val = a[1, 2]       # scalar extraction
-
-# Device management
-dt, id = Insight.get_device()  # (0, 0) for CPU, (1, 0) for GPU
-```
-
-## Install Language Bindings
-
-### Python
-
+**Python** (requires CMake build first):
 ```bash
-pip install -e .   # editable install from project root
+pip install .
 ```
 
-### Lua (via luarocks)
-
+**Lua** (via luarocks, requires CMake build first):
 ```bash
 # Lua 5.3
 luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr --local
@@ -173,12 +85,118 @@ luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr --local
 luarocks make bindings/lua/insight-1.0-1.rockspec --local
 ```
 
-### Julia
-
+**Julia**:
 ```julia
 push!(LOAD_PATH, "/path/to/Insight7/bindings/julia")
 using Insight
 ```
+
+## Examples
+
+### C++
+
+```cpp
+#include "insight/insight.h"
+using namespace insight;
+
+int main() {
+    // Create arrays (auto-selects GPU when available)
+    Array a = ones({1000, 1000}, F32);
+    Array b = randn({1000, 1000}, F32);
+
+    // Matrix multiplication
+    Array c = matmul(a, b);
+
+    // NumPy-style partial indexing
+    Array row = c.at({0});     // shape (1000,)
+    Array val = c.at({0, 0});  // scalar
+
+    // Signal processing
+    Array w = signal::hann(256);
+}
+```
+
+### Python
+
+```python
+import insight as ins
+
+# Auto-selects GPU when available (PaddlePaddle behavior)
+print(ins.get_device())  # GPUPlace(0)
+
+a = ins.rand([1000, 1000])
+b = ins.randn([1000, 1000])
+
+# Operators: +, -, *, /, //, %, **, @
+c = a @ b                # matrix multiplication
+d = a ** 2               # elementwise power
+e = a // 3.0             # floor division
+
+# NumPy-style indexing
+row = a[1]               # partial indexing → shape (1000,)
+val = a[1, 2]            # scalar extraction
+sub = a[1:, ::2]         # mixed slice indexing
+
+# Signal processing
+w = ins.signal.hann(256)
+f, Pxx = ins.signal.welch(x, fs=1000)
+```
+
+### Lua
+
+```lua
+local ins = require("insight")
+-- Backend auto-detected, GPU selected when available
+
+print(ins.get_device())       -- "cuda:0" or "cpu:0"
+print(ins.gpu_version())      -- 11080 (CUDA 11.8)
+
+local a = ins.rand({1000, 1000})
+local b = ins.randn({1000, 1000})
+local c = ins.matmul(a, b)
+
+-- 1-based indexing (Lua convention)
+local row = a[1]              -- partial indexing → shape (1000,)
+
+-- Dual calling convention
+local w = ins.signal.hann(256)
+local w2 = ins.signal.hann{n=256}
+```
+
+### Julia
+
+```julia
+using Insight
+
+dt, id = Insight.get_device()  # (1, 0) for GPU
+
+a = Insight.rand(Int64[1000, 1000], Insight.float32)
+b = Insight.randn(Int64[1000, 1000], Insight.float32)
+c = Insight.matmul(a, b)
+
+# 1-based indexing (Julia convention)
+row = a[1]                     # partial indexing → shape (1000,)
+val = a[1, 2]                  # scalar extraction
+```
+
+## GPU Benchmark (A800-SXM4-80GB)
+
+Tested on Baidu AI Studio with 24-core CPU + NVIDIA A800-SXM4-80GB:
+
+| Test | CPU (24-core) | GPU (A800) | Speedup |
+|------|---------------|------------|---------|
+| add (20M elements) | 226ms | 601μs | **376x** |
+| mul (20M elements) | 229ms | 609μs | **376x** |
+| sin (20M elements) | 278ms | 771μs | **361x** |
+| sum (20M elements) | 26ms | 8.8μs | **2,962x** |
+| max (20M elements) | 42ms | 8.4μs | **4,976x** |
+| matmul 256×256 | 19ms | 38μs | **503x** |
+| matmul 1024×1024 | 3.6s | 110μs | **32,348x** |
+| rfft2 512×512 | 4.5ms | 1.2ms | **3.7x** |
+| randn (20M) | 766ms | 82ms | **9.4x** |
+| sort (2M) | 206ms | 187ms | **1.1x** |
+
+> GPU excels at large-scale parallel operations. Small FFTs and SVD have kernel launch overhead that favors CPU. The framework automatically selects the optimal device.
 
 ## Dependencies
 
@@ -233,23 +251,6 @@ using Insight
 | audio | 9 | 9 | |
 | **Total** | **630+** | **510+** | |
 
-### Precision Alignment (vs NumPy)
-
-| Suite | CPU | CUDA |
-|-------|-----|------|
-| cast | 14 | 14 |
-| complex | 8 | 8 |
-| creation | 14 | 14 |
-| elementwise | 24 | 24 |
-| fft | 18 | 18 |
-| linalg | 22 | 22 |
-| manipulation | 18 | 18 |
-| reduction | 22 | 22 |
-| signal | 20 | 16 |
-| unary | 24 | 24 |
-| numerical | 10 | 10 |
-| **Total** | **194** | **190** |
-
 ### Language Binding Tests
 
 | Language | Test Framework | Tests |
@@ -264,12 +265,12 @@ Example programs in `demos/` covering 4 languages and 6 scenarios:
 
 | Demo | C++ | Python | Lua | Julia |
 |------|-----|--------|-----|-------|
-| basic_ops | Yes | Yes | Yes | Yes |
-| fft_demo | Yes | Yes | Yes | Yes |
-| gpu_transfer | Yes | Yes | Yes | Yes |
-| linalg_demo | Yes | Yes | Yes | Yes |
-| radar_task1 | Yes | Yes | Yes | Yes |
-| sndfile_demo | Yes | Yes | Yes | Yes |
+| basic_ops | ✅ | ✅ | ✅ | ✅ |
+| fft_demo | ✅ | ✅ | ✅ | ✅ |
+| gpu_transfer | ✅ | ✅ | ✅ | ✅ |
+| linalg_demo | ✅ | ✅ | ✅ | ✅ |
+| radar_task1 | ✅ | ✅ | ✅ | ✅ |
+| sndfile_demo | ✅ | ✅ | ✅ | ✅ |
 
 ## Disclaimer
 
