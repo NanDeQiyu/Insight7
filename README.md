@@ -103,6 +103,11 @@ b = ins.ones([2, 3], ins.float32)
 c = a + b
 s = ins.sum(c, axis=0)
 
+# NumPy-style indexing
+row = a[1]          # partial indexing → shape (3,)
+val = a[1, 2]       # scalar extraction
+sub = a[1:, ::2]    # mixed slice indexing
+
 # Signal processing
 w = ins.signal.hann(256)
 f, Pxx = ins.signal.welch(x, fs=1000)
@@ -112,14 +117,23 @@ f, Pxx = ins.signal.welch(x, fs=1000)
 
 ```lua
 local ins = require("insight")
-ins.init({"cpu"})
+-- Backend auto-detected, no manual init needed
+
 local a = ins.zeros({2, 3}, ins.float32)
 local b = ins.ones({2, 3}, ins.float32)
 local c = a + b
+local s = ins.sum(c)
+
+-- NumPy-style indexing (1-based for Lua)
+local row = a[1]        -- partial indexing → shape (3,)
+local val = a[1][2]     -- scalar extraction
 
 -- Dual calling convention
 local w = ins.signal.hann(256)
 local w2 = ins.signal.hann{n=256}
+
+-- Device management
+print(ins.get_device())  -- cuda:0 or cpu:0
 ```
 
 ### Julia Example
@@ -128,10 +142,42 @@ local w2 = ins.signal.hann{n=256}
 push!(LOAD_PATH, "/path/to/bindings/julia")
 using Insight
 
-a = Insight.zeros([2, 3], Insight.float32)
-b = Insight.ones([2, 3], Insight.float32)
+a = Insight.zeros(Int64[2, 3], Insight.float32)
+b = Insight.ones(Int64[2, 3], Insight.float32)
 c = a + b
-s = Insight.sum(c, axis=0)
+s = Insight.sum(c)
+
+# NumPy-style indexing (1-based for Julia)
+row = a[1]          # partial indexing → shape (3,)
+val = a[1, 2]       # scalar extraction
+
+# Device management
+dt, id = Insight.get_device()  # (0, 0) for CPU, (1, 0) for GPU
+```
+
+## Install Language Bindings
+
+### Python
+
+```bash
+pip install -e .   # editable install from project root
+```
+
+### Lua (via luarocks)
+
+```bash
+# Lua 5.3
+luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr --local
+
+# LuaJIT
+luarocks make bindings/lua/insight-1.0-1.rockspec --local
+```
+
+### Julia
+
+```julia
+push!(LOAD_PATH, "/path/to/Insight7/bindings/julia")
+using Insight
 ```
 
 ## Dependencies
