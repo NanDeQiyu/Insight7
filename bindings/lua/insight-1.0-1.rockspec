@@ -23,33 +23,30 @@ dependencies = {
 }
 
 build = {
-    type = "cmake",
+    type = "command",
 
-    variables = {
-        CMAKE_BUILD_TYPE = "Release",
-        INSIGHT_BUILD_TESTS = "OFF",
-        INSIGHT_BUILD_DEMOS = "OFF",
-        INSIGHT_BUILD_BINDINGS = "ON",
-        INSIGHT_BUILD_PYTHON_BINDING = "OFF",
-        INSIGHT_BUILD_JULIA_BINDING = "OFF",
-        INSIGHT_BUILD_LUA_BINDING = "ON",
-        INSIGHT_WITH_CUDA = "ON",
-        INSIGHT_USE_FFTW3 = "ON",
-        INSIGHT_USE_OPENBLAS = "ON",
-        INSIGHT_USE_MATPLOT = "ON",
-        LUA_INCLUDE_DIR = "$(LUA_INCDIR)",
-        CMAKE_INSTALL_PREFIX = "$(PREFIX)",
-        LUADIR = "$(LUADIR)",
-        LIBDIR = "$(LIBDIR)",
-    },
+    build_command = [[
+        cmake -S . -B build.luarocks \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_BUILD_TESTS=OFF \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=ON \
+            -DINSIGHT_BUILD_PYTHON_BINDING=OFF \
+            -DINSIGHT_BUILD_JULIA_BINDING=OFF \
+            -DINSIGHT_BUILD_LUA_BINDING=ON \
+            -DINSIGHT_WITH_CUDA=ON \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_USE_MATPLOT=ON \
+            -DLUA_INCLUDE_DIR="$(LUA_INCDIR)" \
+            && cmake --build build.luarocks -j 24
+    ]],
 
-    install = {
-        lua = {
-            ["insight"] = "bindings/lua/insight/init.lua",
-            ["insight.init"] = "bindings/lua/insight/init.lua",
-        },
-        lib = {
-            "_insight",
-        },
-    },
+    install_command = [[
+        mkdir -p "$(LIBDIR)" "$(LUADIR)/insight" && \
+        cp build.luarocks/bindings/lua/_insight.so "$(LIBDIR)/" && \
+        cp bindings/lua/insight/init.lua "$(LUADIR)/insight/" && \
+        cp bindings/lua/insight/*.lua "$(LUADIR)/insight/" 2>/dev/null; \
+        true
+    ]],
 }
