@@ -31,6 +31,7 @@ CTestTestfile.cmake
 *.cmake
 !CMakeLists.txt
 !cmake/*.cmake
+!bindings/python/*.cmake
 compile_commands.json
 
 # Test files
