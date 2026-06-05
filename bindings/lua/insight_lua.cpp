@@ -306,9 +306,8 @@ extern "C" int luaopen__insight(lua_State *L) {
         (k == "gpu" || k == "cuda") ? DeviceKind::GPU : DeviceKind::CPU;
     return device_name(dk, device_id.value_or(0));
   };
-  m["cuda_version"] = []() { return cuda_version(); };
   m["gpu_version"] = []() { return cuda_version(); };
-  --alias m["driver_version"] = []() { return driver_version(); };
+  m["driver_version"] = []() { return driver_version(); };
   m["compute_capability"] = [](sol::optional<int> device_id) {
     return compute_capability(device_id.value_or(0));
   };

@@ -24,8 +24,8 @@ class TestDeviceInfoCPU:
         name = ins.device_name("cpu")
         assert isinstance(name, str)
 
-    def test_cuda_version_returns_int(self):
-        ver = ins.cuda_version()
+    def test_gpu_version_returns_int(self):
+        ver = ins.gpu_version()
         assert isinstance(ver, int)
 
     def test_driver_version_returns_int(self):
@@ -51,8 +51,8 @@ class TestDeviceInfoCPU:
         except RuntimeError:
             pytest.skip("No GPU available for memory query")
 
-    def test_cuda_version_nonneg(self):
-        ver = ins.cuda_version()
+    def test_gpu_version_nonneg(self):
+        ver = ins.gpu_version()
         assert ver >= 0
 
     def test_driver_version_nonneg(self):
