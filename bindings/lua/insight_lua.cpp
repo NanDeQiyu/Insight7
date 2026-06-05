@@ -15,6 +15,14 @@
 #define SOL_NO_EXCEPTIONS 0
 #include <sol/sol.hpp>
 
+#include <cstdlib>
+#include <cstring>
+#include <string>
+
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
+
 #include "insight/c_api/array.h"
 #include "insight/core/array.h"
 #include "insight/core/dtype.h"
@@ -234,6 +242,23 @@ extern "C" int luaopen__insight(lua_State *L) {
 
   // Auto-initialize with smart backend discovery
   if (!ins::is_initialized()) {
+    // Add this .so's directory to LD_LIBRARY_PATH so dlopen finds backends
+#ifndef _WIN32
+    Dl_info dlinfo;
+    if (dladdr((void *)luaopen__insight, &dlinfo) && dlinfo.dli_fname) {
+      std::string path(dlinfo.dli_fname);
+      auto pos = path.find_last_of('/');
+      if (pos != std::string::npos) {
+        std::string dir = path.substr(0, pos + 1);
+        const char *ld = getenv("LD_LIBRARY_PATH");
+        std::string ld_str = ld ? ld : "";
+        if (ld_str.find(dir) == std::string::npos) {
+          std::string new_ld = dir + ":" + ld_str;
+          setenv("LD_LIBRARY_PATH", new_ld.c_str(), 1);
+        }
+      }
+    }
+#endif
     try {
       ins::init();
     } catch (...) {
