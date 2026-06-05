@@ -46,6 +46,13 @@ try:
     import glob as _gl
 
     _pkg_dir = _os.path.dirname(_os.path.abspath(__file__))
+
+    # Ensure package directory is in LD_LIBRARY_PATH so ins::init() can
+    # discover backend .so files regardless of current working directory
+    _ld = _os.environ.get("LD_LIBRARY_PATH", "")
+    if _pkg_dir not in _ld.split(":"):
+        _os.environ["LD_LIBRARY_PATH"] = _pkg_dir + ":" + _ld if _ld else _pkg_dir
+
     _backend_patterns = [
         "libinsight_*_backend.so",  # Linux
         "libinsight_*_backend.dylib",  # macOS
