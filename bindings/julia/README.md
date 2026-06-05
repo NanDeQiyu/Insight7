@@ -134,20 +134,30 @@ julia -e 'push!(LOAD_PATH, "bindings/julia"); using Insight; println("Insight7 l
 push!(LOAD_PATH, "/path/to/Insight7/bindings/julia")
 using Insight
 
+# Backend auto-detected (GPU when available)
+dt, id = Insight.get_device()  # (1, 0) for GPU, (0, 0) for CPU
+
 # --- Array Creation ---
-a = Insight.zeros([2, 3], Insight.float32)
-b = Insight.ones([2, 3], Insight.float32)
+a = Insight.zeros(Int64[2, 3], Insight.float32)
+b = Insight.ones(Int64[2, 3], Insight.float32)
 c = Insight.arange(0.0, 10.0, 1.0, Insight.float64)
-d = Insight.linspace(0.0, 1.0, Int64(100), Insight.float64)
-e = Insight.eye(Int64(5), Int64(5), Insight.float64)
+e = Insight.randn(Int64[3, 3], Insight.float32)
 
 # --- Arithmetic ---
-f = a + b           # elementwise add
+f = a + b               # elementwise add
 g = Insight.mul(f, b)   # elementwise multiply
 h = Insight.matmul(a, Insight.transpose(b))
 
+# --- NumPy-style Indexing (1-based Julia) ---
+row = a[1]              # partial indexing → shape (3,)
+val = a[1, 2]           # scalar extraction
+
+# --- Device Management ---
+Insight.set_device(1, 0)   # switch to GPU
+Insight.set_device(0, 0)   # switch to CPU
+
 # --- Reductions ---
-s = Insight.sum(a, axis=0)
+s = Insight.sum(a)
 m = Insight.mean(a)
 
 # --- Linear Algebra ---
@@ -349,12 +359,14 @@ Insight.update(kf, measurements)  # measurements: [10, 1, 1]
 ### Device Information
 
 ```julia
-Insight.device_name(0)         # "NVIDIA A800-SXM4-80GB"
-Insight.cuda_version()         # 12020
-Insight.driver_version()       # 535161
-Insight.compute_capability(0)  # 80
-Insight.device_memory(0)       # (total=85899345920, free=...)
-Insight.gpu_count()             # 1
+Insight.device_name("gpu", 0)   # "NVIDIA A800-SXM4-80GB"
+Insight.gpu_version()           # 11080
+Insight.driver_version()        # 535161
+Insight.compute_capability(0)   # 80
+Insight.device_memory(0)        # (total=85899345920, free=...)
+Insight.gpu_count()              # 1
+Insight.get_device()             # (1, 0) for GPU
+Insight.set_device(0, 0)         # switch to CPU
 ```
 
 ## Implementation Notes

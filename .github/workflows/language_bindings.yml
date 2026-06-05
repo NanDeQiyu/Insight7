@@ -5,6 +5,8 @@ on:
     branches: [ main, master, develop ]
     paths:
       - 'bindings/**'
+      - '!bindings/**/*.md'
+      - '!bindings/**/*.txt'
       - 'include/**'
       - 'src/**'
       - 'backends/**'
@@ -16,6 +18,8 @@ on:
     branches: [ main, master ]
     paths:
       - 'bindings/**'
+      - '!bindings/**/*.md'
+      - '!bindings/**/*.txt'
       - 'include/**'
       - 'src/**'
       - 'backends/**'
