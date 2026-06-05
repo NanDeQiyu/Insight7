@@ -43,52 +43,75 @@ CMakeLists.txt. Without this, the POST_BUILD copy runs before the backend .so is
 causing `Error copying file` in CI. The binding target links against `insight_core` (static),
 but that doesn't guarantee the backend .so is built first.
 
-### 2. Backend .so Pre-loading
+### 2. Backend .so Pre-loading (ALL backends, not just CPU)
 
 The C++ `ins::init()` calls `dlopen("libinsight_cpu_backend.so")` which searches
 `LD_LIBRARY_PATH`. At runtime, modifying `LD_LIBRARY_PATH` doesn't always work.
-Solution: pre-load the backend .so BEFORE importing the native module.
+Solution: pre-load ALL backend .so files (CPU + GPU: cuda/npu/rocm/...) BEFORE
+importing the native module. This matches C++ `discover_backends()` behavior.
 
 **Python** (`bindings/python/insight/__init__.py`):
 ```python
-import ctypes as _ct, os as _os
+import ctypes as _ct, os as _os, glob as _gl
 _pkg_dir = _os.path.dirname(_os.path.abspath(__file__))
-_backend_so = _os.path.join(_pkg_dir, "libinsight_cpu_backend.so")
-if _os.path.isfile(_backend_so):
-    _ct.CDLL(_backend_so, mode=_ct.RTLD_GLOBAL)
+for _so in _gl.glob(_os.path.join(_pkg_dir, "libinsight_*_backend.so")):
+    try:
+        _ct.CDLL(_so, mode=_ct.RTLD_GLOBAL)
+    except OSError:
+        pass
 from ._insight import *
 ```
 
 **Lua** (`bindings/lua/insight/init.lua`):
-Search for backend .so in multiple locations (dev layout, luarocks layout, LD_LIBRARY_PATH):
+Scan for ALL `libinsight_*_backend.so` in candidate directories:
 ```lua
-local function _find_and_load_backend()
-  local candidates = {}
+local function _find_and_load_backends()
+  local dirs = {}
   -- 1. Parent of this script's directory (dev/source layout)
-  local _this_dir = debug.getinfo(1, "S").source:match("@?(.*/)")
-  if _this_dir then
-    local _parent = _this_dir:match("(.*/)[^/]+/$") or _this_dir
-    table.insert(candidates, _parent .. "libinsight_cpu_backend.so")
-  end
-  -- 2. Same directory as _insight.so (luarocks lib layout)
-  for path in package.cpath:gmatch("[^;]+") do
-    local dir = path:gsub("%?.*$", "")
-    table.insert(candidates, dir .. "libinsight_cpu_backend.so")
-  end
+  -- 2. package.cpath directories (luarocks lib layout)
   -- 3. LD_LIBRARY_PATH directories
-  local _ld = os.getenv("LD_LIBRARY_PATH") or ""
-  for dir in _ld:gmatch("[^:]+") do
-    table.insert(candidates, dir .. "/libinsight_cpu_backend.so")
+  local ok_ffi, ffi = pcall(require, "ffi")
+  if not ok_ffi then return false end
+  pcall(ffi.cdef, [[
+    int setenv(const char *name, const char *value, int overwrite);
+    void *dlopen(const char *filename, int flag);
+  ]])
+  local seen = {}
+  for _, dir in ipairs(dirs) do
+    local pipe = io.popen('ls "' .. dir .. '"/libinsight_*_backend.so 2>/dev/null')
+    if pipe then
+      for line in pipe:lines() do
+        if not seen[line] then
+          seen[line] = true
+          local f = io.open(line, "r")
+          if f then
+            f:close()
+            -- setenv LD_LIBRARY_PATH + dlopen(RTLD_GLOBAL)
+          end
+        end
+      end
+      pipe:close()
+    end
   end
-  -- Try each candidate with ffi.C.dlopen(RTLD_GLOBAL)
 end
 ```
 
 **Julia** (`bindings/julia/Insight.jl`):
 ```julia
 using Libdl
-Libdl.dlopen(_backend, Libdl.RTLD_GLOBAL)
+for _d in (_dir, _parent)
+    if isdir(_d)
+        for _f in readdir(_d; join=true)
+            if occursin("libinsight_", _f) && endswith(_f, "_backend.so")
+                try Libdl.dlopen(_f, Libdl.RTLD_GLOBAL) catch end
+            end
+        end
+    end
+end
 ```
+
+**Why scan ALL backends**: Future hardware support (NPU, ROCm, etc.) — the
+backend .so naming convention `libinsight_<name>_backend.so` enables auto-discovery.
 
 ### 3. Python: pyproject.toml
 
@@ -156,8 +179,11 @@ luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr CMAKE_BUILD_DIR=b
 # Non-standard OpenBLAS path
 OPENBLAS_HOME=/path/to/OpenBLAS luarocks make ... --local
 
-# Faster build
+# Faster build (CMAKE_BUILD_PARALLEL_LEVEL is the cmake-native way)
 CMAKE_BUILD_PARALLEL_LEVEL=24 luarocks make ... --local
+
+# Use specific Lua version
+luarocks --lua-version 5.3 make ... --local
 ```
 
 After install, `require("insight")` works from any directory (no LUA_CPATH/LD_LIBRARY_PATH).

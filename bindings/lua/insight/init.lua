@@ -28,7 +28,6 @@
 -- Try to load the native C++ module (_insight.so)
 -- Pre-load ALL backend .so files (CPU + GPU) from various possible locations
 local function _find_and_load_backends()
-  -- Collect search directories
   local dirs = {}
   -- 1. Parent of this script's directory (dev/source layout)
   local _this_dir = debug.getinfo(1, "S").source:match("@?(.*/)")
@@ -36,14 +35,34 @@ local function _find_and_load_backends()
     local _parent = _this_dir:match("(.*/)[^/]+/$") or _this_dir
     table.insert(dirs, _parent)
   end
-  -- 2. Same directory as _insight.so (luarocks lib layout)
+  -- 2. Same directory as _insight.so (package.cpath)
   for path in package.cpath:gmatch("[^;]+") do
     local dir = path:gsub("%?.*$", "")
     if dir ~= "" then
       table.insert(dirs, dir)
     end
   end
-  -- 3. LD_LIBRARY_PATH directories
+  -- 3. Resolve _insight.so symlink → actual lib directory
+  --    (luarocks puts backends in rocks-X.Y/.../lib/ but only symlinks _insight.so)
+  for path in package.cpath:gmatch("[^;]+") do
+    local candidate = path:gsub("%?", "_insight")
+    local f = io.open(candidate, "r")
+    if f then
+      f:close()
+      local pipe = io.popen('readlink -f "' .. candidate .. '" 2>/dev/null')
+      if pipe then
+        local target = pipe:read("*l")
+        pipe:close()
+        if target and target ~= "" and target ~= candidate then
+          local dir = target:match("(.*/)") or ""
+          if dir ~= "" then
+            table.insert(dirs, dir)
+          end
+        end
+      end
+    end
+  end
+  -- 4. LD_LIBRARY_PATH directories
   local _ld = os.getenv("LD_LIBRARY_PATH") or ""
   for dir in _ld:gmatch("[^:]+") do
     if dir ~= "" then
@@ -66,22 +85,21 @@ local function _find_and_load_backends()
   local found = false
   local seen = {}
   for _, dir in ipairs(dirs) do
-    -- Scan for all libinsight_*_backend.so files
-    local cmd = 'ls "' .. dir .. '"/libinsight_*_backend.so 2>/dev/null'
+    local cmd = 'ls "' .. dir .. '"/libinsight_*_backend.so "' .. dir .. '"/insight_*_backend.dll 2>/dev/null'
     local pipe = io.popen(cmd)
     if pipe then
       for line in pipe:lines() do
         if not seen[line] then
           seen[line] = true
-          local f = io.open(line, "r")
-          if f then
-            f:close()
+          local f2 = io.open(line, "r")
+          if f2 then
+            f2:close()
             local _d = line:match("(.*/)") or ""
             local _ld2 = os.getenv("LD_LIBRARY_PATH") or ""
             if not _ld2:find(_d, 1, true) then
               pcall(ffi.C.setenv, "LD_LIBRARY_PATH", _d .. ":" .. _ld2, 1)
             end
-            ffi.C.dlopen(line, 258) -- RTLD_NOW | RTLD_GLOBAL
+            ffi.C.dlopen(line, 258)
             found = true
           end
         end
