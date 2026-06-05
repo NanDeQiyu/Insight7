@@ -463,3 +463,7 @@ LD_LIBRARY_PATH=build/backends/cpu julia tests/bindings/test_binding.jl
 12. **测试临时目录**：用 `std::filesystem::create_directories` / `remove_all`，不要用 `system("mkdir -p ...")`。目录管理放在 `SetUpTestSuite`/`TearDownTestSuite`（suite 级别），不要放在 `SetUp`/`TearDown`（per-test 级别），避免 CI 文件系统延迟导致竞态。
 13. **`write_bin` 必须显式 `ofs.close()`**：CI 文件系统可能不在 `ofstream` 析构时立即 flush，后续 `read_bin` 会读到空文件。
 14. **CMake `file(GLOB)` 在 configure 时运行**：不能用 `file(GLOB)` 找 build-time 产出的文件（如 backend `.so`）。必须用 `cmake -P` 脚本在 build 时 glob + copy，或用 `$<TARGET_FILE:target>` 生成器表达式。
+
+## 后续优化
+
+1. **FFT plan 缓存**：当前 `fft()` 每次调用都创建新 plan（cuFFT ~5ms 开销），导致 GPU FFT 比 CPU 慢 100x。应缓存相同 size 的 plan 复用。benchmark 显示 FFT 1K/64K/1M 全部 CPU 胜，plan 缓存后 GPU 应有 10-100x 加速。

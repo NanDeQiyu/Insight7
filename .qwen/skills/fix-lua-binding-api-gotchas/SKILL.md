@@ -380,3 +380,44 @@ instead of Lua error.
 
 **Also applies to**: Any C++ function bound via sol2 lambda that can throw
 exceptions crossing the FFI boundary (e.g., `ins.init()`, `ins.set_device()`).
+
+## 10. `a:to(1)` matches DType overload, NOT device transfer
+
+**Problem**: `to()` has overloads for `Place`, `DType`, and `Place+DType`. When
+Lua calls `a:to(1)`, sol2 matches the `DType` overload first (since `1` is a
+number), converting the array to DType 1 (= BOOL) instead of transferring to GPU.
+
+**Fix**: Add an explicit `int` → `Place` overload BEFORE the DType overload:
+
+```cpp
+array_type["to"] = sol::overload(
+    [](const Array &a, const Place &p, sol::this_state ts) -> Array { ... },
+    // ADD THIS: int device_type → Place conversion
+    [](const Array &a, int device_type, sol::this_state ts) -> Array {
+        Place p = device_type == 1 ? GPUPlace(0) : CPUPlace();
+        return a.to(p);
+    },
+    [](const Array &a, DType dt) { return a.to(dt); },  // DType AFTER int
+    ...
+);
+```
+
+**Why**: sol2 overload resolution is first-match. `int` is more specific than
+`DType` (which is also `int32_t`), so it must come first.
+
+## 11. Lua 5.3 strict int/float distinction
+
+**Problem**: Lua 5.3 distinguishes `1e7` (float) from `10000000` (integer).
+sol2 rejects floats for `int64_t` parameters: "not a numeric type that fits
+exactly an integer".
+
+**Fix**: Use integer literals or `math.floor()`:
+```lua
+-- ❌ WRONG in Lua 5.3
+local a = ins.randn({1e7}, ins.float32)  -- float rejected
+-- ✅ CORRECT
+local a = ins.randn({10000000}, ins.float32)  -- integer literal
+-- or
+local N = math.floor(1e7)
+local a = ins.randn({N}, ins.float32)
+```

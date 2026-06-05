@@ -41,15 +41,7 @@ insight/
 │   └── internal/       # 内部工具
 ├── backends/
 │   ├── cpu/kernels/    # CPU kernel（OpenMP + FFTW + OpenBLAS）
-│   │   ├── cast/       ├── elementwise/   ├── fft/
-│   │   ├── creation/   ├── indexing/      ├── linalg/
-│   │   ├── manipulation/ ├── random/     ├── reduction/
-│   │   ├── unary/      └── signal/       （14 个子目录）
 │   └── cuda/kernels/   # CUDA kernel（cuBLAS + cuFFT + Thrust）
-│       ├── cast/       ├── elementwise/   ├── fft/
-│       ├── creation/   ├── indexing/      ├── linalg/
-│       ├── manipulation/ ├── random/     ├── reduction/
-│       ├── unary/      └── signal/       （14 个子目录）
 ├── bindings/
 │   ├── python/insight/ # pybind11 绑定（按模块拆分的 wrapper）
 │   ├── lua/insight/    # sol2 绑定（双调用约定）
@@ -57,7 +49,7 @@ insight/
 ├── tests/
 │   ├── cpu/            # CPU 测试（630+ 测试，27 个套件）
 │   ├── cuda/           # CUDA 测试（510+ 测试，23 个套件）
-│   └── python_align/   # NumPy 精度对齐测试（194 CPU + 190 CUDA）
+│   └── python_align/   # NumPy 精度对齐测试
 └── demos/              # 示例程序（C++, Python, Lua, Julia）
 ```
 
@@ -66,73 +58,145 @@ insight/
 ### 从源码编译
 
 ```bash
-git clone https://github.com/PlumBlossomMaid/insight.git
-cd insight
+git clone https://github.com/PlumBlossomMaid/Insight7.git
+cd Insight7
 mkdir build && cd build
-cmake .. -DINSIGHT_WITH_CUDA=ON   # 启用 CUDA 后端
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DINSIGHT_WITH_CUDA=ON \
+    -DINSIGHT_USE_FFTW3=ON \
+    -DINSIGHT_USE_OPENBLAS=ON
 cmake --build . -j$(nproc)
 ```
 
-### C++ 示例
+### 安装语言绑定
+
+**Python**（需先完成 CMake 构建）：
+```bash
+pip install .
+```
+
+**Lua**（通过 luarocks，需先完成 CMake 构建）：
+```bash
+# Lua 5.3
+luarocks make bindings/lua/insight-1.0-1.rockspec LUA_DIR=/usr --local
+
+# LuaJIT
+luarocks make bindings/lua/insight-1.0-1.rockspec --local
+```
+
+**Julia**：
+```julia
+push!(LOAD_PATH, "/path/to/Insight7/bindings/julia")
+using Insight
+```
+
+## 示例
+
+### C++
 
 ```cpp
 #include "insight/insight.h"
 using namespace insight;
 
 int main() {
-    // 在 GPU 上创建张量
-    Array a = ones({1000, 1000}, F32, GPUPlace(0));
-    Array b = randn({1000, 1000}, F32, GPUPlace(0));
+    // 创建数组（有 GPU 时自动选择 GPU）
+    Array a = ones({1000, 1000}, F32);
+    Array b = randn({1000, 1000}, F32);
 
-    // 矩阵乘法（自动选择 GPU kernel）
+    // 矩阵乘法
     Array c = matmul(a, b);
 
-    // 移到 CPU 并访问数据
-    Array cpu_c = c.to(CPUPlace());
-    float value = cpu_c.at({0, 0}).item<float>();
+    // NumPy 风格部分索引
+    Array row = c.at({0});     // shape (1000,)
+    Array val = c.at({0, 0});  // 标量
+
+    // 信号处理
+    Array w = signal::hann(256);
 }
 ```
 
-### Python 示例
+### Python
 
 ```python
 import insight as ins
 
-a = ins.zeros([2, 3], ins.float32)
-b = ins.ones([2, 3], ins.float32)
-c = a + b
-s = ins.sum(c, axis=0)
+# 有 GPU 时自动选择 GPU（PaddlePaddle 行为）
+print(ins.get_device())  # GPUPlace(0)
+
+a = ins.rand([1000, 1000])
+b = ins.randn([1000, 1000])
+
+# 运算符：+, -, *, /, //, %, **, @
+c = a @ b                # 矩阵乘法
+d = a ** 2               # 逐元素幂
+e = a // 3.0             # 地板除
+
+# NumPy 风格索引
+row = a[1]               # 部分索引 → shape (1000,)
+val = a[1, 2]            # 标量提取
+sub = a[1:, ::2]         # 混合切片
 
 # 信号处理
 w = ins.signal.hann(256)
 f, Pxx = ins.signal.welch(x, fs=1000)
 ```
 
-### Lua 示例
+### Lua
 
 ```lua
 local ins = require("insight")
-ins.init({"cpu"})
-local a = ins.zeros({2, 3}, ins.float32)
-local b = ins.ones({2, 3}, ins.float32)
-local c = a + b
+-- 后端自动检测，有 GPU 时自动选择
+
+print(ins.get_device())       -- "cuda:0" 或 "cpu:0"
+print(ins.gpu_version())      -- 11080 (CUDA 11.8)
+
+local a = ins.rand({1000, 1000})
+local b = ins.randn({1000, 1000})
+local c = ins.matmul(a, b)
+
+-- 1-based 索引（Lua 约定）
+local row = a[1]              -- 部分索引 → shape (1000,)
 
 -- 双调用约定
 local w = ins.signal.hann(256)
 local w2 = ins.signal.hann{n=256}
 ```
 
-### Julia 示例
+### Julia
 
 ```julia
-push!(LOAD_PATH, "/path/to/bindings/julia")
 using Insight
 
-a = Insight.zeros([2, 3], Insight.float32)
-b = Insight.ones([2, 3], Insight.float32)
-c = a + b
-s = Insight.sum(c, axis=0)
+dt, id = Insight.get_device()  # (1, 0) 表示 GPU
+
+a = Insight.rand(Int64[1000, 1000], Insight.float32)
+b = Insight.randn(Int64[1000, 1000], Insight.float32)
+c = Insight.matmul(a, b)
+
+# 1-based 索引（Julia 约定）
+row = a[1]                     -- 部分索引 → shape (1000,)
+val = a[1, 2]                  -- 标量提取
 ```
+
+## GPU 性能基准（A800-SXM4-80GB）
+
+在百度 AI Studio 上测试，24 核 CPU + NVIDIA A800-SXM4-80GB：
+
+| 测试 | CPU (24核) | GPU (A800) | 加速比 |
+|------|-----------|------------|--------|
+| add (2000万元素) | 226ms | 601μs | **376x** |
+| mul (2000万元素) | 229ms | 609μs | **376x** |
+| sin (2000万元素) | 278ms | 771μs | **361x** |
+| sum (2000万元素) | 26ms | 8.8μs | **2,962x** |
+| max (2000万元素) | 42ms | 8.4μs | **4,976x** |
+| matmul 256×256 | 19ms | 38μs | **503x** |
+| matmul 1024×1024 | 3.6s | 110μs | **32,348x** |
+| rfft2 512×512 | 4.5ms | 1.2ms | **3.7x** |
+| randn (2000万) | 766ms | 82ms | **9.4x** |
+| sort (200万) | 206ms | 187ms | **1.1x** |
+
+> GPU 擅长大规模并行运算。小规模 FFT 和 SVD 有 kernel launch 开销，CPU 更优。框架自动选择最优设备。
 
 ## 依赖
 
@@ -151,59 +215,6 @@ s = Insight.sum(c, axis=0)
 
 **1140+ 测试全部通过** -- CPU（630+, 27 个套件）和 CUDA（510+, 23 个套件），另有 384 个精度对齐测试
 
-| 套件 | CPU | CUDA | 备注 |
-|------|-----|------|------|
-| cast | 9 | 9 | |
-| complex | 22 | 22 | |
-| creation | 27 | 27 | |
-| csv | 1 | 1 | |
-| dtype | 9 | 9 | 共享 |
-| elementwise | 28 | 28 | |
-| fft | 19 | 19 | |
-| indexing | 41 | 33 | |
-| linalg | 43 | 43 | 15 原生 CUDA + 13 C_FALLBACK |
-| manipulation | 42 | 42 | |
-| operator | 50 | 50 | |
-| print | 11 | 11 | |
-| random | 31 | 31 | |
-| reduction | 24 | 24 | |
-| signal (核心) | 10 | 10 | 组合算子 |
-| signal_windows | 30 | 30 | |
-| signal_waveforms | 18 | 18 | |
-| signal_bsplines | 13 | 13 | |
-| signal_filter_design | 22 | 22 | |
-| signal_convolution | 21 | 17 | |
-| signal_filtering | 23 | 15 | |
-| signal_spectral | 11 | -- | |
-| signal_wavelets | 13 | -- | |
-| signal_acoustics | 9 | -- | |
-| signal_radar | 7 | -- | |
-| signal_io | 11 | -- | |
-| signal_peak_finding | 3 | -- | |
-| signal_demod | 1 | -- | |
-| signal_estimation | 1 | -- | |
-| plot | 13 | -- | |
-| unary | 27 | 27 | |
-| audio | 9 | 9 | |
-| **合计** | **630+** | **510+** | |
-
-### 精度对齐（对比 NumPy）
-
-| 套件 | CPU | CUDA |
-|------|-----|------|
-| cast | 14 | 14 |
-| complex | 8 | 8 |
-| creation | 14 | 14 |
-| elementwise | 24 | 24 |
-| fft | 18 | 18 |
-| linalg | 22 | 22 |
-| manipulation | 18 | 18 |
-| reduction | 22 | 22 |
-| signal | 20 | 16 |
-| unary | 24 | 24 |
-| numerical | 10 | 10 |
-| **合计** | **194** | **190** |
-
 ### 语言绑定测试
 
 | 语言 | 测试框架 | 测试数 |
@@ -218,12 +229,12 @@ s = Insight.sum(c, axis=0)
 
 | 示例 | C++ | Python | Lua | Julia |
 |------|-----|--------|-----|-------|
-| basic_ops | 有 | 有 | 有 | 有 |
-| fft_demo | 有 | 有 | 有 | 有 |
-| gpu_transfer | 有 | 有 | 有 | 有 |
-| linalg_demo | 有 | 有 | 有 | 有 |
-| radar_task1 | 有 | 有 | 有 | 有 |
-| sndfile_demo | 有 | 有 | 有 | 有 |
+| basic_ops | ✅ | ✅ | ✅ | ✅ |
+| fft_demo | ✅ | ✅ | ✅ | ✅ |
+| gpu_transfer | ✅ | ✅ | ✅ | ✅ |
+| linalg_demo | ✅ | ✅ | ✅ | ✅ |
+| radar_task1 | ✅ | ✅ | ✅ | ✅ |
+| sndfile_demo | ✅ | ✅ | ✅ | ✅ |
 
 ## 免责声明
 
