@@ -345,7 +345,7 @@ class TestScalarConversion:
 
     def test_bool_false(self):
         a = ins.from_numpy(np.array(0.0, dtype=np.float64))
-        assert bool(b := a) is False
+        assert bool(a) is False
 
     def test_int_from_array_raises(self):
         a = ins.ones([3], ins.float32)
