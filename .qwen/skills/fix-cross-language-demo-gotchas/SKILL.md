@@ -469,3 +469,47 @@ PATH="$HOME/.local/bin:$PATH" pre-commit run --all-files
 OMP_NUM_THREADS=1 ctest -j24  # Much faster for small data
 OMP_NUM_THREADS=1 ./tests/insight_tests_cpu  # 88ms vs seconds
 ```
+
+## GPU Sections: Use has_device() + Silent Skip
+
+All demo GPU sections must use `has_device("gpu")` and include the
+separator/header INSIDE the if block. When no GPU, print NOTHING.
+
+```cpp
+// ✅ C++ — has_device + separator inside
+if (ins::has_device(DeviceKind::GPU)) {
+    separator("GPU Linear Algebra");
+    run_gpu_linalg();
+}
+
+// ❌ WRONG — separator outside, prints even without GPU
+separator("GPU Linear Algebra");
+if (gpu_available()) { run_gpu_linalg(); }
+```
+
+```python
+# ✅ Python
+if ins.has_device("gpu"):
+    separator("GPU Linear Algebra")
+    run_gpu_linalg()
+```
+
+```lua
+-- ✅ Lua
+if ins.has_device("gpu") then
+  separator("GPU Linear Algebra")
+  run_gpu_linalg()
+end
+```
+
+```julia
+# ✅ Julia
+if Insight.has_device(1)
+    separator("GPU Linear Algebra")
+    run_gpu_linalg()
+end
+```
+
+**Why**: `load_backend("cuda")` returns true even without physical GPU
+(just loads the .so). `has_device("gpu")` checks if the GPU device
+interface is actually registered.

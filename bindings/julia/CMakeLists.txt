@@ -17,6 +17,9 @@ target_link_libraries(insight_julia PRIVATE
     insight_core
 )
 
+# Ensure backend .so is built before POST_BUILD copy
+add_dependencies(insight_julia insight_cpu_backend)
+
 # Copy .so to source wrapper directory for Julia Pkg.develop
 add_custom_command(TARGET insight_julia POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

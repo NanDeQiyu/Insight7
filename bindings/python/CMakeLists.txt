@@ -26,6 +26,9 @@ target_link_libraries(insight_python PRIVATE
     insight_core
 )
 
+# Ensure backend .so is built before POST_BUILD copy
+add_dependencies(insight_python insight_cpu_backend)
+
 # Copy the shared library for easy import
 add_custom_command(TARGET insight_python POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different

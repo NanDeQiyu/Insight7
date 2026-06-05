@@ -85,6 +85,9 @@ target_link_libraries(insight_lua PRIVATE
 
 target_compile_features(insight_lua PRIVATE cxx_std_17)
 
+# Ensure backend .so is built before POST_BUILD copy
+add_dependencies(insight_lua insight_cpu_backend)
+
 # Copy .so to source wrapper directory for luarocks/pip install
 add_custom_command(TARGET insight_lua POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
