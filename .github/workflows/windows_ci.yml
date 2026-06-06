@@ -40,13 +40,8 @@ jobs:
         with:
           arch: x64
 
-      - name: Install dependencies via vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e5f275e0a1e7'
-          vcpkgJsonGlob: '**/vcpkg.json'
-
       - name: Install FFTW3 and OpenBLAS via vcpkg
+        shell: bash
         run: |
           vcpkg install fftw3:x64-windows openblas:x64-windows
 
@@ -72,7 +67,7 @@ jobs:
             -DINSIGHT_BUILD_BINDINGS=OFF ^
             -DINSIGHT_USE_SNDFILE=OFF ^
             -DINSIGHT_USE_MATPLOT=OFF ^
-            -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;${{ env.VCPKG_INSTALLED_DIR }}/x64-windows"
+            -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
 
       - name: Build
         run: cmake --build build -j %NUMBER_OF_PROCESSORS%
@@ -104,10 +99,9 @@ jobs:
         run: pip install numpy pytest
 
       - name: Install FFTW3 and OpenBLAS via vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e5f275e0a1e7'
-          vcpkgJsonGlob: '**/vcpkg.json'
+        shell: bash
+        run: |
+          vcpkg install fftw3:x64-windows openblas:x64-windows
 
       - name: Install OpenBLAS with LAPACKE headers
         shell: bash
@@ -133,7 +127,7 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=OFF ^
             -DINSIGHT_USE_SNDFILE=OFF ^
             -DINSIGHT_USE_MATPLOT=ON ^
-            -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;${{ env.VCPKG_INSTALLED_DIR }}/x64-windows"
+            -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
 
       - name: Build
         run: cmake --build build -j %NUMBER_OF_PROCESSORS%
@@ -160,10 +154,9 @@ jobs:
           arch: x64
 
       - name: Install FFTW3 and OpenBLAS via vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e5f275e0a1e7'
-          vcpkgJsonGlob: '**/vcpkg.json'
+        shell: bash
+        run: |
+          vcpkg install fftw3:x64-windows openblas:x64-windows
 
       - name: Install OpenBLAS with LAPACKE headers
         shell: bash
@@ -189,7 +182,7 @@ jobs:
             -DINSIGHT_BUILD_TESTS=OFF ^
             -DINSIGHT_BUILD_BINDINGS=OFF ^
             -DINSIGHT_USE_SNDFILE=OFF ^
-            -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;${{ env.VCPKG_INSTALLED_DIR }}/x64-windows"
+            -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
 
       - name: Build
         run: cmake --build build -j %NUMBER_OF_PROCESSORS%
