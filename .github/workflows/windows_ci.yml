@@ -67,8 +67,10 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:$PATH"
-          build/tests/insight_tests_cpu.exe
+          # Copy dependency DLLs to test directory so backend can find them
+          cp /c/deps/OpenBLAS-0.3.33-x64/bin/*.dll build/tests/
+          cp /c/vcpkg/installed/x64-windows/bin/fftw*.dll build/tests/
+          cd build/tests && ./insight_tests_cpu.exe
 
   python-binding:
     name: Python Binding
@@ -120,8 +122,8 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:$PATH"
           export PYTHONPATH="$GITHUB_WORKSPACE/bindings/python"
+          export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:/c/vcpkg/installed/x64-windows/bin:$PATH"
           python -m pytest tests/cpu/python/ -v --tb=short
 
   lua-binding:
@@ -137,13 +139,15 @@ jobs:
         with:
           arch: x86
 
-      - name: Install Lua 5.1 and busted
+      - name: Install Lua 5.1 and dependencies
         shell: bash
         run: |
-          choco install lua51 -y
+          choco install lua51 luarocks -y
+          # Refresh PATH for luarocks
+          export PATH="/c/ProgramData/chocolatey/bin:/c/Program Files (x86)/Lua/5.1:$PATH"
           luarocks install busted
 
-      - name: Install dependencies
+      - name: Install vcpkg dependencies
         shell: bash
         run: |
           vcpkg install fftw3:x86-windows openblas:x86-windows
@@ -151,6 +155,7 @@ jobs:
       - name: Configure & Build
         shell: bash
         run: |
+          export PATH="/c/ProgramData/chocolatey/bin:/c/Program Files (x86)/Lua/5.1:$PATH"
           cmake -S . -B build_x86 -G Ninja \
             -DCMAKE_C_COMPILER=cl.exe \
             -DCMAKE_CXX_COMPILER=cl.exe \
@@ -172,9 +177,9 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
+          export PATH="/c/ProgramData/chocolatey/bin:/c/Program Files (x86)/Lua/5.1:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/vcpkg/installed/x86-windows/bin:$PATH"
           export LUA_CPATH="$GITHUB_WORKSPACE/build_x86/bindings/lua/?.dll;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
-          export PATH="$GITHUB_WORKSPACE/build_x86/backends/cpu:$PATH"
           busted --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
 
   julia-binding:
@@ -226,6 +231,21 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:$PATH"
-          export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH"
-          julia tests/bindings/test_binding.jl
+          export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:/c/vcpkg/installed/x64-windows/bin:$PATH"
+          total_pass=0; total_fail=0; fail_list=""
+          for f in $GITHUB_WORKSPACE/tests/cpu/julia/test_*.jl; do
+            echo "=== Running $f ==="
+            if julia -e "push!(LOAD_PATH, \"$GITHUB_WORKSPACE/bindings/julia\"); include(\"$f\")"; then
+              total_pass=$((total_pass + 1))
+            else
+              total_fail=$((total_fail + 1))
+              fail_list="$fail_list $f"
+              echo "WARN: $f had errors"
+            fi
+          done
+          echo ""
+          echo "=== Julia test summary: $total_pass passed, $total_fail failed ==="
+          if [ -n "$fail_list" ]; then
+            echo "Failed tests:$fail_list"
+            exit 1
+          fi
