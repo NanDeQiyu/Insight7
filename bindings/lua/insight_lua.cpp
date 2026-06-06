@@ -482,6 +482,10 @@ extern "C" int luaopen__insight(lua_State *L) {
       });
   array_type["copy"] = &Array::copy;
 
+  // In-place mutation
+  array_type["fill_"] = &Array::fill_;
+  array_type["copy_from_"] = &Array::copy_from_;
+
   // String slicing: a[":,1:-1"] (Lua 1-based → auto-convert to 0-based)
   // Integer indexing: a[1] → first element, a[3] → third element
   array_type[sol::meta_function::index] = sol::overload(

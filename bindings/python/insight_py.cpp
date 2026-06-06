@@ -543,6 +543,120 @@ PYBIND11_MODULE(_insight, m) {
            })
       .def("at",
            [](const Array &a, std::vector<int64_t> idx) { return a.at(idx); })
+      // --- __setitem__ (in-place assignment via view) ---
+      .def("__setitem__",
+           [](Array &a, int64_t idx, double val) {
+             Array view = a[idx];
+             view.fill_(val);
+           })
+      .def("__setitem__",
+           [](Array &a, int64_t idx, const Array &src) {
+             Array view = a[idx];
+             view.copy_from_(src);
+           })
+      .def("__setitem__",
+           [](Array &a, const std::string &spec, double val) {
+             Array view = a[spec];
+             view.fill_(val);
+           })
+      .def("__setitem__",
+           [](Array &a, const std::string &spec, const Array &src) {
+             Array view = a[spec];
+             view.copy_from_(src);
+           })
+      .def("__setitem__",
+           [](Array &a, py::tuple tup, double val) {
+             // Build spec string (same logic as __getitem__)
+             std::string spec;
+             for (size_t i = 0; i < tup.size(); ++i) {
+               if (i > 0)
+                 spec += ',';
+               py::handle item = tup[i];
+               if (py::isinstance<py::slice>(item)) {
+                 py::object s_start = item.attr("start");
+                 py::object s_stop = item.attr("stop");
+                 py::object s_step = item.attr("step");
+                 auto to_str = [](py::object o) -> std::string {
+                   if (o.is_none())
+                     return "";
+                   return std::to_string(o.cast<int64_t>());
+                 };
+                 spec += to_str(s_start);
+                 spec += ':';
+                 spec += to_str(s_stop);
+                 if (!s_step.is_none()) {
+                   spec += ':';
+                   spec += to_str(s_step);
+                 }
+               } else {
+                 spec += std::to_string(item.cast<int64_t>());
+               }
+             }
+             Array view = a[spec];
+             view.fill_(val);
+           })
+      .def("__setitem__",
+           [](Array &a, py::tuple tup, const Array &src) {
+             std::string spec;
+             for (size_t i = 0; i < tup.size(); ++i) {
+               if (i > 0)
+                 spec += ',';
+               py::handle item = tup[i];
+               if (py::isinstance<py::slice>(item)) {
+                 py::object s_start = item.attr("start");
+                 py::object s_stop = item.attr("stop");
+                 py::object s_step = item.attr("step");
+                 auto to_str = [](py::object o) -> std::string {
+                   if (o.is_none())
+                     return "";
+                   return std::to_string(o.cast<int64_t>());
+                 };
+                 spec += to_str(s_start);
+                 spec += ':';
+                 spec += to_str(s_stop);
+                 if (!s_step.is_none()) {
+                   spec += ':';
+                   spec += to_str(s_step);
+                 }
+               } else {
+                 spec += std::to_string(item.cast<int64_t>());
+               }
+             }
+             Array view = a[spec];
+             view.copy_from_(src);
+           })
+      .def("__setitem__",
+           [](Array &a, py::slice pyslice, double val) {
+             py::object s_start = pyslice.attr("start");
+             py::object s_stop = pyslice.attr("stop");
+             py::object s_step = pyslice.attr("step");
+             std::optional<int64_t> start =
+                 s_start.is_none()
+                     ? std::nullopt
+                     : std::make_optional(s_start.cast<int64_t>());
+             std::optional<int64_t> stop =
+                 s_stop.is_none() ? std::nullopt
+                                  : std::make_optional(s_stop.cast<int64_t>());
+             int64_t step = s_step.is_none() ? 1 : s_step.cast<int64_t>();
+             Array view = a[Slice(start, stop, step)];
+             view.fill_(val);
+           })
+      .def("__setitem__",
+           [](Array &a, py::slice pyslice, const Array &src) {
+             py::object s_start = pyslice.attr("start");
+             py::object s_stop = pyslice.attr("stop");
+             py::object s_step = pyslice.attr("step");
+             std::optional<int64_t> start =
+                 s_start.is_none()
+                     ? std::nullopt
+                     : std::make_optional(s_start.cast<int64_t>());
+             std::optional<int64_t> stop =
+                 s_stop.is_none() ? std::nullopt
+                                  : std::make_optional(s_stop.cast<int64_t>());
+             int64_t step = s_step.is_none() ? 1 : s_step.cast<int64_t>();
+             Array view = a[Slice(start, stop, step)];
+             view.copy_from_(src);
+           })
       // --- arithmetic operators ---
       .def("__add__", [](const Array &a, const Array &b) { return a + b; })
       .def("__add__", [](const Array &a, double b) { return a + b; })
