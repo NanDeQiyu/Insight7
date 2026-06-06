@@ -44,11 +44,24 @@ jobs:
         run: |
           vcpkg install fftw3:x64-windows
           $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip
+          Write-Host "Downloading OpenBLAS..."
+          try {
+            Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip -UseBasicParsing -ErrorAction Stop
+          } catch {
+            Write-Host "Invoke-WebRequest failed, falling back to curl: $_"
+            & curl.exe -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
+          }
+          $sz = (Get-Item openblas.zip).Length
+          Write-Host "Downloaded file size: $sz bytes"
+          if ($sz -lt 100000) { Write-Error "Download too small, likely failed"; exit 1 }
           New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
           Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
+          Write-Host "Extracted directory listing:"
+          Get-ChildItem C:\deps\OpenBLAS-0.3.33-x64\bin -ErrorAction SilentlyContinue
           if (-not (Test-Path "C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll")) {
-            Write-Error "OpenBLAS extraction failed"; exit 1
+            Write-Error "OpenBLAS extraction failed — libopenblas.dll not found"
+            Get-ChildItem C:\deps -Recurse -Name | Select-Object -First 30
+            exit 1
           }
 
       - name: Configure & Build
@@ -100,7 +113,16 @@ jobs:
           pip install numpy pytest
           vcpkg install fftw3:x64-windows
           $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip
+          Write-Host "Downloading OpenBLAS..."
+          try {
+            Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip -UseBasicParsing -ErrorAction Stop
+          } catch {
+            Write-Host "Invoke-WebRequest failed, falling back to curl: $_"
+            & curl.exe -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
+          }
+          $sz = (Get-Item openblas.zip).Length
+          Write-Host "Downloaded file size: $sz bytes"
+          if ($sz -lt 100000) { Write-Error "Download too small, likely failed"; exit 1 }
           New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
           Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
           if (-not (Test-Path "C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll")) {
@@ -152,11 +174,15 @@ jobs:
         shell: bash
         run: |
           choco install lua51 luarocks -y
-          # Create wrapper script to intercept MSVC link.exe (MSYS2 link shadows it)
+          # Create wrapper to intercept MSVC link.exe (MSYS2 link shadows it)
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
+          echo "Found MSVC link.exe at: $MSVC_LINK"
           echo '#!/bin/bash' > /usr/local/bin/link
           echo "exec \"$MSVC_LINK\" \"\$@\"" >> /usr/local/bin/link
           chmod +x /usr/local/bin/link
+          # Verify wrapper works
+          echo "Testing link wrapper..."
+          link --version 2>&1 || true
           export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$PATH"
           luarocks install busted
 
@@ -168,7 +194,7 @@ jobs:
       - name: Configure & Build
         shell: bash
         run: |
-          export PATH="/c/ProgramData/chocolatey/bin:/c/Program Files (x86)/Lua/5.1:$PATH"
+          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$PATH"
           cmake -S . -B build_x86 -G Ninja \
             -DCMAKE_C_COMPILER=cl.exe \
             -DCMAKE_CXX_COMPILER=cl.exe \
@@ -190,7 +216,7 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          export PATH="/c/ProgramData/chocolatey/bin:/c/Program Files (x86)/Lua/5.1:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/vcpkg/installed/x86-windows/bin:$PATH"
+          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/vcpkg/installed/x86-windows/bin:$PATH"
           export LUA_CPATH="$GITHUB_WORKSPACE/build_x86/bindings/lua/?.dll;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
           busted --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
@@ -218,7 +244,16 @@ jobs:
         run: |
           vcpkg install fftw3:x64-windows
           $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip
+          Write-Host "Downloading OpenBLAS..."
+          try {
+            Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip -UseBasicParsing -ErrorAction Stop
+          } catch {
+            Write-Host "Invoke-WebRequest failed, falling back to curl: $_"
+            & curl.exe -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
+          }
+          $sz = (Get-Item openblas.zip).Length
+          Write-Host "Downloaded file size: $sz bytes"
+          if ($sz -lt 100000) { Write-Error "Download too small, likely failed"; exit 1 }
           New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
           Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
           if (-not (Test-Path "C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll")) {
