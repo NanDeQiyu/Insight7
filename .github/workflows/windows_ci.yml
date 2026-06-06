@@ -56,12 +56,18 @@ jobs:
           if ($sz -lt 100000) { Write-Error "Download too small, likely failed"; exit 1 }
           New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
           Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
-          Write-Host "Extracted directory listing:"
-          Get-ChildItem C:\deps\OpenBLAS-0.3.33-x64\bin -ErrorAction SilentlyContinue
-          if (-not (Test-Path "C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll")) {
-            Write-Error "OpenBLAS extraction failed — libopenblas.dll not found"
-            Get-ChildItem C:\deps -Recurse -Name | Select-Object -First 30
-            exit 1
+          Write-Host "=== Listing C:\deps contents ==="
+          Get-ChildItem C:\deps -Recurse -Name | Select-Object -First 30
+          # Find the actual OpenBLAS root (may be nested)
+          $obDir = Get-ChildItem C:\deps -Recurse -Filter "libopenblas.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $obDir) {
+            Write-Error "libopenblas.dll not found anywhere in C:\deps"; exit 1
+          }
+          $obRoot = Split-Path (Split-Path $obDir.FullName)
+          Write-Host "OpenBLAS root: $obRoot"
+          # Move to expected location if different
+          if ($obRoot -ne "C:\deps\OpenBLAS-0.3.33-x64") {
+            Move-Item $obRoot "C:\deps\OpenBLAS-0.3.33-x64" -Force
           }
 
       - name: Configure & Build
@@ -125,8 +131,14 @@ jobs:
           if ($sz -lt 100000) { Write-Error "Download too small, likely failed"; exit 1 }
           New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
           Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
-          if (-not (Test-Path "C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll")) {
-            Write-Error "OpenBLAS extraction failed"; exit 1
+          $obDir = Get-ChildItem C:\deps -Recurse -Filter "libopenblas.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $obDir) {
+            Get-ChildItem C:\deps -Recurse -Name | Select-Object -First 30
+            Write-Error "libopenblas.dll not found anywhere in C:\deps"; exit 1
+          }
+          $obRoot = Split-Path (Split-Path $obDir.FullName)
+          if ($obRoot -ne "C:\deps\OpenBLAS-0.3.33-x64") {
+            Move-Item $obRoot "C:\deps\OpenBLAS-0.3.33-x64" -Force
           }
 
       - name: Configure & Build
@@ -177,8 +189,8 @@ jobs:
           # Create wrapper to intercept MSVC link.exe (MSYS2 link shadows it)
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
           echo "Found MSVC link.exe at: $MSVC_LINK"
-          echo '#!/bin/bash' > /usr/local/bin/link
-          echo "exec \"$MSVC_LINK\" \"\$@\"" >> /usr/local/bin/link
+          mkdir -p /usr/local/bin
+          printf '#!/bin/bash\nexec "%s" "$@"\n' "$MSVC_LINK" > /usr/local/bin/link
           chmod +x /usr/local/bin/link
           # Verify wrapper works
           echo "Testing link wrapper..."
@@ -256,8 +268,14 @@ jobs:
           if ($sz -lt 100000) { Write-Error "Download too small, likely failed"; exit 1 }
           New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
           Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
-          if (-not (Test-Path "C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll")) {
-            Write-Error "OpenBLAS extraction failed"; exit 1
+          $obDir = Get-ChildItem C:\deps -Recurse -Filter "libopenblas.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $obDir) {
+            Get-ChildItem C:\deps -Recurse -Name | Select-Object -First 30
+            Write-Error "libopenblas.dll not found anywhere in C:\deps"; exit 1
+          }
+          $obRoot = Split-Path (Split-Path $obDir.FullName)
+          if ($obRoot -ne "C:\deps\OpenBLAS-0.3.33-x64") {
+            Move-Item $obRoot "C:\deps\OpenBLAS-0.3.33-x64" -Force
           }
 
       - name: Configure & Build
