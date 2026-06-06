@@ -29,67 +29,93 @@ describe("Plot CPU Tests", function()
   end)
 
   it("plot function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.plot)
   end)
 
   it("scatter function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.scatter)
   end)
 
   it("bar function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.bar)
   end)
 
   it("hist function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.hist)
   end)
 
   it("imshow function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.imshow)
   end)
 
   it("contour function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.contour)
   end)
 
   it("subplot function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.subplot)
   end)
 
   it("title function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.title)
   end)
 
   it("xlabel function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.xlabel)
   end)
 
   it("ylabel function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.ylabel)
   end)
 
   it("legend function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.legend)
   end)
 
   it("savefig function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.save)
   end)
 
   it("clf function exists", function()
-    if not require_plot() then return end
+    if not require_plot() then
+      return
+    end
     assert.is_function(ins.plot.clf)
   end)
 end)
