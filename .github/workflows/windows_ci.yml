@@ -45,8 +45,11 @@ jobs:
           vcpkg install fftw3:x64-windows
           $ProgressPreference = 'SilentlyContinue'
           Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip
-          Expand-Archive -Path openblas.zip -DestinationPath C:\deps\ -Force
-          Test-Path C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll
+          New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
+          if (-not (Test-Path "C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll")) {
+            Write-Error "OpenBLAS extraction failed"; exit 1
+          }
 
       - name: Configure & Build
         shell: bash
@@ -69,7 +72,6 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          # Copy dependency DLLs to test directory so backend can find them
           cp /c/deps/OpenBLAS-0.3.33-x64/bin/*.dll build/tests/
           cp /c/vcpkg/installed/x64-windows/bin/fftw*.dll build/tests/
           cd build/tests && ./insight_tests_cpu.exe
@@ -99,7 +101,11 @@ jobs:
           vcpkg install fftw3:x64-windows
           $ProgressPreference = 'SilentlyContinue'
           Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip
-          Expand-Archive -Path openblas.zip -DestinationPath C:\deps\ -Force
+          New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
+          if (-not (Test-Path "C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll")) {
+            Write-Error "OpenBLAS extraction failed"; exit 1
+          }
 
       - name: Configure & Build
         shell: bash
@@ -146,9 +152,12 @@ jobs:
         shell: bash
         run: |
           choco install lua51 luarocks -y
-          # Add MSVC link.exe to PATH so luarocks finds it instead of MSYS2 link
-          MSVC_BIN="$VCToolsInstallDir/bin/HostX86/x86"
-          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$MSVC_BIN:$PATH"
+          # Create wrapper script to intercept MSVC link.exe (MSYS2 link shadows it)
+          MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
+          echo '#!/bin/bash' > /usr/local/bin/link
+          echo "exec \"$MSVC_LINK\" \"\$@\"" >> /usr/local/bin/link
+          chmod +x /usr/local/bin/link
+          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$PATH"
           luarocks install busted
 
       - name: Install vcpkg dependencies
@@ -210,7 +219,11 @@ jobs:
           vcpkg install fftw3:x64-windows
           $ProgressPreference = 'SilentlyContinue'
           Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip
-          Expand-Archive -Path openblas.zip -DestinationPath C:\deps\ -Force
+          New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
+          if (-not (Test-Path "C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll")) {
+            Write-Error "OpenBLAS extraction failed"; exit 1
+          }
 
       - name: Configure & Build
         shell: bash
