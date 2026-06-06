@@ -48,34 +48,36 @@ jobs:
       - name: Install OpenBLAS with LAPACKE headers
         shell: bash
         run: |
-          # Download OpenBLAS 0.3.33 with LAPACKE headers (vcpkg version lacks them)
           curl -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
           unzip -q openblas.zip -d C:/deps/
 
       - name: Configure CMake
+        shell: bash
         run: |
-          mkdir build
-          cmake -S . -B build -G Ninja ^
-            -DCMAKE_C_COMPILER=cl.exe ^
-            -DCMAKE_CXX_COMPILER=cl.exe ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DINSIGHT_WITH_CUDA=OFF ^
-            -DINSIGHT_USE_FFTW3=ON ^
-            -DINSIGHT_USE_OPENBLAS=ON ^
-            -DINSIGHT_BUILD_TESTS=ON ^
-            -DINSIGHT_BUILD_DEMOS=OFF ^
-            -DINSIGHT_BUILD_BINDINGS=OFF ^
-            -DINSIGHT_USE_SNDFILE=OFF ^
-            -DINSIGHT_USE_MATPLOT=OFF ^
+          mkdir -p build
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=cl.exe \
+            -DCMAKE_CXX_COMPILER=cl.exe \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=ON \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=OFF \
+            -DINSIGHT_USE_SNDFILE=OFF \
+            -DINSIGHT_USE_MATPLOT=OFF \
             -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
 
       - name: Build
-        run: cmake --build build -j %NUMBER_OF_PROCESSORS%
+        shell: bash
+        run: cmake --build build -j $(nproc)
 
       - name: Run CPU tests
+        shell: bash
         run: |
-          set PATH=C:\deps\OpenBLAS-0.3.33-x64\bin;%PATH%
-          build\tests\insight_tests_cpu.exe
+          export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:$PATH"
+          build/tests/insight_tests_cpu.exe
 
   python-binding:
     name: Windows Python Binding
@@ -110,27 +112,29 @@ jobs:
           unzip -q openblas.zip -d C:/deps/
 
       - name: Configure CMake
+        shell: bash
         run: |
-          mkdir build
-          cmake -S . -B build -G Ninja ^
-            -DCMAKE_C_COMPILER=cl.exe ^
-            -DCMAKE_CXX_COMPILER=cl.exe ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DINSIGHT_WITH_CUDA=OFF ^
-            -DINSIGHT_USE_FFTW3=ON ^
-            -DINSIGHT_USE_OPENBLAS=ON ^
-            -DINSIGHT_BUILD_TESTS=OFF ^
-            -DINSIGHT_BUILD_DEMOS=OFF ^
-            -DINSIGHT_BUILD_BINDINGS=ON ^
-            -DINSIGHT_BUILD_PYTHON_BINDING=ON ^
-            -DINSIGHT_BUILD_LUA_BINDING=OFF ^
-            -DINSIGHT_BUILD_JULIA_BINDING=OFF ^
-            -DINSIGHT_USE_SNDFILE=OFF ^
-            -DINSIGHT_USE_MATPLOT=ON ^
+          mkdir -p build
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=cl.exe \
+            -DCMAKE_CXX_COMPILER=cl.exe \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=OFF \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=ON \
+            -DINSIGHT_BUILD_PYTHON_BINDING=ON \
+            -DINSIGHT_BUILD_LUA_BINDING=OFF \
+            -DINSIGHT_BUILD_JULIA_BINDING=OFF \
+            -DINSIGHT_USE_SNDFILE=OFF \
+            -DINSIGHT_USE_MATPLOT=OFF \
             -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
 
       - name: Build
-        run: cmake --build build -j %NUMBER_OF_PROCESSORS%
+        shell: bash
+        run: cmake --build build -j $(nproc)
 
       - name: Test Python binding
         shell: bash
@@ -165,27 +169,30 @@ jobs:
           unzip -q openblas.zip -d C:/deps/
 
       - name: Install gnuplot
+        shell: bash
         run: choco install gnuplot -y
 
       - name: Configure CMake
+        shell: bash
         run: |
-          mkdir build
-          cmake -S . -B build -G Ninja ^
-            -DCMAKE_C_COMPILER=cl.exe ^
-            -DCMAKE_CXX_COMPILER=cl.exe ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DINSIGHT_WITH_CUDA=OFF ^
-            -DINSIGHT_USE_FFTW3=ON ^
-            -DINSIGHT_USE_OPENBLAS=ON ^
-            -DINSIGHT_USE_MATPLOT=ON ^
-            -DINSIGHT_BUILD_DEMOS=ON ^
-            -DINSIGHT_BUILD_TESTS=OFF ^
-            -DINSIGHT_BUILD_BINDINGS=OFF ^
-            -DINSIGHT_USE_SNDFILE=OFF ^
+          mkdir -p build
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=cl.exe \
+            -DCMAKE_CXX_COMPILER=cl.exe \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_USE_MATPLOT=ON \
+            -DINSIGHT_BUILD_DEMOS=ON \
+            -DINSIGHT_BUILD_TESTS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=OFF \
+            -DINSIGHT_USE_SNDFILE=OFF \
             -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
 
       - name: Build
-        run: cmake --build build -j %NUMBER_OF_PROCESSORS%
+        shell: bash
+        run: cmake --build build -j $(nproc)
 
       - name: Run C++ demos
         shell: bash
