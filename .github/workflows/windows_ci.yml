@@ -192,42 +192,39 @@ jobs:
           arch: x86
 
       - name: Build Lua 5.1 from source
-        shell: bash
+        shell: pwsh
         run: |
           curl -L -o lua-5.1.5.tar.gz https://www.lua.org/ftp/lua-5.1.5.tar.gz
           tar xzf lua-5.1.5.tar.gz
-          cd lua-5.1.5
+          Push-Location lua-5.1.5
           # Build Lua as DLL with MSVC (x86)
-          # Use '-' prefix for flags (Git Bash converts '/flag' to paths)
-          cl.exe -nologo -MD -O2 -W3 -c -D_CRT_SECURE_NO_DEPRECATE -DLUA_BUILD_AS_DLL \
-            src/lapi.c src/lcode.c src/ldebug.c src/ldo.c src/ldump.c src/lfunc.c \
-            src/lgc.c src/llex.c src/lmem.c src/lobject.c src/lopcodes.c src/lparser.c \
-            src/lstate.c src/lstring.c src/ltable.c src/ltm.c src/lundump.c src/lvm.c \
-            src/lzio.c src/lauxlib.c src/lbaselib.c src/ldblib.c src/liolib.c \
-            src/lmathlib.c src/loslib.c src/ltablib.c src/lstrlib.c src/loadlib.c src/linit.c
-          link.exe -nologo -DLL -OUT:lua51.dll -IMPLIB:lua51.lib \
-            lapi.obj lcode.obj ldebug.obj ldo.obj ldump.obj lfunc.obj \
-            lgc.obj llex.obj lmem.obj lobject.obj lopcodes.obj lparser.obj \
-            lstate.obj lstring.obj ltable.obj ltm.obj lundump.obj lvm.obj \
-            lzio.obj lauxlib.obj lbaselib.obj ldblib.obj liolib.obj \
-            lmathlib.obj loslib.obj ltablib.obj lstrlib.obj loadlib.obj linit.obj
+          $src = Get-ChildItem src/*.c | Where-Object { $_.Name -ne 'lua.c' -and $_.Name -ne 'luac.c' } | ForEach-Object { $_.FullName }
+          & cl.exe /nologo /MD /O2 /W3 /c /D_CRT_SECURE_NO_DEPRECATE /DLUA_BUILD_AS_DLL $src
+          if ($LASTEXITCODE -ne 0) { Write-Error "cl.exe failed"; exit 1 }
+          $objs = Get-ChildItem *.obj | ForEach-Object { $_.FullName }
+          & link.exe /nologo /DLL /OUT:lua51.dll /IMPLIB:lua51.lib $objs
+          if ($LASTEXITCODE -ne 0) { Write-Error "link.exe (DLL) failed"; exit 1 }
           # Build interpreter
-          cl.exe -nologo -MD -O2 -W3 -c -D_CRT_SECURE_NO_DEPRECATE src/lua.c
-          link.exe -nologo -OUT:lua.exe lua.obj lua51.lib
+          & cl.exe /nologo /MD /O2 /W3 /c /D_CRT_SECURE_NO_DEPRECATE src/lua.c
+          & link.exe /nologo /OUT:lua.exe lua.obj lua51.lib
+          if ($LASTEXITCODE -ne 0) { Write-Error "link.exe (interpreter) failed"; exit 1 }
+          Pop-Location
           # Install to a known location
-          LUA_INSTALL="C:/lua51"
-          mkdir -p "$LUA_INSTALL/include" "$LUA_INSTALL/lib" "$LUA_INSTALL/bin"
-          cp src/*.h "$LUA_INSTALL/include/"
-          cp lua51.lib "$LUA_INSTALL/lib/"
-          cp lua51.dll lua.exe "$LUA_INSTALL/bin/"
-          echo "Lua installed to $LUA_INSTALL"
-          ls -la "$LUA_INSTALL/include/" | head -5
-          ls -la "$LUA_INSTALL/lib/"
-          ls -la "$LUA_INSTALL/bin/"
-          # Put interpreter in PATH for luarocks/busted
-          echo "$LUA_INSTALL/bin" >> $GITHUB_PATH
-          export PATH="$LUA_INSTALL/bin:$PATH"
-          # Install luarocks and busted
+          $LUA_INSTALL = "C:\lua51"
+          New-Item -ItemType Directory -Force -Path "$LUA_INSTALL\include","$LUA_INSTALL\lib","$LUA_INSTALL\bin" | Out-Null
+          Copy-Item lua-5.1.5\src\*.h "$LUA_INSTALL\include\"
+          Copy-Item lua-5.1.5\lua51.lib "$LUA_INSTALL\lib\"
+          Copy-Item lua-5.1.5\lua51.dll,"lua-5.1.5\lua.exe" "$LUA_INSTALL\bin\"
+          Write-Host "Lua installed to $LUA_INSTALL"
+          Get-ChildItem "$LUA_INSTALL\lib"
+          Get-ChildItem "$LUA_INSTALL\bin"
+          # Add to PATH for subsequent steps
+          "$LUA_INSTALL\bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+
+      - name: Install luarocks and busted
+        shell: bash
+        run: |
+          export PATH="/c/lua51/bin:$PATH"
           choco install luarocks -y
           # Create link.cmd wrapper for MSVC link.exe
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
