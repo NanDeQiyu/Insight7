@@ -11,7 +11,6 @@ on:
       - 'tests/**'
       - 'bindings/**'
       - '!bindings/**/*.md'
-      - 'demos/**'
       - 'CMakeLists.txt'
       - '.github/workflows/windows_ci.yml'
   pull_request:
@@ -27,8 +26,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  cpu-tests:
-    name: Windows CPU Tests (MSVC x64)
+  cpp-tests:
+    name: C++ Tests (MSVC x64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,21 +39,16 @@ jobs:
         with:
           arch: x64
 
-      - name: Install FFTW3 and OpenBLAS via vcpkg
+      - name: Install dependencies
         shell: bash
         run: |
-          vcpkg install fftw3:x64-windows openblas:x64-windows
-
-      - name: Install OpenBLAS with LAPACKE headers
-        shell: bash
-        run: |
+          vcpkg install fftw3:x64-windows
           curl -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
           unzip -q openblas.zip -d C:/deps/
 
-      - name: Configure CMake
+      - name: Configure & Build
         shell: bash
         run: |
-          mkdir -p build
           cmake -S . -B build -G Ninja \
             -DCMAKE_C_COMPILER=cl.exe \
             -DCMAKE_CXX_COMPILER=cl.exe \
@@ -68,19 +62,16 @@ jobs:
             -DINSIGHT_USE_SNDFILE=OFF \
             -DINSIGHT_USE_MATPLOT=OFF \
             -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
+          cmake --build build -j $(nproc)
 
-      - name: Build
-        shell: bash
-        run: cmake --build build -j $(nproc)
-
-      - name: Run CPU tests
+      - name: Run tests
         shell: bash
         run: |
           export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:$PATH"
           build/tests/insight_tests_cpu.exe
 
   python-binding:
-    name: Windows Python Binding
+    name: Python Binding
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,24 +88,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Python dependencies
-        run: pip install numpy pytest
-
-      - name: Install FFTW3 and OpenBLAS via vcpkg
+      - name: Install dependencies
         shell: bash
         run: |
-          vcpkg install fftw3:x64-windows openblas:x64-windows
-
-      - name: Install OpenBLAS with LAPACKE headers
-        shell: bash
-        run: |
+          pip install numpy pytest
+          vcpkg install fftw3:x64-windows
           curl -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
           unzip -q openblas.zip -d C:/deps/
 
-      - name: Configure CMake
+      - name: Configure & Build
         shell: bash
         run: |
-          mkdir -p build
           cmake -S . -B build -G Ninja \
             -DCMAKE_C_COMPILER=cl.exe \
             -DCMAKE_CXX_COMPILER=cl.exe \
@@ -131,21 +115,70 @@ jobs:
             -DINSIGHT_USE_SNDFILE=OFF \
             -DINSIGHT_USE_MATPLOT=OFF \
             -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
+          cmake --build build -j $(nproc)
 
-      - name: Build
-        shell: bash
-        run: cmake --build build -j $(nproc)
-
-      - name: Test Python binding
+      - name: Run tests
         shell: bash
         run: |
           export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:$PATH"
           export PYTHONPATH="$GITHUB_WORKSPACE/bindings/python"
-          python -m pytest tests/cpu/python/ -v --tb=short -k "not test_plot"
-          python -m pytest tests/cpu/python/test_plot.py -v --tb=short
+          python -m pytest tests/cpu/python/ -v --tb=short
 
-  cpp-demos:
-    name: Windows C++ Demos
+  lua-binding:
+    name: Lua Binding (x86)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSVC x86
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Install Lua 5.1 and busted
+        shell: bash
+        run: |
+          choco install lua51 -y
+          luarocks install busted
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          vcpkg install fftw3:x86-windows openblas:x86-windows
+
+      - name: Configure & Build
+        shell: bash
+        run: |
+          cmake -S . -B build_x86 -G Ninja \
+            -DCMAKE_C_COMPILER=cl.exe \
+            -DCMAKE_CXX_COMPILER=cl.exe \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=OFF \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=ON \
+            -DINSIGHT_BUILD_PYTHON_BINDING=OFF \
+            -DINSIGHT_BUILD_LUA_BINDING=ON \
+            -DINSIGHT_BUILD_JULIA_BINDING=OFF \
+            -DINSIGHT_USE_SNDFILE=OFF \
+            -DINSIGHT_USE_MATPLOT=OFF \
+            -DCMAKE_PREFIX_PATH="C:/vcpkg/installed/x86-windows"
+          cmake --build build_x86 -j $(nproc)
+
+      - name: Run tests
+        shell: bash
+        run: |
+          export LUA_CPATH="$GITHUB_WORKSPACE/build_x86/bindings/lua/?.dll;;"
+          export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
+          export PATH="$GITHUB_WORKSPACE/build_x86/backends/cpu:$PATH"
+          busted --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
+
+  julia-binding:
+    name: Julia Binding
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -157,25 +190,21 @@ jobs:
         with:
           arch: x64
 
-      - name: Install FFTW3 and OpenBLAS via vcpkg
-        shell: bash
-        run: |
-          vcpkg install fftw3:x64-windows openblas:x64-windows
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
 
-      - name: Install OpenBLAS with LAPACKE headers
+      - name: Install dependencies
         shell: bash
         run: |
+          vcpkg install fftw3:x64-windows
           curl -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
           unzip -q openblas.zip -d C:/deps/
 
-      - name: Install gnuplot
-        shell: bash
-        run: choco install gnuplot -y
-
-      - name: Configure CMake
+      - name: Configure & Build
         shell: bash
         run: |
-          mkdir -p build
           cmake -S . -B build -G Ninja \
             -DCMAKE_C_COMPILER=cl.exe \
             -DCMAKE_CXX_COMPILER=cl.exe \
@@ -183,24 +212,20 @@ jobs:
             -DINSIGHT_WITH_CUDA=OFF \
             -DINSIGHT_USE_FFTW3=ON \
             -DINSIGHT_USE_OPENBLAS=ON \
-            -DINSIGHT_USE_MATPLOT=ON \
-            -DINSIGHT_BUILD_DEMOS=ON \
             -DINSIGHT_BUILD_TESTS=OFF \
-            -DINSIGHT_BUILD_BINDINGS=OFF \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=ON \
+            -DINSIGHT_BUILD_PYTHON_BINDING=OFF \
+            -DINSIGHT_BUILD_LUA_BINDING=OFF \
+            -DINSIGHT_BUILD_JULIA_BINDING=ON \
             -DINSIGHT_USE_SNDFILE=OFF \
+            -DINSIGHT_USE_MATPLOT=OFF \
             -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
+          cmake --build build -j $(nproc)
 
-      - name: Build
-        shell: bash
-        run: cmake --build build -j $(nproc)
-
-      - name: Run C++ demos
+      - name: Run tests
         shell: bash
         run: |
           export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:$PATH"
-          cd build/bin/demos
-          ./demo_basic_ops.exe
-          ./demo_linalg.exe
-          ./demo_fft.exe
-          ./demo_gpu_transfer.exe
-          ./demo_radar_task1.exe
+          export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/build/backends/cpu:$LD_LIBRARY_PATH"
+          julia tests/bindings/test_binding.jl
