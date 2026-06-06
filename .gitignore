@@ -2,6 +2,7 @@
 build/
 build_win/
 build_win_x86/
+build.luarocks/
 out/
 cmake-build-*/
 *.dSYM/
