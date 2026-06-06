@@ -239,8 +239,8 @@ static py::array to_numpy(const Array &arr) {
   DType dt = cpu.dtype();
   py::dtype np_dt = dtype_to_numpy(dt);
 
-  std::vector<ssize_t> shape;
-  std::vector<ssize_t> strides;
+  std::vector<py::ssize_t> shape;
+  std::vector<py::ssize_t> strides;
   for (int i = 0; i < cpu.shape().ndim(); i++) {
     shape.push_back(cpu.shape().dim(i));
     strides.push_back(cpu.strides()[i] * dtype_size(dt));
@@ -428,6 +428,14 @@ PYBIND11_MODULE(_insight, m) {
       .def("dim", &Shape::dim, py::arg("i"))
       .def("__getitem__", [](const Shape &s, int i) { return s.dim(i); })
       .def("__len__", &Shape::ndim)
+      .def("__iter__",
+           [](const Shape &s) {
+             py::list result;
+             for (int i = 0; i < s.ndim(); i++) {
+               result.append(s.dim(i));
+             }
+             return result.attr("__iter__")();
+           })
       .def("__repr__", [](const Shape &s) {
         std::ostringstream ss;
         ss << "(";
@@ -455,15 +463,16 @@ PYBIND11_MODULE(_insight, m) {
       .def(py::init<>())
       .def(py::init<const Shape &, DType, const Place &>(), py::arg("shape"),
            py::arg("dtype") = DType::F32, py::arg("place") = get_device())
-      // --- properties ---
-      .def("shape", [](const Array &a) { return a.shape(); })
-      .def("dtype", &Array::dtype)
-      .def("place", &Array::place)
-      .def("numel", &Array::numel)
-      .def("nbytes", &Array::nbytes)
-      .def("ndim", [](const Array &a) { return a.shape().ndim(); })
-      .def("is_contiguous", &Array::is_contiguous)
-      .def("defined", &Array::defined)
+      // --- properties (NumPy-style: accessed as attributes, not methods) ---
+      .def_property_readonly("shape", [](const Array &a) { return a.shape(); })
+      .def_property_readonly("dtype", &Array::dtype)
+      .def_property_readonly("place", &Array::place)
+      .def_property_readonly("numel", &Array::numel)
+      .def_property_readonly("nbytes", &Array::nbytes)
+      .def_property_readonly("ndim",
+                             [](const Array &a) { return a.shape().ndim(); })
+      .def_property_readonly("is_contiguous", &Array::is_contiguous)
+      .def_property_readonly("defined", &Array::defined)
       // --- view ops ---
       .def("contiguous", &Array::contiguous)
       .def("reshape", &Array::reshape, py::arg("new_shape"))
@@ -884,6 +893,20 @@ PYBIND11_MODULE(_insight, m) {
   m.def(
       "logical_not", [](const Array &x) { return logical_not(x); },
       py::arg("x"));
+
+  // Bitwise
+  m.def(
+      "bitwise_and",
+      [](const Array &a, const Array &b) { return bitwise_and(a, b); },
+      py::arg("a"), py::arg("b"));
+  m.def(
+      "bitwise_or",
+      [](const Array &a, const Array &b) { return bitwise_or(a, b); },
+      py::arg("a"), py::arg("b"));
+  m.def(
+      "bitwise_xor",
+      [](const Array &a, const Array &b) { return bitwise_xor(a, b); },
+      py::arg("a"), py::arg("b"));
 
   // ====================================================================
   // Unary math
@@ -1626,7 +1649,10 @@ PYBIND11_MODULE(_insight, m) {
     // Ignore SIGPIPE to prevent process crash when gnuplot is unavailable.
     // matplotplusplus spawns gnuplot via popen; if gnuplot is not installed
     // the pipe breaks and SIGPIPE would kill the process.
+    // SIGPIPE does not exist on Windows.
+#ifndef _WIN32
     std::signal(SIGPIPE, SIG_IGN);
+#endif
 
     auto plt = m.def_submodule("plot", "Plotting functions (matplotlib-style)");
 

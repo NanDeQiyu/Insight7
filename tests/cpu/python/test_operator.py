@@ -94,13 +94,13 @@ class TestOperatorCPU:
     def test_indexing(self):
         a = ins.from_numpy(np.array([10, 20, 30, 40], dtype=np.float64))
         b = a["0"]
-        assert b.numel() == 1
+        assert b.numel == 1
 
     def test_string_slice(self):
         a = ins.ones([4, 4], ins.float32)
         b = a[":,1:-1"]
-        assert b.defined()
-        assert b.numel() == 8
+        assert b.defined
+        assert b.numel == 8
 
     def test_inplace_add(self):
         a_np = np.array([1, 2, 3], dtype=np.float64)

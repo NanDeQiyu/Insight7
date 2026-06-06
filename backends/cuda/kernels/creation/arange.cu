@@ -59,6 +59,8 @@ C_Status arange_kernel_gpu(void **inputs, void **outputs) {
   double start = *static_cast<double *>(inputs[1]);
   double step = *static_cast<double *>(inputs[2]);
   int64_t n = out->numel;
+  if (n == 0)
+    return C_SUCCESS;
   int32_t dtype = out->dtype;
 
   int threads = creation_threads();

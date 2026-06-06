@@ -153,6 +153,76 @@ export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
 luajit -e "local ins = require('insight'); print('Insight7 loaded')"
 ```
 
+### Windows Installation Guide
+
+#### 1. Prerequisites
+
+- Visual Studio 2022+ with C++ workload
+- CMake 3.15+ and Ninja (install via `winget install Kitware.CMake Ninja-build.Ninja`)
+- LuaJIT 2.1+ or Lua 5.3+
+
+#### 2. Dependencies (via vcpkg)
+
+```powershell
+# Install vcpkg if not already installed
+git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+cd C:\vcpkg && bootstrap-vcpkg.bat
+
+# Install FFTW3 and OpenBLAS
+.\vcpkg install fftw3:x64-windows openblas:x64-windows
+```
+
+#### 3. Install Lua
+
+```powershell
+# Option A: LuaJIT (recommended)
+# Download from https://luajit.org/download.html and extract to C:\LuaJIT
+# Add C:\LuaJIT to PATH
+
+# Option B: Install via scoop
+scoop install luajit
+scoop install luarocks
+```
+
+#### 4. Clone and Build
+
+```powershell
+# Open VS Developer Command Prompt (x64)
+call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+
+git clone https://github.com/PlumBlossomMaid/Insight7.git
+cd Insight7
+cmake -S . -B build -G Ninja ^
+    -DCMAKE_C_COMPILER=cl.exe ^
+    -DCMAKE_CXX_COMPILER=cl.exe ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DINSIGHT_WITH_CUDA=ON ^
+    -DCMAKE_PREFIX_PATH="C:/vcpkg/installed/x64-windows"
+cmake --build build -j %NUMBER_OF_PROCESSORS%
+```
+
+#### 5. DLL Discovery
+
+On Windows, native DLLs must be discoverable at runtime. Add the backend directories to `PATH`:
+
+```powershell
+$env:PATH = "$PWD\build\backends\cpu;$PWD\build\backends\cuda;$PWD\build\bindings\lua;$env:PATH"
+$env:LUA_PATH = "bindings/lua/?/init.lua;bindings/lua/?.lua;;"
+$env:LUA_CPATH = "build/bindings/lua/?.dll;;"
+luajit -e "local ins = require('insight'); print('Insight7 loaded')"
+```
+
+#### 6. Run Tests
+
+```powershell
+$env:PATH = "$PWD\build\backends\cpu;$PWD\build\bindings\lua;$env:PATH"
+$env:LUA_PATH = "bindings/lua/?/init.lua;;"
+$env:LUA_CPATH = "build/bindings/lua/?.dll;;"
+luajit tests/bindings/test_lua_binding.lua
+```
+
+> **Note:** For plot functionality, install [gnuplot](http://www.gnuplot.info/) and ensure it is in your `PATH`.
+
 ## Quick Start
 
 ```lua

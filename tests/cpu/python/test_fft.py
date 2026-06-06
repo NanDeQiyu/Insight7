@@ -39,14 +39,14 @@ class TestFFTCPU:
         x_np = np.array([1, 2, 3, 4], dtype=np.float64)
         result = ins.rfft(ins.from_numpy(x_np))
         expected = np.fft.rfft(x_np)
-        assert result.numel() == expected.shape[0]
+        assert result.numel == expected.shape[0]
 
     def test_irfft(self):
         x_np = np.array([1, 2, 3, 4], dtype=np.float64)
         rfft_np = np.fft.rfft(x_np)
         result = ins.irfft(ins.from_numpy(rfft_np.astype(np.complex128)))
         expected = np.fft.irfft(rfft_np)
-        assert result.numel() == expected.shape[0]
+        assert result.numel == expected.shape[0]
 
     def test_fftfreq(self):
         result = ins.fftfreq(8, 1.0)

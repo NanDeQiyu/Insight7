@@ -7,6 +7,8 @@
 add_library(insight_julia SHARED insight_julia_capi.cpp)
 set_target_properties(insight_julia PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bindings/julia"
+    # Windows: export all C++ symbols for ccall() entry points
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
 target_include_directories(insight_julia PRIVATE
@@ -17,18 +19,18 @@ target_link_libraries(insight_julia PRIVATE
     insight_core
 )
 
-# Ensure backend .so is built before POST_BUILD copy
+# Ensure backend is built before POST_BUILD copy
 add_dependencies(insight_julia insight_cpu_backend)
 
-# Copy .so to source wrapper directory for Julia Pkg.develop
+# Copy binding + CPU backend using cross-platform generator expressions
 add_custom_command(TARGET insight_julia POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:insight_julia>
         "${CMAKE_SOURCE_DIR}/bindings/julia/$<TARGET_FILE_NAME:insight_julia>"
-    # Copy CPU backend .so for dlopen
+    # Copy CPU backend for dlopen
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_BINARY_DIR}/backends/cpu/libinsight_cpu_backend.so"
-        "${CMAKE_SOURCE_DIR}/bindings/julia/libinsight_cpu_backend.so"
+        "$<TARGET_FILE:insight_cpu_backend>"
+        "${CMAKE_SOURCE_DIR}/bindings/julia/$<TARGET_FILE_NAME:insight_cpu_backend>"
     COMMENT "Copying Julia binding + CPU backend"
 )
 

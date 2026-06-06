@@ -119,8 +119,10 @@ TEST_F(OperatorTestGPU, DivArrayArray) {
 }
 
 TEST_F(OperatorTestGPU, ModArrayArray) {
-  Array cpu_a = to_array({5L, 7L, 9L, 11L}, Shape({4}), DType::I64, CPUPlace());
-  Array cpu_b = to_array({2L, 3L, 4L, 5L}, Shape({4}), DType::I64, CPUPlace());
+  Array cpu_a =
+      to_array({5LL, 7LL, 9LL, 11LL}, Shape({4}), DType::I64, CPUPlace());
+  Array cpu_b =
+      to_array({2LL, 3LL, 4LL, 5LL}, Shape({4}), DType::I64, CPUPlace());
   Array a = cpu_a.to(GPUPlace(0));
   Array b = cpu_b.to(GPUPlace(0));
   Array c = a % b;

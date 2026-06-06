@@ -24,6 +24,7 @@ if(LUA_DIR)
     find_library(LUA_LIB
         NAMES luajit-5.1 luajit lua5.3 lua-5.3 lua5.1 lua-5.1 lua
         HINTS "${LUA_DIR}/lib" "${LUA_DIR}/lib/x86_64-linux-gnu"
+              "${LUA_DIR}/lib/x64" "${LUA_DIR}/lib"
         NO_DEFAULT_PATH
     )
     find_path(LUA_INCLUDE_DIR
@@ -55,6 +56,29 @@ else()
             PATHS /usr/include/lua5.3 /usr/local/include/lua5.3
         )
     endif()
+    # Windows: try common Lua installation paths
+    if(WIN32 AND (NOT LUA_LIB OR NOT LUA_INCLUDE_DIR))
+        find_library(LUA_LIB
+            NAMES lua51 lua5.1 lua53 lua5.3 lua luajit
+            PATHS
+                "C:/Program Files (x86)/Lua/5.1/lib"
+                "C:/Program Files/Lua/5.1/lib"
+                "C:/Lua/5.1/lib"
+                "C:/Program Files (x86)/Lua/5.3/lib"
+                "C:/Program Files/Lua/5.3/lib"
+                "$ENV{LUA_DIR}/lib"
+        )
+        find_path(LUA_INCLUDE_DIR
+            NAMES lua.h
+            PATHS
+                "C:/Program Files (x86)/Lua/5.1/include"
+                "C:/Program Files/Lua/5.1/include"
+                "C:/Lua/5.1/include"
+                "C:/Program Files (x86)/Lua/5.3/include"
+                "C:/Program Files/Lua/5.3/include"
+                "$ENV{LUA_DIR}/include"
+        )
+    endif()
 endif()
 
 if(NOT LUA_LIB OR NOT LUA_INCLUDE_DIR)
@@ -70,6 +94,8 @@ set_target_properties(insight_lua PROPERTIES
     PREFIX ""
     OUTPUT_NAME "_insight"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bindings/lua"
+    # Windows: export all C++ symbols for sol2 template instantiation
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
 target_include_directories(insight_lua PRIVATE
@@ -85,18 +111,18 @@ target_link_libraries(insight_lua PRIVATE
 
 target_compile_features(insight_lua PRIVATE cxx_std_17)
 
-# Ensure backend .so is built before POST_BUILD copy
+# Ensure backend is built before POST_BUILD copy
 add_dependencies(insight_lua insight_cpu_backend)
 
-# Copy .so to source wrapper directory for luarocks/pip install
+# Copy binding + CPU backend using cross-platform generator expressions
 add_custom_command(TARGET insight_lua POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:insight_lua>
         "${CMAKE_SOURCE_DIR}/bindings/lua/$<TARGET_FILE_NAME:insight_lua>"
-    # Copy CPU backend .so for dlopen
+    # Copy CPU backend for dlopen
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_BINARY_DIR}/backends/cpu/libinsight_cpu_backend.so"
-        "${CMAKE_SOURCE_DIR}/bindings/lua/libinsight_cpu_backend.so"
+        "$<TARGET_FILE:insight_cpu_backend>"
+        "${CMAKE_SOURCE_DIR}/bindings/lua/$<TARGET_FILE_NAME:insight_cpu_backend>"
     COMMENT "Copying Lua binding + CPU backend"
 )
 

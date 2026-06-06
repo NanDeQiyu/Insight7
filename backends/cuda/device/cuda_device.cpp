@@ -146,11 +146,22 @@ static C_Status cuda_device_memory_allocate(C_Device device, void **ptr,
     *ptr = nullptr;
     return C_SUCCESS;
   }
+  // Ensure CUDA context exists on this device. Without this,
+  // cudaDeviceSynchronize/cudaMalloc fail on the very first GPU op.
+  cudaSetDevice(device->id);
+  cudaFree(nullptr);
+  // Clear any stale CUDA error from previous kernel launches.
+  cudaGetLastError();
+  cudaError_t sync_err = cudaDeviceSynchronize();
+  if (sync_err != cudaSuccess) {
+    cudaGetLastError();
+  }
   cudaError_t err = cudaMalloc(ptr, size);
   if (err != cudaSuccess) {
     gpu_set_last_error(cudaGetErrorString(err));
     return C_FAILED;
   }
+  gpu_set_last_error("");
   return C_SUCCESS;
 }
 

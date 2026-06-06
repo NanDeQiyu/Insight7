@@ -26,7 +26,7 @@ static double cond_f64(const double *src, int m, int n) {
   }
 
   int info;
-  LAPACKE_dgetrf(LAPACK_COL_MAJOR, m, n, a, m, ipiv);
+  info = LAPACKE_dgetrf(LAPACK_COL_MAJOR, m, n, a, m, ipiv);
 
   if (info != 0) {
     cpu_set_last_error("cond: LAPACKE_dgetrf failed");

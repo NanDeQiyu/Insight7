@@ -20,7 +20,7 @@ static thread_local FFTWCache cache = {NULL, NULL, NULL, NULL,
 FFTWCache *fft_get_cache(void) { return &cache; }
 
 fftw_plan fft_ensure_plan_f64(int n, int64_t batch, int direction, FFTKind kind,
-                              void *buf) {
+                              void *buf_in, void *buf_out) {
   FFTWCache *c = &cache;
 
   if (kind == FFT_KIND_C2C) {
@@ -29,9 +29,9 @@ fftw_plan fft_ensure_plan_f64(int n, int64_t batch, int direction, FFTKind kind,
       c->plan_f64 = NULL;
     }
     int n_int = (int)n;
-    c->plan_f64 = fftw_plan_many_dft(1, &n_int, (int)batch, (fftw_complex *)buf,
-                                     NULL, 1, n_int, (fftw_complex *)buf, NULL,
-                                     1, n_int, direction, FFTW_ESTIMATE);
+    c->plan_f64 = fftw_plan_many_dft(
+        1, &n_int, (int)batch, (fftw_complex *)buf_in, NULL, 1, n_int,
+        (fftw_complex *)buf_out, NULL, 1, n_int, direction, FFTW_ESTIMATE);
     c->n = n;
     c->batch = batch;
     c->direction = direction;
@@ -39,7 +39,7 @@ fftw_plan fft_ensure_plan_f64(int n, int64_t batch, int direction, FFTKind kind,
     return c->plan_f64;
   }
 
-  // R2C/C2R: cache with dummy buffers
+  // R2C/C2R: use actual buffers for plan creation
   if (c->plan_f64 && c->n == n && c->batch == batch &&
       c->direction == direction && c->kind == kind) {
     return c->plan_f64;
@@ -51,21 +51,16 @@ fftw_plan fft_ensure_plan_f64(int n, int64_t batch, int direction, FFTKind kind,
   }
 
   int n_int = (int)n;
-  fftw_complex *di = (fftw_complex *)fftw_malloc(n * sizeof(fftw_complex));
-  fftw_complex *dout = (fftw_complex *)fftw_malloc(n * sizeof(fftw_complex));
 
   if (kind == FFT_KIND_R2C) {
-    c->plan_f64 = fftw_plan_many_dft_r2c(1, &n_int, (int)batch, (double *)di,
-                                         NULL, 1, n_int, dout, NULL, 1,
-                                         n_int / 2 + 1, FFTW_ESTIMATE);
+    c->plan_f64 = fftw_plan_many_dft_r2c(
+        1, &n_int, (int)batch, (double *)buf_in, NULL, 1, n_int,
+        (fftw_complex *)buf_out, NULL, 1, n_int / 2 + 1, FFTW_ESTIMATE);
   } else {
-    c->plan_f64 = fftw_plan_many_dft_c2r(1, &n_int, (int)batch, di, NULL, 1,
-                                         n_int / 2 + 1, (double *)dout, NULL, 1,
-                                         n_int, FFTW_ESTIMATE);
+    c->plan_f64 = fftw_plan_many_dft_c2r(
+        1, &n_int, (int)batch, (fftw_complex *)buf_in, NULL, 1, n_int / 2 + 1,
+        (double *)buf_out, NULL, 1, n_int, FFTW_ESTIMATE);
   }
-
-  fftw_free(di);
-  fftw_free(dout);
 
   c->n = n;
   c->batch = batch;
@@ -75,7 +70,7 @@ fftw_plan fft_ensure_plan_f64(int n, int64_t batch, int direction, FFTKind kind,
 }
 
 fftwf_plan fft_ensure_plan_f32(int n, int64_t batch, int direction,
-                               FFTKind kind, void *buf) {
+                               FFTKind kind, void *buf_in, void *buf_out) {
   FFTWCache *c = &cache;
 
   if (kind == FFT_KIND_C2C) {
@@ -85,8 +80,8 @@ fftwf_plan fft_ensure_plan_f32(int n, int64_t batch, int direction,
     }
     int n_int = (int)n;
     c->plan_f32 = fftwf_plan_many_dft(
-        1, &n_int, (int)batch, (fftwf_complex *)buf, NULL, 1, n_int,
-        (fftwf_complex *)buf, NULL, 1, n_int, direction, FFTW_ESTIMATE);
+        1, &n_int, (int)batch, (fftwf_complex *)buf_in, NULL, 1, n_int,
+        (fftwf_complex *)buf_out, NULL, 1, n_int, direction, FFTW_ESTIMATE);
     c->n = n;
     c->batch = batch;
     c->direction = direction;
@@ -105,22 +100,16 @@ fftwf_plan fft_ensure_plan_f32(int n, int64_t batch, int direction,
   }
 
   int n_int = (int)n;
-  fftwf_complex *di = (fftwf_complex *)fftwf_malloc(n * sizeof(fftwf_complex));
-  fftwf_complex *dout =
-      (fftwf_complex *)fftwf_malloc(n * sizeof(fftwf_complex));
 
   if (kind == FFT_KIND_R2C) {
-    c->plan_f32 = fftwf_plan_many_dft_r2c(1, &n_int, (int)batch, (float *)di,
-                                          NULL, 1, n_int, dout, NULL, 1,
-                                          n_int / 2 + 1, FFTW_ESTIMATE);
+    c->plan_f32 = fftwf_plan_many_dft_r2c(
+        1, &n_int, (int)batch, (float *)buf_in, NULL, 1, n_int,
+        (fftwf_complex *)buf_out, NULL, 1, n_int / 2 + 1, FFTW_ESTIMATE);
   } else {
-    c->plan_f32 = fftwf_plan_many_dft_c2r(1, &n_int, (int)batch, di, NULL, 1,
-                                          n_int / 2 + 1, (float *)dout, NULL, 1,
-                                          n_int, FFTW_ESTIMATE);
+    c->plan_f32 = fftwf_plan_many_dft_c2r(
+        1, &n_int, (int)batch, (fftwf_complex *)buf_in, NULL, 1, n_int / 2 + 1,
+        (float *)buf_out, NULL, 1, n_int, FFTW_ESTIMATE);
   }
-
-  fftwf_free(di);
-  fftwf_free(dout);
 
   c->n = n;
   c->batch = batch;

@@ -38,27 +38,27 @@ class TestSignalEstimationCUDA:
         kf = ins.signal.KalmanFilter(2, 1)
         x = kf.x
         assert x is not None
-        assert x.numel() == 2
+        assert x.numel == 2
 
     def test_kalman_filter_covariance_shape(self):
         kf = ins.signal.KalmanFilter(2, 1)
         P = kf.P
         assert P is not None
-        assert P.numel() == 4
+        assert P.numel == 4
 
     def test_kalman_filter_set_F(self):
         kf = ins.signal.KalmanFilter(2, 1)
         F = ins.from_numpy(np.array([[1.0, 1.0], [0.0, 1.0]], dtype=np.float64))
         kf.F = F
         assert kf.F is not None
-        assert kf.F.numel() == 4
+        assert kf.F.numel == 4
 
     def test_kalman_filter_set_H(self):
         kf = ins.signal.KalmanFilter(2, 1)
         H = ins.from_numpy(np.array([[1.0, 0.0]], dtype=np.float64))
         kf.H = H
         assert kf.H is not None
-        assert kf.H.numel() == 2
+        assert kf.H.numel == 2
 
     def test_kalman_filter_predict(self):
         kf = ins.signal.KalmanFilter(2, 1)
@@ -93,7 +93,7 @@ class TestSignalEstimationCUDA:
             z = ins.from_numpy(np.array([1.0], dtype=np.float64))
             kf.update(z)
         assert kf.x is not None
-        assert kf.x.numel() == 2
+        assert kf.x.numel == 2
 
 
 if __name__ == "__main__":

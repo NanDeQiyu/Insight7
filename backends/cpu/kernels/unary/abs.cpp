@@ -52,14 +52,46 @@ C_Status abs_kernel_cpu(void **inputs, void **outputs) {
   case INSIGHT_DTYPE_F64:
     UNARY_KERNEL_LOOP(double, [](double v) { return std::fabs(v); });
     break;
-  case INSIGHT_DTYPE_C32:
-    UNARY_KERNEL_LOOP(std::complex<float>,
-                      [](std::complex<float> v) { return std::abs(v); });
+  case INSIGHT_DTYPE_C32: {
+    const std::complex<float> *x_data = (const std::complex<float> *)x->data;
+    float *out_data = (float *)out->data;
+    int64_t ndim = out->ndim;
+    int64_t dims[INSIGHT_MAX_NDIM];
+    int64_t x_strides[INSIGHT_MAX_NDIM];
+    int64_t out_strides[INSIGHT_MAX_NDIM];
+    for (int i = 0; i < ndim; ++i) {
+      dims[i] = out->dims[i];
+      x_strides[i] = x->strides[i];
+      out_strides[i] = out->strides[i];
+    }
+    int64_t n = out->numel;
+    _Pragma("omp parallel for") for (int64_t linear = 0; linear < n; ++linear) {
+      int64_t off_x = cpu_offset_from_linear(linear, ndim, dims, x_strides);
+      int64_t off_out = cpu_offset_from_linear(linear, ndim, dims, out_strides);
+      out_data[off_out] = std::abs(x_data[off_x]);
+    }
     break;
-  case INSIGHT_DTYPE_C64:
-    UNARY_KERNEL_LOOP(std::complex<double>,
-                      [](std::complex<double> v) { return std::abs(v); });
+  }
+  case INSIGHT_DTYPE_C64: {
+    const std::complex<double> *x_data = (const std::complex<double> *)x->data;
+    double *out_data = (double *)out->data;
+    int64_t ndim = out->ndim;
+    int64_t dims[INSIGHT_MAX_NDIM];
+    int64_t x_strides[INSIGHT_MAX_NDIM];
+    int64_t out_strides[INSIGHT_MAX_NDIM];
+    for (int i = 0; i < ndim; ++i) {
+      dims[i] = out->dims[i];
+      x_strides[i] = x->strides[i];
+      out_strides[i] = out->strides[i];
+    }
+    int64_t n = out->numel;
+    _Pragma("omp parallel for") for (int64_t linear = 0; linear < n; ++linear) {
+      int64_t off_x = cpu_offset_from_linear(linear, ndim, dims, x_strides);
+      int64_t off_out = cpu_offset_from_linear(linear, ndim, dims, out_strides);
+      out_data[off_out] = std::abs(x_data[off_x]);
+    }
     break;
+  }
   case INSIGHT_DTYPE_F16:
     UNARY_HALF_LOOP(uint16_t, insight::f16_to_f32, insight::f32_to_f16,
                     [](float v) { return std::fabs(v); });

@@ -39,9 +39,9 @@ class TestSignalSpectralCUDA:
         assert result is not None
         f = result.f
         pxx = result.Pxx
-        assert f.numel() > 0
-        assert pxx.numel() > 0
-        assert f.numel() == pxx.numel()
+        assert f.numel > 0
+        assert pxx.numel > 0
+        assert f.numel == pxx.numel
 
     def test_periodogram(self):
         x_np = self._make_sine(n=512)
@@ -50,8 +50,8 @@ class TestSignalSpectralCUDA:
         assert result is not None
         f = result.f
         pxx = result.Pxx
-        assert f.numel() > 0
-        assert pxx.numel() > 0
+        assert f.numel > 0
+        assert pxx.numel > 0
 
     def test_csd(self):
         x_np = self._make_sine(freq=10.0)
@@ -62,8 +62,8 @@ class TestSignalSpectralCUDA:
         assert result is not None
         f = result.f
         pxx = result.Pxx
-        assert f.numel() > 0
-        assert pxx.numel() > 0
+        assert f.numel > 0
+        assert pxx.numel > 0
 
     def test_coherence(self):
         x_np = self._make_sine(freq=10.0)
@@ -74,26 +74,26 @@ class TestSignalSpectralCUDA:
         assert result is not None
         f = result.f
         pxx = result.Pxx
-        assert f.numel() > 0
-        assert pxx.numel() > 0
+        assert f.numel > 0
+        assert pxx.numel > 0
 
     def test_spectrogram(self):
         x_np = self._make_sine()
         x = ins.from_numpy(x_np).to(GPU)
         result = ins.signal.spectrogram(x, fs=256.0, nperseg=256)
         assert result is not None
-        assert result.f.numel() > 0
-        assert result.t.numel() > 0
-        assert result.Sxx.numel() > 0
+        assert result.f.numel > 0
+        assert result.t.numel > 0
+        assert result.Sxx.numel > 0
 
     def test_stft(self):
         x_np = self._make_sine()
         x = ins.from_numpy(x_np).to(GPU)
         result = ins.signal.stft(x, fs=256.0, nperseg=256)
         assert result is not None
-        assert result.f.numel() > 0
-        assert result.t.numel() > 0
-        assert result.Sxx.numel() > 0
+        assert result.f.numel > 0
+        assert result.t.numel > 0
+        assert result.Sxx.numel > 0
 
     def test_vectorstrength(self):
         events = ins.from_numpy(np.array([0.0, 1.0, 2.0, 3.0])).to(GPU)
@@ -105,8 +105,8 @@ class TestSignalSpectralCUDA:
         x = ins.from_numpy(x_np).to(GPU)
         result = ins.signal.welch(x, fs=256.0, nperseg=512, noverlap=256, scaling="spectrum")
         assert result is not None
-        assert result.f.numel() > 0
-        assert result.Pxx.numel() > 0
+        assert result.f.numel > 0
+        assert result.Pxx.numel > 0
 
 
 if __name__ == "__main__":

@@ -40,41 +40,42 @@ def to_numpy(gpu_arr):
 
 
 class TestManipulationAlignmentGPU:
-    """Insight manipulation on GPU vs NumPy."""
+    """Insight manipulation ops vs NumPy."""
 
     def test_reshape(self):
         a_np = np.arange(12, dtype=np.float64)
-        a = to_gpu(a_np)
+        a = ins.from_numpy(a_np)
         result = ins.reshape(a, [3, 4])
-        assert_allclose(to_numpy(result), a_np.reshape(3, 4), rtol=1e-6)
+        assert_allclose(result.numpy(), a_np.reshape(3, 4))
 
     def test_flatten(self):
         a_np = np.array([[1, 2], [3, 4]], dtype=np.float64)
-        a = to_gpu(a_np)
+        a = ins.from_numpy(a_np)
         result = ins.flatten(a)
-        assert_allclose(to_numpy(result), a_np.flatten(), rtol=1e-6)
+        assert_allclose(result.numpy(), a_np.flatten())
 
     def test_concat(self):
         a_np = np.array([1, 2, 3], dtype=np.float64)
         b_np = np.array([4, 5, 6], dtype=np.float64)
-        a, b = to_gpu(a_np), to_gpu(b_np)
+        a = ins.from_numpy(a_np)
+        b = ins.from_numpy(b_np)
         result = ins.concat([a, b])
-        assert_allclose(to_numpy(result), np.concatenate([a_np, b_np]), rtol=1e-6)
+        assert_allclose(result.numpy(), np.concatenate([a_np, b_np]))
 
     def test_flip(self):
         a_np = np.array([1, 2, 3, 4], dtype=np.float64)
-        a = to_gpu(a_np)
+        a = ins.from_numpy(a_np)
         result = ins.flip(a)
-        assert_allclose(to_numpy(result), np.flip(a_np), rtol=1e-6)
+        assert_allclose(result.numpy(), np.flip(a_np))
 
     def test_squeeze(self):
-        a_np = np.array([[[1, 2, 3]]], dtype=np.float64)
-        a = to_gpu(a_np)
+        a_np = np.array([[[1, 2, 3]]], dtype=np.float64)  # shape (1,1,3)
+        a = ins.from_numpy(a_np)
         result = ins.squeeze(a)
-        assert_allclose(to_numpy(result), np.squeeze(a_np), rtol=1e-6)
+        assert_allclose(result.numpy(), np.squeeze(a_np))
 
     def test_transpose(self):
         a_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float64)
-        a = to_gpu(a_np)
+        a = ins.from_numpy(a_np)
         result = ins.transpose(a)
-        assert_allclose(to_numpy(result), np.transpose(a_np), rtol=1e-6)
+        assert_allclose(result.numpy(), np.transpose(a_np))

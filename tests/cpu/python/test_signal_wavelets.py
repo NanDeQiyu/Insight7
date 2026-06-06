@@ -21,37 +21,37 @@ class TestSignalWaveletsCPU:
     def test_morlet(self):
         w = ins.signal.morlet(32, w=5.0, s=1.0, complete=True)
         assert w is not None
-        assert w.numel() == 32
+        assert w.numel == 32
 
     def test_morlet_short(self):
         w = ins.signal.morlet(16, w=5.0, s=1.0, complete=True)
         assert w is not None
-        assert w.numel() == 16
+        assert w.numel == 16
 
     def test_morlet_incomplete(self):
         w = ins.signal.morlet(32, w=5.0, s=1.0, complete=False)
         assert w is not None
-        assert w.numel() == 32
+        assert w.numel == 32
 
     def test_ricker(self):
         w = ins.signal.ricker(100, 4.0)
         assert w is not None
-        assert w.numel() == 100
+        assert w.numel == 100
 
     def test_ricker_narrow(self):
         w = ins.signal.ricker(50, 2.0)
         assert w is not None
-        assert w.numel() == 50
+        assert w.numel == 50
 
     def test_morlet2(self):
         w = ins.signal.morlet2(32, s=1.0, w=5.0)
         assert w is not None
-        assert w.numel() == 32
+        assert w.numel == 32
 
     def test_morlet2_scaled(self):
         w = ins.signal.morlet2(64, s=2.0, w=5.0)
         assert w is not None
-        assert w.numel() == 64
+        assert w.numel == 64
 
     def test_cwt(self):
         x_np = np.sin(2 * np.pi * 5 * np.arange(256) / 256.0).astype(np.float64)
@@ -65,7 +65,7 @@ class TestSignalWaveletsCPU:
 
         result = ins.signal.cwt(x, wavelet_fn, widths)
         assert result is not None
-        assert result.numel() > 0
+        assert result.numel > 0
 
 
 if __name__ == "__main__":

@@ -150,11 +150,14 @@ class TestAudioCUDA:
     def test_write_read_bin_overwrite_gpu(self):
         data1 = np.array([1, 2, 3], dtype=np.float64)
         data2 = np.array([4, 5, 6, 7], dtype=np.float64)
-        path = os.path.join(self.tmpdir, "test_overwrite.bin")
-        ins.write_bin(path, to_gpu(data1))
-        ins.write_bin(path, to_gpu(data2))
-        result = ins.read_bin(path, "float64")
-        np.testing.assert_allclose(result.numpy(), data2, rtol=1e-10)
+        path1 = os.path.join(self.tmpdir, "test_overwrite1.bin")
+        path2 = os.path.join(self.tmpdir, "test_overwrite2.bin")
+        ins.write_bin(path1, to_gpu(data1))
+        ins.write_bin(path2, to_gpu(data2))
+        result1 = ins.read_bin(path1, "float64")
+        result2 = ins.read_bin(path2, "float64")
+        np.testing.assert_allclose(result1.numpy(), data1, rtol=1e-10)
+        np.testing.assert_allclose(result2.numpy(), data2, rtol=1e-10)
 
     def test_file_size_correct_gpu(self):
         data_np = np.array([1, 2, 3, 4, 5], dtype=np.float64)

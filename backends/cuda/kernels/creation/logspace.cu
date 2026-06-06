@@ -67,6 +67,8 @@ C_Status logspace_kernel_gpu(void **inputs, void **outputs) {
   double stop = *static_cast<double *>(inputs[2]);
   double base = *static_cast<double *>(inputs[3]);
   int64_t n = out->numel;
+  if (n == 0)
+    return C_SUCCESS;
   int32_t dtype = out->dtype;
 
   // Compute step on host

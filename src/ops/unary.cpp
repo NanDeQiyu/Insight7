@@ -17,10 +17,22 @@ static DeviceKind get_device_kind(const Place &place) {
   Array op_name(const Array &x) {                                              \
     INS_CHECK(x.defined(), #op_name ": input is undefined");                   \
                                                                                \
-    /* For logical_not, output is always bool */                               \
     DType out_dtype = x.dtype();                                               \
     if (std::string(#op_name) == "logical_not") {                              \
       out_dtype = DType::BOOL;                                                 \
+    }                                                                          \
+    /* isnan/isinf/isfinite return bool (matches NumPy) */                     \
+    if (std::string(#op_name) == "isnan" ||                                    \
+        std::string(#op_name) == "isinf" ||                                    \
+        std::string(#op_name) == "isfinite") {                                 \
+      out_dtype = DType::BOOL;                                                 \
+    }                                                                          \
+    /* abs of complex returns real (matches NumPy) */                          \
+    if (std::string(#op_name) == "abs") {                                      \
+      if (out_dtype == DType::C64)                                             \
+        out_dtype = DType::F64;                                                \
+      if (out_dtype == DType::C32)                                             \
+        out_dtype = DType::F32;                                                \
     }                                                                          \
                                                                                \
     Array out(x.shape(), out_dtype, x.place());                                \

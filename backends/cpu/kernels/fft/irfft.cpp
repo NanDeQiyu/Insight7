@@ -40,7 +40,7 @@ C_Status irfft_kernel_cpu(void **inputs, void **outputs) {
     double *dst = (double *)out->data;
 
     fftw_plan plan = fft_ensure_plan_f64(fft_len, batch_size, FFTW_BACKWARD,
-                                         FFT_KIND_C2R, NULL);
+                                         FFT_KIND_C2R, src, dst);
     fftw_execute_dft_c2r(plan, (fftw_complex *)src, dst);
   }
   // Single precision
@@ -49,7 +49,7 @@ C_Status irfft_kernel_cpu(void **inputs, void **outputs) {
     float *dst = (float *)out->data;
 
     fftwf_plan plan = fft_ensure_plan_f32(fft_len, batch_size, FFTW_BACKWARD,
-                                          FFT_KIND_C2R, NULL);
+                                          FFT_KIND_C2R, src, dst);
     fftwf_execute_dft_c2r(plan, (fftwf_complex *)src, dst);
   } else {
     cpu_set_last_error("irfft: input must be complex (C32 or C64)");

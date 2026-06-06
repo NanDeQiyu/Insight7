@@ -33,8 +33,8 @@ def main():
     separator("Array Creation")
 
     a = ins.ones(ins.Shape([3, 4]), ins.float32)
-    s = a.shape()
-    print(f"ones(3,4) shape=({s[0]},{s[1]}) dtype={a.dtype()}")
+    s = a.shape
+    print(f"ones(3,4) shape=({s[0]},{s[1]}) dtype={a.dtype}")
 
     b = ins.arange(12, dtype=ins.float64).reshape(ins.Shape([3, 4]))
     print(f"arange(0,12).reshape(3,4):\n{b}")

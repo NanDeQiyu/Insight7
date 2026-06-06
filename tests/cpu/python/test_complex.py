@@ -28,14 +28,14 @@ class TestComplexCPU:
         real = ins.from_numpy(np.array([1, 2, 3], dtype=np.float64))
         result = ins.to_complex(real)
         assert ins.is_complex(result)
-        assert result.numel() == 3
+        assert result.numel == 3
 
     def test_to_complex_with_imag(self):
         real = ins.from_numpy(np.array([1, 2, 3], dtype=np.float64))
         imag = ins.from_numpy(np.array([4, 5, 6], dtype=np.float64))
         result = ins.to_complex(real, imag)
         assert ins.is_complex(result)
-        assert result.numel() == 3
+        assert result.numel == 3
 
     def test_real(self):
         a = ins.from_numpy(np.array([1 + 2j, 3 + 4j], dtype=np.complex128))
@@ -56,7 +56,7 @@ class TestComplexCPU:
         a = ins.from_numpy(np.array([1 + 2j, 3 + 4j], dtype=np.complex128))
         result = ins.as_real(a)
         assert not ins.is_complex(result)
-        assert result.numel() == 4
+        assert result.numel == 4
 
     def test_has_complex_shape(self):
         a = ins.from_numpy(np.array([1, 2, 3, 4], dtype=np.float64).reshape(2, 2))
@@ -117,7 +117,7 @@ class TestComplexCPU:
         a = ins.from_numpy(np.array([1 + 2j, 3 + 4j], dtype=np.complex64))
         assert ins.is_complex(a)
         r = ins.real(a)
-        assert r.numel() == 2
+        assert r.numel == 2
 
     def test_to_complex_creates_complex128(self):
         real = ins.from_numpy(np.array([1, 2], dtype=np.float64))
@@ -130,7 +130,7 @@ class TestComplexCPU:
         assert ins.is_complex(c)
         r = ins.as_real(c)
         assert not ins.is_complex(r)
-        assert r.numel() == 4
+        assert r.numel == 4
 
 
 if __name__ == "__main__":

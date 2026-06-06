@@ -8,6 +8,7 @@
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#include <vector>
 
 // 1D CA-CFAR kernel
 __global__ void ca_cfar_1d_f64(const double *src, double *th, bool *det,

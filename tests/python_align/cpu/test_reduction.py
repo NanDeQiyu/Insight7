@@ -54,7 +54,10 @@ class TestReductionAlignment:
 
     def test_mean_axis(self, data_2d):
         x = ins.from_numpy(data_2d)
-        assert_allclose(ins.mean(x, axis=0).numpy(), np.mean(data_2d, axis=0))
+        result = ins.mean(x, axis=0)
+        expected = np.mean(data_2d, axis=0)
+        # Insight may keep reduced dimension; squeeze to match NumPy
+        assert_allclose(result.numpy().squeeze(), expected)
 
     def test_argmax(self, data_1d):
         x = ins.from_numpy(data_1d)

@@ -42,6 +42,19 @@ if(INSIGHT_USE_OPENBLAS)
         else()
             message(WARNING "LAPACKE not found, some LAPACK functions may fail at runtime")
         endif()
+        # LAPACKE headers: check local OpenBLAS if not in system paths
+        find_path(LAPACKE_INCLUDE_DIR NAMES lapacke.h
+            PATHS
+                /usr/include
+                /usr/local/include
+                ${OpenBLAS_INCLUDE_DIR}
+                "E:/code/insight/deps/OpenBLAS-0.3.33-x64/include"
+                $ENV{OPENBLAS_HOME}/include
+        )
+        if(LAPACKE_INCLUDE_DIR)
+            target_include_directories(insight_cpu_backend PRIVATE ${LAPACKE_INCLUDE_DIR})
+            message(STATUS "LAPACKE headers found: ${LAPACKE_INCLUDE_DIR}")
+        endif()
         
         target_compile_definitions(insight_cpu_backend PUBLIC INSIGHT_USE_OPENBLAS)
         message(STATUS "OpenBLAS found and enabled for CPU backend")
@@ -51,4 +64,51 @@ if(INSIGHT_USE_OPENBLAS)
     endif()
 else()
     message(STATUS "OpenBLAS disabled by user option")
+endif()
+
+# On Windows, copy dependency DLLs to the backend output directory so that
+# LoadLibraryA can find them alongside the backend DLL (standard Windows practice).
+if(WIN32)
+    set(_CPU_DEP_DLLS "")
+    if(INSIGHT_USE_FFTW3 AND FFTW3_FOUND)
+        foreach(_lib ${FFTW3_LIBRARIES})
+            get_filename_component(_lib_dir "${_lib}" DIRECTORY)
+            get_filename_component(_lib_base "${_lib}" NAME_WE)
+            # vcpkg layout: lib/fftw3.lib → bin/fftw3.dll
+            # local layout: lib/libfftw3.a → bin/libfftw3.dll (or fftw3.dll)
+            set(_dll_candidates
+                "${_lib_dir}/../bin/${_lib_base}.dll"
+                "${_lib_dir}/${_lib_base}.dll"
+            )
+            foreach(_dll ${_dll_candidates})
+                if(EXISTS "${_dll}")
+                    list(APPEND _CPU_DEP_DLLS "${_dll}")
+                    break()
+                endif()
+            endforeach()
+        endforeach()
+    endif()
+    if(INSIGHT_USE_OPENBLAS AND OpenBLAS_FOUND)
+        get_filename_component(_lib_dir "${OpenBLAS_LIBRARY}" DIRECTORY)
+        set(_dll_candidates
+            "${_lib_dir}/../bin/libopenblas.dll"
+            "${_lib_dir}/../bin/openblas.dll"
+            "${_lib_dir}/libopenblas.dll"
+            "${_lib_dir}/openblas.dll"
+        )
+        foreach(_dll ${_dll_candidates})
+            if(EXISTS "${_dll}")
+                list(APPEND _CPU_DEP_DLLS "${_dll}")
+                break()
+            endif()
+        endforeach()
+    endif()
+    if(_CPU_DEP_DLLS)
+        add_custom_command(TARGET insight_cpu_backend POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${_CPU_DEP_DLLS}
+                $<TARGET_FILE_DIR:insight_cpu_backend>
+            COMMENT "Copying CPU backend dependency DLLs to output directory"
+        )
+    endif()
 endif()

@@ -1,10 +1,7 @@
 // backends/cuda/kernels/indexing/topk.cu
 /**
  * @file topk.cu
- * @brief CUDA kernel for topk operation.
- *
- * Returns the k largest/smallest elements and their indices.
- * Uses CPU fallback.
+ * @brief CUDA kernel for topk operation (CPU fallback with dtype support).
  *
  * Input layout (matches CPU kernel):
  *   inputs[0] = InsightArray* values output
@@ -33,63 +30,97 @@ C_Status topk_kernel_gpu(void **inputs, void **outputs) {
     gpu_set_last_error("topk: null array pointer");
     return C_FAILED;
   }
+  if (!out_values->data || !out_indices->data || !x->data) {
+    gpu_set_last_error("topk: null data pointer");
+    return C_FAILED;
+  }
 
-  int k = *static_cast<int *>(inputs[3]);
+  int64_t k = *static_cast<int64_t *>(inputs[3]);
   bool largest = *static_cast<bool *>(inputs[4]);
-  bool sorted_flag = *static_cast<bool *>(inputs[5]);
 
   int64_t ndim = x->ndim;
   int64_t n = x->numel;
-  int64_t axis_size = x->dims[ndim - 1]; // axis is always last after transpose
+  int64_t axis_size = x->dims[ndim - 1];
   int64_t outer_size = n / axis_size;
 
-  // Copy input to CPU
-  float *host_data = new float[n];
-  cudaMemcpy(host_data, x->data, n * sizeof(float), cudaMemcpyDeviceToHost);
+  if (k > axis_size)
+    k = axis_size;
 
-  // Compute topk on CPU
   int64_t out_n = outer_size * k;
-  float *values_data = new float[out_n];
-  int64_t *indices_data = new int64_t[out_n];
 
-  for (int64_t outer = 0; outer < outer_size; ++outer) {
-    int64_t base = outer * axis_size;
-    int64_t out_base = outer * k;
-
-    // Create index-value pairs
-    std::pair<float, int64_t> *pairs = new std::pair<float, int64_t>[axis_size];
-    for (int64_t i = 0; i < axis_size; ++i) {
-      pairs[i] = {host_data[base + i], i};
+  switch (x->dtype) {
+  case INSIGHT_DTYPE_F32: {
+    float *host_data = new float[n];
+    cudaMemcpy(host_data, x->data, n * sizeof(float), cudaMemcpyDeviceToHost);
+    float *values_data = new float[out_n];
+    int64_t *indices_data = new int64_t[out_n];
+    for (int64_t batch = 0; batch < outer_size; ++batch) {
+      std::pair<float, int64_t> *pairs =
+          new std::pair<float, int64_t>[axis_size];
+      for (int64_t i = 0; i < axis_size; ++i)
+        pairs[i] = {host_data[batch * axis_size + i], i};
+      if (largest)
+        std::partial_sort(pairs, pairs + k, pairs + axis_size,
+                          [](auto &a, auto &b) { return a.first > b.first; });
+      else
+        std::partial_sort(pairs, pairs + k, pairs + axis_size,
+                          [](auto &a, auto &b) { return a.first < b.first; });
+      for (int64_t i = 0; i < k; ++i) {
+        values_data[batch * k + i] = pairs[i].first;
+        indices_data[batch * k + i] = pairs[i].second;
+      }
+      delete[] pairs;
     }
-
-    // Partial sort to get top k
-    if (largest) {
-      std::partial_sort(
-          pairs, pairs + k, pairs + axis_size,
-          [](const auto &a, const auto &b) { return a.first > b.first; });
-    } else {
-      std::partial_sort(
-          pairs, pairs + k, pairs + axis_size,
-          [](const auto &a, const auto &b) { return a.first < b.first; });
+    cudaMemcpy(out_values->data, values_data, out_n * sizeof(float),
+               cudaMemcpyHostToDevice);
+    cudaMemcpy(out_indices->data, indices_data, out_n * sizeof(int64_t),
+               cudaMemcpyHostToDevice);
+    delete[] host_data;
+    delete[] values_data;
+    delete[] indices_data;
+    break;
+  }
+  case INSIGHT_DTYPE_F64: {
+    double *host_data = new double[n];
+    cudaMemcpy(host_data, x->data, n * sizeof(double), cudaMemcpyDeviceToHost);
+    double *values_data = new double[out_n];
+    int64_t *indices_data = new int64_t[out_n];
+    for (int64_t batch = 0; batch < outer_size; ++batch) {
+      std::pair<double, int64_t> *pairs =
+          new std::pair<double, int64_t>[axis_size];
+      for (int64_t i = 0; i < axis_size; ++i)
+        pairs[i] = {host_data[batch * axis_size + i], i};
+      if (largest)
+        std::partial_sort(pairs, pairs + k, pairs + axis_size,
+                          [](auto &a, auto &b) { return a.first > b.first; });
+      else
+        std::partial_sort(pairs, pairs + k, pairs + axis_size,
+                          [](auto &a, auto &b) { return a.first < b.first; });
+      for (int64_t i = 0; i < k; ++i) {
+        values_data[batch * k + i] = pairs[i].first;
+        indices_data[batch * k + i] = pairs[i].second;
+      }
+      delete[] pairs;
     }
-
-    // Write results
-    for (int64_t i = 0; i < k; ++i) {
-      values_data[out_base + i] = pairs[i].first;
-      indices_data[out_base + i] = pairs[i].second;
-    }
-    delete[] pairs;
+    cudaMemcpy(out_values->data, values_data, out_n * sizeof(double),
+               cudaMemcpyHostToDevice);
+    cudaMemcpy(out_indices->data, indices_data, out_n * sizeof(int64_t),
+               cudaMemcpyHostToDevice);
+    delete[] host_data;
+    delete[] values_data;
+    delete[] indices_data;
+    break;
+  }
+  default:
+    gpu_set_last_error("topk: unsupported dtype on CUDA");
+    return C_FAILED;
   }
 
-  // Copy results back to GPU
-  cudaMemcpy(out_values->data, values_data, out_n * sizeof(float),
-             cudaMemcpyHostToDevice);
-  cudaMemcpy(out_indices->data, indices_data, out_n * sizeof(int64_t),
-             cudaMemcpyHostToDevice);
-
-  delete[] host_data;
-  delete[] values_data;
-  delete[] indices_data;
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    gpu_set_last_error(cudaGetErrorString(err));
+    return C_FAILED;
+  }
 
   return C_SUCCESS;
 }
