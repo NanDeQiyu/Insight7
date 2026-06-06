@@ -99,3 +99,44 @@ class TestFFTExtended:
         x = ins.from_numpy(x_complex)
         result = ins.ifft2(ins.fft2(x))
         assert_allclose(result.numpy().real, x_np, atol=1e-8)
+
+
+class TestFFTShift:
+    """fftshift / ifftshift alignment against NumPy."""
+
+    def test_fftshift_1d(self):
+        x = ins.from_numpy(np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.float64))
+        result = ins.fftshift(x)
+        assert_allclose(
+            result.numpy(), np.fft.fftshift(np.array([1, 2, 3, 4, 5, 6, 7, 8])), atol=1e-10
+        )
+
+    def test_fftshift_fftfreq(self):
+        x = ins.fftfreq(16, 100e-6)
+        result = ins.fftshift(x)
+        assert_allclose(result.numpy(), np.fft.fftshift(np.fft.fftfreq(16, 100e-6)), atol=1e-10)
+
+    def test_fftshift_2d(self):
+        x = ins.from_numpy(np.arange(24, dtype=np.float64).reshape(4, 6))
+        result = ins.fftshift(x)
+        assert_allclose(result.numpy(), np.fft.fftshift(np.arange(24).reshape(4, 6)), atol=1e-10)
+
+    def test_fftshift_axis(self):
+        x = ins.from_numpy(np.arange(24, dtype=np.float64).reshape(4, 6))
+        result = ins.fftshift(x, axis=1)
+        assert_allclose(
+            result.numpy(), np.fft.fftshift(np.arange(24).reshape(4, 6), axes=1), atol=1e-10
+        )
+
+    def test_ifftshift_1d(self):
+        x = ins.from_numpy(np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.float64))
+        result = ins.ifftshift(x)
+        assert_allclose(
+            result.numpy(), np.fft.ifftshift(np.array([1, 2, 3, 4, 5, 6, 7, 8])), atol=1e-10
+        )
+
+    def test_ifftshift_roundtrip(self):
+        x_np = np.random.randn(16).astype(np.float64)
+        x = ins.from_numpy(x_np)
+        result = ins.fftshift(ins.ifftshift(x))
+        assert_allclose(result.numpy(), x_np, atol=1e-10)

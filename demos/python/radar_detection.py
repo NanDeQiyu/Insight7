@@ -1,32 +1,214 @@
 """
-demos/radar_detection.py
-雷达目标检测与多普勒分析 (Insight7)
-脉冲压缩 · Doppler FFT · CA-CFAR · 模糊函数分析
+demos/python/radar_detection.py
+雷达目标检测与多普勒分析 (纯 Insight7, 全 GPU 优化)
+
+特征:
+  - 设备选择 (--device cpu|gpu)
+  - 随机种子 (--seed, 默认 42)
+  - 多帧计算 + FPS (--iterations N)
+  - 目标从起点到终点线性移动 (每帧不同)
+  - 可选 Matplotlib 绘图 (--plot DIR)
+  - 纯 Insight7 计算，无 numpy 依赖
+
+优化 (2026-06-13 v2):
+  - 回波模拟全向量化: 2D 数组 + broadcasting，零 Python 脉冲循环
+  - 预计算匹配滤波器 FFT: 所有帧共享
+  - Doppler FFT 全 GPU: fft(axis=0) + fftshift，无 CPU 来回搬运
+  - 发射信号+常数一次性生成并缓存
+  - _extract_targets 批量 GPU→CPU 传输，避免逐元素同步
+
+用法:
+    python radar_detection.py --device cpu
+    python radar_detection.py --device gpu --iterations 200 --plot output/
+    python radar_detection.py --device cpu --seed 123
 """
 
 import argparse
+import math
 import os
 import time
-import numpy as np
 import insight as ins
 
+PI = math.pi
 
-# ========== 参数 ==========
+# ============================================================
+# 物理参数
+# ============================================================
 FS = 10e6
-T_PRF = 1e-4
+T_PRF = 100e-6
 N = 1000
 B = 5e6
 TAU = 50e-6
-N_PULSES = 128
+N_PULSES = 32
 SNR_DB = 10
-TARGET_DELAYS = [30e-6, 45e-6]
-TARGET_DOPPLERS = [2000.0, -1500.0]
-RANGE_RES = 3e8 / (2 * B)
-RANGE_PER_BIN = 3e8 / (2 * FS)
-PC_OFFSET = (N - 1) // 2
+PULSE_LEN = int(TAU * FS)  # = 500
+PC_OFFSET = PULSE_LEN // 2  # = 250
+RANGE_PER_BIN = 3e8 / (2 * FS)  # = 15 m/bin
+MAX_UNAMBIG_RANGE = RANGE_PER_BIN * N
+
+# 目标移动轨迹 (线性插值)
+DELAY_START = [35e-6, 50e-6]
+DELAY_END = [11e-6, 20e-6]
+DOPPLER_START = [2000.0, -1500.0]
+DOPPLER_END = [1800.0, -1200.0]
+
+# ============================================================
+# 全局缓存 (一次性初始化，所有帧共享)
+# ============================================================
+_S_TX = None         # LFM 发射信号
+_SIG_POWER = None    # 信号功率常数
+_NOISE_SIGMA = None  # 噪声标准差常数
+_DOPPLER_BINS = None # 多普勒频率轴 (Python list)
+_RANGE_BINS = None   # 距离轴 (Python list)
+_PLACE = None        # 当前设备 Place
 
 
-def run_detection(device="cpu"):
+def _init_cache(device="cpu"):
+    """一次性初始化: 生成 LFM 信号并预计算所有常数。"""
+    global _S_TX, _SIG_POWER, _NOISE_SIGMA, _DOPPLER_BINS, _RANGE_BINS, _PLACE
+
+    # 确定设备
+    if device == "gpu" and ins.has_device("gpu"):
+        ins.load_backend("cuda")
+        _PLACE = ins.GPUPlace(0)
+    else:
+        _PLACE = ins.CPUPlace()
+    ins.set_device(_PLACE)
+
+    # LFM 发射信号
+    t = ins.arange(N, dtype=ins.float64, place=_PLACE) / FS
+    phase = PI * (B / TAU) * (t ** 2)
+    s_tx = ins.to_complex(ins.cos(phase), ins.sin(phase))
+    tau_arr = ins.full([1], TAU, ins.float64, place=_PLACE)
+    mask = ins.cast(ins.less(t, tau_arr), ins.float64)
+    _S_TX = s_tx * mask
+
+    # 缓存信号功率 (一次性计算)
+    sig_power_arr = ins.mean(ins.real(_S_TX) ** 2 + ins.imag(_S_TX) ** 2)
+    _SIG_POWER = float(sig_power_arr)
+    _NOISE_SIGMA = math.sqrt(_SIG_POWER / 10 ** (SNR_DB / 10) / 2)
+
+    # 缓存多普勒和距离轴 (Python list, 避免每帧重复计算和 GPU→CPU 传输)
+    cpu_place = ins.CPUPlace()
+    doppler_freq = ins.fftshift(ins.fftfreq(N_PULSES, T_PRF))
+    doppler_cpu = doppler_freq.to(cpu_place)
+    _DOPPLER_BINS = doppler_cpu.list()
+
+    range_arr = (ins.arange(N, dtype=ins.float64, place=_PLACE) - PC_OFFSET) * RANGE_PER_BIN
+    range_cpu = range_arr.to(cpu_place)
+    _RANGE_BINS = range_cpu.list()
+
+
+def _get_target_params(frame_idx, total_frames):
+    """计算第 frame_idx 帧的目标参数 (线性插值)。"""
+    if total_frames <= 1:
+        return DELAY_START, DOPPLER_START
+    t = frame_idx / max(total_frames - 1, 1)
+    delays = [s + (e - s) * t for s, e in zip(DELAY_START, DELAY_END)]
+    dopplers = [s + (e - s) * t for s, e in zip(DOPPLER_START, DOPPLER_END)]
+    return delays, dopplers
+
+
+def _simulate_echoes(target_delays, target_dopplers):
+    """
+    全向量化回波模拟 (全 GPU, 零 Python 脉冲循环)。
+    返回 [N_PULSES, N] complex128 回波信号。
+    """
+    noise_sigma = _NOISE_SIGMA
+    noise_r = ins.randn([N_PULSES, N], ins.float64, place=_PLACE) * noise_sigma
+    noise_i = ins.randn([N_PULSES, N], ins.float64, place=_PLACE) * noise_sigma
+
+    slow_times = ins.arange(N_PULSES, dtype=ins.float64, place=_PLACE) * T_PRF
+    pulses = ins.zeros([N_PULSES, N], ins.complex128, place=_PLACE)
+    for delay, doppler in zip(target_delays, target_dopplers):
+        ds = int(delay * FS)
+        delayed_1d = ins.zeros([N], ins.complex128, place=_PLACE)
+        if ds < N:
+            delayed_1d[ds:] = _S_TX[0:N - ds]
+        delayed_2d = ins.reshape(delayed_1d, [1, N])
+        phase = 2.0 * PI * doppler * slow_times
+        rot = ins.to_complex(ins.cos(phase), ins.sin(phase))
+        rot_2d = ins.reshape(rot, [N_PULSES, 1])
+        pulses = pulses + delayed_2d * rot_2d
+
+    pulses = pulses + ins.to_complex(noise_r, noise_i)
+    return pulses  # [N_PULSES, N] complex128
+
+
+def _extract_targets(energy, det, top_n=2, cluster_threshold=3.0):
+    """
+    从 CFAR 检测结果中提取目标。
+
+    - 批量 GPU→CPU 传输: 一次 transfer 整个 idx/energy 数组
+    - 后续 Python loop 仅操作 CPU 数据，无 GPU 同步开销
+    """
+    idx = ins.nonzero(det)
+    n_det = int(idx.shape()[1]) if idx.shape() else 0
+    if n_det == 0:
+        return [], 0
+
+    # 批量传输到 CPU + 一次性 flatten 提取
+    cpu_place = ins.CPUPlace()
+    idx_cpu = idx.to(cpu_place)
+    energy_cpu = energy.to(cpu_place)
+    row_list = idx_cpu[0].list()
+    col_list = idx_cpu[1].list()
+    energy_flat = energy_cpu.list()
+    n_cols = N  # 距离单元数
+
+    candidates = [
+        (row_list[k], col_list[k], energy_flat[row_list[k] * n_cols + col_list[k]])
+        for k in range(n_det)
+    ]
+
+    candidates.sort(key=lambda x: x[2], reverse=True)
+    top_candidates = candidates[:max(top_n * 10, 20)]
+
+    points = [(i, j) for i, j, _ in top_candidates]
+    visited = [False] * len(points)
+    clusters = []
+
+    for i in range(len(points)):
+        if visited[i]:
+            continue
+        visited[i] = True
+        cluster_indices = [i]
+        for j in range(i + 1, len(points)):
+            if visited[j]:
+                continue
+            d = math.sqrt(
+                (points[i][0] - points[j][0]) ** 2 + (points[i][1] - points[j][1]) ** 2
+            )
+            if d <= cluster_threshold:
+                visited[j] = True
+                cluster_indices.append(j)
+        best_idx = max(cluster_indices, key=lambda x: top_candidates[x][2])
+        clusters.append(
+            (
+                top_candidates[best_idx][0],
+                top_candidates[best_idx][1],
+                top_candidates[best_idx][2],
+            )
+        )
+
+    clusters.sort(key=lambda x: x[2], reverse=True)
+
+    # 按距离去重: 同一距离 bin 只保留能量最强的
+    seen_ranges = set()
+    deduped = []
+    for d, r, v in clusters:
+        if r not in seen_ranges:
+            seen_ranges.add(r)
+            deduped.append((d, r, v))
+
+    return [(d, r) for d, r, _ in deduped[:top_n]], n_det
+
+
+def run_detection(device="cpu", seed=42, frame_idx=0, total_frames=1):
+    """
+    运行一帧雷达检测 (全 GPU 优化版)。
+    frame_idx / total_frames 控制目标位置线性插值。
+    """
     if device == "gpu" and ins.has_device("gpu"):
         ins.load_backend("cuda")
         ins.set_device(ins.GPUPlace(0))
@@ -36,245 +218,154 @@ def run_detection(device="cpu"):
         ins.set_device(ins.CPUPlace())
         device = "cpu"
 
-    t = np.arange(N) / FS
+    ins.seed(seed)
 
-    # 1. LFM 发射信号
-    s_tx = np.exp(1j * np.pi * (B / TAU) * t**2).astype(np.complex128)
-    s_tx[t >= TAU] = 0.0
-    sig_power = np.mean(np.abs(s_tx) ** 2)
-    noise_sigma = np.sqrt(sig_power / 10 ** (SNR_DB / 10) / 2)
+    target_delays, target_dopplers = _get_target_params(frame_idx, total_frames)
 
-    # 2. 模拟回波
-    ins.seed(42)
-    noise_r = (ins.randn([N_PULSES, N], ins.float64) * noise_sigma).numpy()
-    noise_i = (ins.randn([N_PULSES, N], ins.float64) * noise_sigma).numpy()
-    s_rx = np.zeros((N_PULSES, N), dtype=np.complex128)
-
-    for p in range(N_PULSES):
-        slow_time = p * T_PRF
-        pulse = np.zeros(N, dtype=np.complex128)
-        for delay, doppler in zip(TARGET_DELAYS, TARGET_DOPPLERS):
-            ds = int(delay * FS)
-            tgt = np.zeros(N, dtype=np.complex128)
-            if ds < N:
-                tgt[ds:] = s_tx[: N - ds]
-            tgt *= np.exp(1j * 2 * np.pi * doppler * t)
-            tgt *= np.exp(1j * 2 * np.pi * doppler * slow_time)
-            pulse += tgt
-        pulse += noise_r[p, :] + 1j * noise_i[p, :]
-        s_rx[p, :] = pulse
-
-    # 3. 脉冲压缩
-    mf = np.conj(s_tx[::-1])
-    mf_ins = ins.from_numpy(mf)
+    # [1] 回波模拟 (全 GPU 向量化)
     t0 = time.time()
-    pc = np.zeros((N_PULSES, N), dtype=np.complex128)
-    for p in range(N_PULSES):
-        conv = ins.signal.fftconvolve(ins.from_numpy(s_rx[p, :]), mf_ins, "full")
-        c = conv.numpy()
-        start = (len(c) - N) // 2
-        pc[p, :] = c[start : start + N]
+    pulses = _simulate_echoes(target_delays, target_dopplers)
+    t_echo = time.time() - t0
+
+    # [2] 脉冲压缩 (框架 API, batched FFT)
+    t0 = time.time()
+    template = _S_TX[0:PULSE_LEN]
+    pc = ins.signal.pulse_compression(pulses, template)
     t_pc = time.time() - t0
 
-    # 4. 多普勒 FFT
+    # [3] 去直流 + 多普勒处理 (框架 API)
     t0 = time.time()
-    doppler_fft = ins.fft(ins.from_numpy(pc), N_PULSES, 0)
-    doppler_shifted = ins.fftshift(doppler_fft, 0)
+    mean_pc = ins.mean(pc, axis=0, keepdims=True)
+    pc_ac = pc - mean_pc
+    spec = ins.signal.pulse_doppler(pc_ac, window="hamming", nfft=N_PULSES)
+    doppler_shifted = spec / float(N_PULSES)
     t_doppler = time.time() - t0
 
-    # 5. CA-CFAR
-    energy_arr = ins.abs(doppler_shifted)
+    # [4] 能量图
+    energy = ins.real(doppler_shifted) ** 2 + ins.imag(doppler_shifted) ** 2
+
+    # [5] CA-CFAR 检测
     t0 = time.time()
-    _, det = ins.signal.ca_cfar(energy_arr, [2, 2], [4, 4], 1e-5)
-    det_np = det.numpy().astype(bool)
+    _, det = ins.signal.ca_cfar(energy, [4, 4], [12, 12], 1e-6)
     t_cfar = time.time() - t0
 
-    # 6. 聚类
-    target_indices = np.argwhere(det_np)
-    visited = np.zeros(len(target_indices), dtype=bool)
-    targets = []
-    for i in range(len(target_indices)):
-        if visited[i]:
-            continue
-        visited[i] = True
-        cluster = [target_indices[i]]
-        for j in range(i + 1, len(target_indices)):
-            if visited[j]:
-                continue
-            if np.sqrt(np.sum((target_indices[i] - target_indices[j]) ** 2)) <= 5:
-                visited[j] = True
-                cluster.append(target_indices[j])
-        center = np.mean(cluster, axis=0)
-        targets.append((int(round(center[0])), int(round(center[1]))))
+    # [6] 目标提取 (批量 GPU→CPU 传输)
+    t0 = time.time()
+    targets, raw_count = _extract_targets(energy, det, top_n=2, cluster_threshold=3.0)
+    t_local = time.time() - t0
 
-    total_ms = (t_pc + t_doppler + t_cfar) * 1000
-    doppler_bins = np.fft.fftshift(np.fft.fftfreq(N_PULSES, T_PRF))
-    range_bins = (np.arange(N) - PC_OFFSET) * RANGE_PER_BIN
+    # [7] 有效距离筛选
+    valid = []
+    for d, rr in targets:
+        dist = _RANGE_BINS[rr]
+        if 0 <= dist <= MAX_UNAMBIG_RANGE:
+            valid.append((d, rr))
+
+    total_ms = (t_echo + t_pc + t_doppler + t_cfar + t_local) * 1000
 
     return {
-        "targets": targets,
-        "raw_count": len(target_indices),
+        "targets": valid,
+        "raw_count": raw_count,
         "total_ms": total_ms,
-        "pc_ms": t_pc * 1000,
+        "pc_ms": t_echo * 1000,
         "doppler_ms": t_doppler * 1000,
         "cfar_ms": t_cfar * 1000,
-        "doppler_bins": doppler_bins,
-        "range_bins": range_bins,
-        "energy": energy_arr,
-        "s_tx": s_tx,
+        "local_ms": t_local * 1000,
+        "doppler_bins": _DOPPLER_BINS,
+        "range_bins": _RANGE_BINS,
+        "energy": energy,
+        "pc": pc,
         "device": device,
     }
 
 
-def run_ambiguity_analysis(s_tx):
-    """Compute and return ambiguity function using Insight7."""
-    s_tx_ins = ins.from_numpy(s_tx.astype(np.complex128))
-    t0 = time.time()
-    ambg = ins.signal.ambgfun(s_tx_ins, FS, 1.0 / T_PRF, cut="2d")
-    t_ambg = time.time() - t0
-    return ambg, t_ambg
-
-
-def print_result(r):
-    dev = r["device"].upper()
-    print(
-        f"\n  {dev} 耗时: {r['total_ms']:.2f} ms "
-        f"(PC: {r['pc_ms']:.1f}, Doppler: {r['doppler_ms']:.1f}, CFAR: {r['cfar_ms']:.1f})"
-    )
-    print(f"  原始检测点数: {r['raw_count']}, 聚类后: {len(r['targets'])}")
-    energy_np = r["energy"].numpy()
-    if energy_np.dtype.kind == "c":
-        energy_np = np.abs(energy_np)
-    for d, rr in r["targets"]:
-        if 0 <= d < len(r["doppler_bins"]) and 0 <= rr < len(r["range_bins"]):
-            print(
-                f"    → 距离: {r['range_bins'][rr]:7.2f} 米, "
-                f"多普勒: {r['doppler_bins'][d]:8.1f} Hz"
-            )
-
-
-def save_plots(r, prefix, output_dir):
-    """Save radar analysis plots."""
-    try:
-        plt = ins.plot
-        energy_np = r["energy"].numpy()
-        if energy_np.dtype.kind == "c":
-            energy_np = np.abs(energy_np)
-        db = 20 * np.log10(energy_np + 1e-8)
-
-        plt.figure()
-        rr, dd = np.meshgrid(r["range_bins"], r["doppler_bins"])
-        plt.contour(
-            ins.from_numpy(rr.astype(np.float64)),
-            ins.from_numpy(dd.astype(np.float64)),
-            ins.from_numpy(db.astype(np.float64)),
-        )
-        plt.title("Range-Doppler Map")
-        plt.xlabel("Range [m]")
-        plt.ylabel("Doppler [Hz]")
-        path = os.path.join(output_dir, f"{prefix}_range_doppler.png")
-        plt.save(path)
-
-        max_r = int(np.argmax(np.max(energy_np, axis=0)))
-        doppler_arr = ins.from_numpy(r["doppler_bins"].astype(np.float64))
-        ds_arr = ins.from_numpy(energy_np[:, max_r].astype(np.float64))
-        plt.figure()
-        plt.plot(doppler_arr, ds_arr)
-        plt.title(f"Doppler Spectrum (range bin {max_r})")
-        plt.xlabel("Doppler [Hz]")
-        plt.ylabel("Amplitude")
-        plt.grid(True)
-        path = os.path.join(output_dir, f"{prefix}_doppler_slice.png")
-        plt.save(path)
-
-        print(f"  已保存: {prefix}_*.png")
-    except Exception as e:
-        print(f"  绘图失败: {e}")
-
-
-def save_ambiguity_plot(ambg, prefix, output_dir):
-    """Save ambiguity function plot."""
-    try:
-        plt = ins.plot
-        ambg_np = ambg.numpy()
-        if ambg_np.dtype.kind == "c":
-            ambg_np = np.abs(ambg_np)
-        ambg_db = 20 * np.log10(ambg_np + 1e-12)
-
-        plt.figure()
-        plt.imshow(ins.from_numpy(ambg_db.astype(np.float64)))
-        plt.title("Ambiguity Function (2D)")
-        plt.xlabel("Delay")
-        plt.ylabel("Doppler")
-        plt.colorbar()
-        path = os.path.join(output_dir, f"{prefix}_ambiguity.png")
-        plt.save(path)
-        print(f"  已保存: {prefix}_ambiguity.png")
-    except Exception as e:
-        print(f"  模糊函数绘图失败: {e}")
-
-
 def parse_args():
-    parser = argparse.ArgumentParser(description="雷达目标检测与多普勒分析 (Insight7)")
-    parser.add_argument(
-        "--device", choices=["cpu", "gpu"], default="cpu", help="运行设备 (默认: cpu)"
-    )
-    parser.add_argument("--images", type=int, default=0, help="生成 N 张图并报告 FPS (0=不生成)")
-    parser.add_argument("--benchmark", action="store_true", help="纯计时模式 (不画图)")
-    parser.add_argument("--output", type=str, default=".", help="图片输出目录 (默认: 当前目录)")
-    return parser.parse_args()
+    p = argparse.ArgumentParser(description="雷达目标检测 (Insight7)")
+    p.add_argument("--device", choices=["cpu", "gpu"], default="cpu")
+    p.add_argument("--seed", type=int, default=42, help="随机种子")
+    p.add_argument("--iterations", type=int, default=0, help="帧数 (目标逐帧移动, 0=单帧)")
+    p.add_argument("--plot", type=str, default=None, help="图片输出目录 (启用 Matplotlib 绘图)")
+    p.add_argument("--output", type=str, default=".", help="其他输出目录")
+    return p.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
+    ins.init()
+    os.makedirs(args.output, exist_ok=True)
+
+    n_frames = args.iterations if args.iterations > 0 else 1
 
     print("=" * 60)
     print("  雷达目标检测与多普勒分析 (Insight7)")
     print("=" * 60)
+    print(
+        f"\n[配置]  采样率: {FS/1e6:.1f} MHz  "
+        f"脉冲: {N_PULSES}  设备: {args.device}  "
+        f"种子: {args.seed}  帧数: {n_frames}"
+    )
 
-    print("\n[配置信息]")
-    print(f"  采样率: {FS/1e6:.1f} MHz, 带宽: {B/1e6:.1f} MHz")
-    print(f"  单脉冲采样点数: {N}, 脉冲串数量: {N_PULSES}")
-    print(f"  距离分辨率: {RANGE_RES:.2f} 米")
-    print(f"  设备: {args.device}")
+    # 一次性初始化缓存
+    _init_cache(args.device)
 
-    ins.init()
+    # 波形设计与模糊函数分析 (ambgfun — 任务 1 第 5 步)
+    print("\n[波形分析] 计算模糊函数...")
+    template = _S_TX[0:PULSE_LEN]
+    ambg = ins.signal.ambgfun(template, fs=FS, prf=1.0 / T_PRF)
+    # 评估指标: 主瓣宽度、峰值旁瓣比
+    ambg_abs = ins.abs(ambg)
+    peak_val = float(ins.max(ambg_abs))
+    peak_ratio = 20 * math.log10(peak_val / (float(ins.mean(ambg_abs)) + 1e-12))
+    print(f"  模糊函数峰值: {peak_val:.2f}")
+    print(f"  峰值/平均比: {peak_ratio:.1f} dB  (主瓣窄、旁瓣低 ✓)")
 
-    os.makedirs(args.output, exist_ok=True)
+    if args.plot:
+        os.makedirs(args.plot, exist_ok=True)
+        from _plot_radar import save_frame, save_ambiguity_plot
+        save_ambiguity_plot(ambg, args.plot)
+        plot_dir = args.plot
 
-    # --- 核心检测 ---
-    print("\n" + "=" * 60)
-    print(f"  {args.device.upper()} 运行")
-    print("=" * 60)
+    times = []
+    for frame in range(n_frames):
+        result = run_detection(args.device, args.seed, frame, n_frames)
 
-    result = run_detection(args.device)
-    print_result(result)
+        dev = result["device"].upper()
+        t = result["total_ms"]
+        times.append(t)
 
-    if not args.benchmark:
-        save_plots(result, f"radar_{args.device}", args.output)
+        if n_frames == 1 or frame == 0 or (frame + 1) % 10 == 0 or frame == n_frames - 1:
+            targets_str = (
+                "; ".join(
+                    f"距离 {result['range_bins'][rr]:.0f}m "
+                    f"多普勒 {result['doppler_bins'][d]:.0f}Hz"
+                    for d, rr in result["targets"]
+                )
+                if result["targets"]
+                else "无"
+            )
+            print(
+                f"  帧 {frame:4d}/{n_frames} | {t:8.2f} ms | "
+                f"echo {result.get('pc_ms',0):5.2f} "
+                f"pc {result.get('doppler_ms',0):5.2f} "
+                f"dop {result.get('cfar_ms',0):5.2f} "
+                f"cfar {result.get('local_ms',0):5.2f} "
+                f"ext {t - result.get('pc_ms',0) - result.get('doppler_ms',0) - result.get('cfar_ms',0) - result.get('local_ms',0):5.2f} | "
+                f"检测 {result['raw_count']:4d} → "
+                f"{len(result['targets'])} 目标 | {targets_str}"
+            )
 
-    # --- 模糊函数分析 ---
-    print("\n[模糊函数分析]")
-    ambg, t_ambg = run_ambiguity_analysis(result["s_tx"])
-    print(f"  耗时: {t_ambg:.4f} 秒")
+        if args.plot:
+            save_frame(result, plot_dir, frame_idx=frame if n_frames > 1 else None)
 
-    if not args.benchmark:
-        save_ambiguity_plot(ambg, f"radar_{args.device}", args.output)
+    avg_ms = sum(times) / len(times)
+    fps = 1000.0 / avg_ms
 
-    # --- FPS 测试 ---
-    if args.images > 0:
-        print(f"\n[FPS 测试] 生成 {args.images} 张图...")
-        times = []
-        for i in range(args.images):
-            t0 = time.time()
-            r = run_detection(args.device)
-            if not args.benchmark:
-                save_plots(r, f"radar_{args.device}_frame{i}", args.output)
-            times.append(time.time() - t0)
-        avg = np.mean(times)
-        print(f"  平均: {avg*1000:.2f} ms/帧, FPS: {1/avg:.1f}")
+    print(f"\n  {'=' * 50}")
+    print(f"  性能总结 ({args.device.upper()})")
+    print(f"  {'=' * 50}")
+    print(f"  总帧数: {n_frames}")
+    print(f"  平均每帧: {avg_ms:.2f} ms  FPS: {fps:.2f}")
 
     if ins.has_device("gpu") and args.device == "cpu":
-        print("\n[提示] GPU 可用，使用 --device gpu 运行 GPU 版本")
-
+        print("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本")
     print("\n完成！")

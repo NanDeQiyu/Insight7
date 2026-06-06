@@ -1,8 +1,8 @@
 ---
 name: fix-cross-language-demo-gotchas
-description: Common issues in Python/Lua/Julia demos — numel/item/tostring/init patterns
+description: Common issues in Python/Lua/Julia demos — shape()/numel/item/tostring/init/ins.abs() complex bug patterns
 source: auto-skill
-extracted_at: '2026-06-03T15:00:00.000Z'
+extracted_at: '2026-06-06T16:48:09.407Z'
 ---
 
 # Cross-Language Demo Gotchas
@@ -16,6 +16,40 @@ freq_bins = spectrum.numel  # returns bound method, not int
 
 # ✅ CORRECT
 freq_bins = spectrum.numel()
+```
+
+### `shape` is a method, not a property
+```python
+# ❌ WRONG — TypeError: 'method' object is not subscriptable
+n = arr.shape[0]
+
+# ✅ CORRECT
+n = arr.shape()[0]
+```
+
+### `list(shape())` raises RuntimeError — use list comprehension
+```python
+# ❌ WRONG — RuntimeError: Shape dimension index out of range (ndim=2)
+shape_list = list(arr.shape())
+
+# WHY: Shape.__iter__() internally uses shape[i] with i from range(len),
+# but the implementation may access __len__+1 or have a bug where it
+# attempts to read beyond the actual ndim. Direct evidence: 2D shape
+# fails with "index out of range: 2 (ndim=2)".
+
+# ✅ CORRECT — use list comprehension
+s = arr.shape()
+shape_list = [s[i] for i in range(len(s))]
+```
+
+### `float(ins.mean(...).numpy())` fails on complex — use `.numpy().item()`
+For scalar extraction from ANY dtype (including complex128):
+```python
+# ❌ WRONG — TypeError: float() argument must be a string or a number, not 'complex'
+power = float(ins.mean(ins.abs(s_tx) ** 2).numpy())
+
+# ✅ CORRECT — .numpy().item() handles all dtypes
+power = float(ins.mean(signal).numpy().item())
 ```
 
 ### `item()` doesn't exist on Array
@@ -45,6 +79,56 @@ energy = float(ins.sum(arr).numpy())  # ✅ CORRECT
 
 # ❌ WRONG — str() of Array includes metadata, float() fails
 energy = float(str(ins.sum(arr)))  # ValueError: could not convert string
+```
+
+### `ins.abs()` on complex128 returns complex128 — NOT magnitude
+
+**KNOWN BUG**: `ins.abs()` on complex arrays returns complex128 (not float64 magnitude).
+Use manual calculation instead.
+
+```python
+# ❌ WRONG — result is complex128, not float64
+mag = ins.abs(complex_arr)
+energy = 20 * ins.log10(mag)  # log10 of complex → error!
+
+# ✅ CORRECT — compute magnitude manually
+mag = ins.sqrt(ins.real(complex_arr) ** 2 + ins.imag(complex_arr) ** 2)
+energy = 20 * ins.log10(mag + 1e-12)  # works
+```
+
+Applies to: `ins.abs()`, `ins.max()`, `ins.mean()` on complex arrays — all return complex128.
+For power/SNR calculations on complex signals, always use manual `real**2 + imag**2`.
+
+### `ins.to_complex(real, imag)` — creating complex arrays
+```python
+# Create complex array from real and imaginary parts
+z = ins.to_complex(real_arr, imag_arr)
+
+# But ins.full() for scalar-like values needs dtype explicitly
+# ✅ CORRECT
+tau_arr = ins.full([1], TAU, ins.float64)
+
+# For complex rotation: create real/imag parts separately, then combine
+cos_arr = ins.full([1], math.cos(phase), ins.float64)
+sin_arr = ins.full([1], math.sin(phase), ins.float64)
+rotation = ins.to_complex(cos_arr, sin_arr)
+
+# ⚠️ Array * Complex scalar fails — must create Array scalar
+# ❌ TypeError: __mul__() expects Array
+result = arr * complex(math.cos(p), math.sin(p))
+# ✅ CORRECT
+rot = ins.to_complex(ins.full([1], cos), ins.full([1], sin))
+result = arr * rot
+```
+
+### `ins.plot` is optional — guard with try/except
+```python
+try:
+    plt = ins.plot
+    plt.figure()
+    # ...
+except AttributeError:
+    print("  [跳过绘图] ins.plot 不可用")
 ```
 
 ### Init — use auto-discover for future hardware support
@@ -386,15 +470,21 @@ local function randn()
 end
 ```
 
-### Python: use Insight FFT, not numpy
+### Python: use Insight FFT, not numpy (and watch out for complex abs bug)
 ```python
 # ❌ WRONG — uses numpy FFT, different from C++ Insight FFT
 doppler_np = np.fft.fftshift(doppler_fft.numpy(), axes=0)
 energy = np.abs(doppler_np)
 
-# ✅ CORRECT — use Insight FFT functions
+# ❌ WRONG — ins.abs() on complex returns complex128, not float64 magnitude
 doppler_shifted = ins.fftshift(doppler_fft, 0)
-energy_arr = ins.abs(doppler_shifted)
+energy_arr = ins.abs(doppler_shifted)  # returns complex128!
+
+# ✅ CORRECT — use Insight FFT + manual magnitude calculation
+doppler_shifted = ins.fftshift(doppler_fft, 0)
+energy_arr = ins.sqrt(
+    ins.real(doppler_shifted) ** 2 + ins.imag(doppler_shifted) ** 2
+)
 ```
 
 ### Julia column-major `from_data` — PROPER FIX IMPLEMENTED

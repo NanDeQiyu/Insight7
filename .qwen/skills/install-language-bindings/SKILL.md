@@ -263,3 +263,10 @@ Julia `__init__()` checks both `@__DIR__` and parent dir for .so files.
 - **CMake `option()` vs `set(... FORCE)`** — `option()` respects stale cache values.
   Use `set(VAR ON CACHE BOOL "" FORCE)` when the value must be enforced regardless
   of previous cmake runs (e.g., `INSIGHT_USE_THRUST` when CUDA is ON).
+- **`cmake --build` does NOT guarantee Python picks up the new .so** — POST_BUILD
+  copies the .so during build, but the Python package may have been installed from
+  an earlier `pip install` that cached the file elsewhere. After modifying a backend
+  kernel, **always run `pip install -e .`** to ensure both the .so and package
+  metadata are synced. The symptom of a stale .so: `fill_()` on views works (old
+  fix), but `copy_from_()` on views ignores offset (new fix not picked up). Diagnosis:
+  check `/proc/PID/maps` for which `libinsight_cpu_backend.so` is loaded.

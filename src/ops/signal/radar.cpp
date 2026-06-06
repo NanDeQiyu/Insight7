@@ -27,7 +27,7 @@ namespace ins {
 namespace signal {
 
 // ============================================================================
-// pulse_compression
+// pulse_compression — batched FFT-based pulse compression (GPU optimized)
 // ============================================================================
 
 Array pulse_compression(const Array &x, const Array &template_tx,
@@ -43,68 +43,101 @@ Array pulse_compression(const Array &x, const Array &template_tx,
 
   int64_t num_pulses = x.shape().dim(0);
   int64_t samples_per_pulse = x.shape().dim(1);
+  bool is_complex = (x.dtype() == DType::C32 || x.dtype() == DType::C64);
 
-  if (nfft == 0)
-    nfft = samples_per_pulse;
+  // Determine FFT length (must be >= samples + template_len - 1 for full conv)
+  int64_t tpl_len = template_tx.numel();
+  int64_t min_n = samples_per_pulse + tpl_len - 1;
+  if (nfft == 0 || nfft < min_n) {
+    nfft = 1;
+    while (nfft < min_n) nfft <<= 1;
+  }
 
   // Apply window to template if specified
   Array tpl = template_tx;
   if (!window.empty()) {
-    Array W = get_window(window, tpl.numel(), false);
+    Array W = get_window(window, tpl_len, false);
     tpl = mul(tpl, W);
   }
 
-  // Normalize template
+  // Normalize template if requested
   if (normalize) {
     double norm_val = std::sqrt(sum(square(tpl)).item<double>());
     tpl = div(tpl, full(tpl.shape(), norm_val, tpl.dtype(), tpl.place()));
   }
 
-  // FFT of template, conjugate
-  DType work_dtype = (tpl.dtype() == DType::F32) ? DType::F32 : DType::F64;
-  if (tpl.dtype() != work_dtype)
-    tpl = tpl.to(work_dtype);
-  Array fft_tpl = fft::rfft(tpl, nfft);
-  Array conj_fft_tpl = conj(fft_tpl);
+  // Work on the same device as input
+  Place dev = x.place();
 
-  // Process each pulse: rfft → multiply → irfft
-  Place cpu = CPUPlace();
-  int64_t fft_len = nfft / 2 + 1;
-  DType cdtype = (work_dtype == DType::F32) ? DType::C32 : DType::C64;
+  // Pad template to nfft and compute matched filter in freq domain
+  DType work_dtype = is_complex ? x.dtype() : DType::F64;
+  if (tpl.dtype() != work_dtype) tpl = tpl.to(work_dtype);
 
-  // Move all data to CPU for per-pulse extraction
-  Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
-  if (x_cpu.dtype() != work_dtype)
-    x_cpu = x_cpu.to(work_dtype);
-  if (conj_fft_tpl.place().kind() != DeviceKind::CPU)
-    conj_fft_tpl = conj_fft_tpl.to(cpu);
-
-  std::vector<Array> result_rows;
-
-  for (int64_t p = 0; p < num_pulses; ++p) {
-    // Extract pulse p using slice
-    Array pulse = slice(x_cpu, {Slice(p, p + 1), Slice(0, samples_per_pulse)});
-    pulse = reshape(pulse, {samples_per_pulse});
-    if (pulse.dtype() != work_dtype)
-      pulse = pulse.to(work_dtype);
-
-    Array fft_pulse = fft::rfft(pulse, nfft);
-    Array product = mul(fft_pulse, conj_fft_tpl);
-    Array ifft_result = fft::irfft(product, nfft);
-
-    // Convert to complex for storage
-    Array ifft_cpx = to_complex(ifft_result);
-    result_rows.push_back(ifft_cpx);
+  Array tpl_padded = zeros({nfft}, work_dtype, dev);
+  {
+    Array tpl_view = tpl_padded.slice({Slice(0, tpl_len)});
+    tpl_view.copy_from_(tpl);
   }
 
-  Array result = stack(result_rows, 0);
-  if (x.place().kind() != DeviceKind::CPU)
-    result = result.to(x.place());
+  // Matched filter in frequency domain: conj(flip(template))
+  // Correct: fft(conj(flip(template_padded))) = conj(fft(template) * exp(j*2π*k*(N-1)/N))
+  // We compute it directly by flipping the template, conjugating, then FFT.
+  Array mf_fft;
+  if (is_complex) {
+    // For complex input: flip → conj → FFT (full complex path)
+    Array tpl_flip = flip(tpl);
+    Array mf_padded = zeros({nfft}, work_dtype, dev);
+    {
+      Array mf_view = mf_padded.slice({Slice(0, tpl_len)});
+      mf_view.copy_from_(conj(tpl_flip));
+    }
+    mf_fft = fft::fft(mf_padded, nfft, 0);
+  } else {
+    // For real input: conj(rfft(template)) is correct (real signals are symmetric)
+    mf_fft = conj(fft::rfft(tpl_padded, nfft));
+  }
+
+  // Pad input and do batched FFT along axis 1
+  Array x_work = x;
+  if (x_work.dtype() != work_dtype) x_work = x_work.to(work_dtype);
+
+  Array x_padded = zeros({num_pulses, nfft}, work_dtype, dev);
+  {
+    Array x_view = x_padded.slice({Slice(), Slice(0, samples_per_pulse)});
+    x_view.copy_from_(x_work);
+  }
+
+  // Batched FFT along axis 1
+  Array x_fft;
+  if (is_complex) {
+    x_fft = fft::fft(x_padded, nfft, 1);
+  } else {
+    x_fft = fft::rfft(x_padded, nfft, 1);
+  }
+
+  // Broadcast matched filter: [1, fft_len] × [num_pulses, fft_len]
+  int64_t fft_len = is_complex ? nfft : (nfft / 2 + 1);
+  Array mf_2d = reshape(mf_fft, {1, fft_len});
+  Array prod = mul(x_fft, mf_2d);
+
+  // Batched IFFT along axis 1
+  Array result_full;
+  if (is_complex) {
+    result_full = fft::ifft(prod, nfft, 1, "backward");
+  } else {
+    // irfft returns real; wrap in to_complex for consistent complex output
+    result_full = to_complex(fft::irfft(prod, nfft, 1));
+  }
+
+  // Crop to original signal length (matched filter 'same' mode)
+  int64_t start = tpl_len / 2;
+  int64_t end = start + samples_per_pulse;
+  Array result = result_full.slice({Slice(), Slice(start, end)});
   return result;
 }
 
 // ============================================================================
-// pulse_doppler
+// pulse_doppler — batched Doppler FFT along axis 0 (GPU optimized)
 // ============================================================================
 
 Array pulse_doppler(const Array &x, const std::string &window, int64_t nfft) {
@@ -115,48 +148,31 @@ Array pulse_doppler(const Array &x, const std::string &window, int64_t nfft) {
   int64_t num_pulses = x.shape().dim(0);
   int64_t samples_per_pulse = x.shape().dim(1);
 
-  if (nfft == 0)
-    nfft = num_pulses;
+  if (nfft == 0) nfft = num_pulses;
+
+  // Work on the same device as input
+  Place dev = x.place();
 
   // Apply window along pulse dimension (axis 0)
   Array x_work = x;
   if (!window.empty()) {
     Array W = get_window(window, num_pulses, false);
-    // Reshape W for broadcasting: [num_pulses, 1]
-    W = reshape(W, {num_pulses, 1});
+    W = reshape(W, {num_pulses, 1});  // broadcast: [num_pulses, 1] × [num_pulses, samples]
     x_work = mul(x_work, W);
   }
 
-  // FFT along pulse dimension (axis 0)
-  // Transpose → FFT along last axis → transpose back
-  Array x_t = transpose(x_work); // [samples_per_pulse, num_pulses]
-
-  // Convert to complex for FFT
-  DType cdtype = (x.dtype() == DType::F32) ? DType::C32 : DType::C64;
-  DType work_dtype = (x.dtype() == DType::F32) ? DType::F32 : DType::F64;
-  if (x_t.dtype() != work_dtype)
-    x_t = x_t.to(work_dtype);
-
-  // FFT each row (which corresponds to a column of original)
-  // Process row by row
-  Place cpu = CPUPlace();
-  Array x_t_cpu = (x_t.place().kind() == DeviceKind::CPU) ? x_t : x_t.to(cpu);
-
-  std::vector<Array> col_results;
-  for (int64_t s = 0; s < samples_per_pulse; ++s) {
-    Array col = slice(x_t_cpu, 0, s, s + 1);
-    col = reshape(col, {num_pulses});
-
-    Array col_cpx = to_complex(col);
-    Array fft_col = fft::fft(col_cpx, nfft);
-    col_results.push_back(fft_col);
+  // Ensure complex for FFT
+  bool is_complex = (x_work.dtype() == DType::C32 || x_work.dtype() == DType::C64);
+  if (!is_complex) {
+    x_work = to_complex(x_work);
   }
 
-  // Stack columns and transpose back to [nfft, samples_per_pulse]
-  Array stacked = stack(col_results, 0); // [samples_per_pulse, nfft]
-  Array result = transpose(stacked);     // [nfft, samples_per_pulse]
-  if (x.place().kind() != DeviceKind::CPU)
-    result = result.to(x.place());
+  // Batched FFT along axis 0: [num_pulses, samples] → [nfft, samples]
+  Array result = fft::fft(x_work, nfft, 0);
+
+  // It's conventional to fftshift along the Doppler (pulse) axis
+  result = fft::fftshift(result, 0);
+
   return result;
 }
 

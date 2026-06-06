@@ -53,3 +53,4 @@ if(INSIGHT_USE_SNDFILE)
 endif()
 
 add_insight_demo(demo_radar_task1  cpp/radar_task1.cpp)
+add_insight_demo(demo_radar_detection cpp/radar_detection.cpp)

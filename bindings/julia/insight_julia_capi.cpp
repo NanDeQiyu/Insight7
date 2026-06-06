@@ -198,6 +198,25 @@ void insight_jl_to_data(const Array *arr, void *dst) {
   std::memcpy(dst, cpu.data(), cpu.nbytes());
 }
 
+// Get a single element by flat index (for extract_targets optimization)
+double insight_jl_item_flat(const Array *arr, int64_t idx) {
+  Array cpu = arr->contiguous().to(CPUPlace());
+  switch (cpu.dtype()) {
+    case DType::F64: return cpu.data<double>()[idx];
+    case DType::F32: return (double)cpu.data<float>()[idx];
+    case DType::I64: return (double)cpu.data<int64_t>()[idx];
+    case DType::I32: return (double)cpu.data<int32_t>()[idx];
+    case DType::I16: return (double)cpu.data<int16_t>()[idx];
+    case DType::I8:  return (double)cpu.data<int8_t>()[idx];
+    case DType::U64: return (double)cpu.data<uint64_t>()[idx];
+    case DType::U32: return (double)cpu.data<uint32_t>()[idx];
+    case DType::U16: return (double)cpu.data<uint16_t>()[idx];
+    case DType::U8:  return (double)cpu.data<uint8_t>()[idx];
+    case DType::BOOL: return cpu.data<bool>()[idx] ? 1.0 : 0.0;
+    default: return 0.0;
+  }
+}
+
 // Return reversed shape (for Julia column-major layout).
 void insight_jl_shape_reversed(const Array *arr, int64_t *out,
                                int32_t max_ndim) {
@@ -216,6 +235,18 @@ void insight_jl_fill(Array *arr, double value) {
 void insight_jl_copy_from(Array *dst, const Array *src) {
   if (dst && src)
     dst->copy_from_(*src);
+}
+
+// Slice: returns a view (start inclusive, stop exclusive, 0-based)
+Array *insight_jl_slice(const Array *arr, int32_t dim, int64_t start,
+                        int64_t stop) {
+  if (!arr)
+    return nullptr;
+  try {
+    return new Array(arr->slice(dim, start, stop));
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 // Metadata queries
@@ -306,6 +337,23 @@ JL_BINARY_OP(logical_xor, logical_xor)
 // Logical unary ops (use ins:: namespace to avoid std::logical_not conflict)
 Array *insight_jl_logical_not(const Array *x) {
   return new Array(ins::logical_not(*x));
+}
+
+// ============================================================================
+// Scalar operations (avoid Julia-side from_data for scalars)
+// ============================================================================
+
+Array *insight_jl_mul_scalar(const Array *a, double b) {
+  return new Array((*a) * b);
+}
+Array *insight_jl_div_scalar(const Array *a, double b) {
+  return new Array((*a) / b);
+}
+Array *insight_jl_add_scalar(const Array *a, double b) {
+  return new Array((*a) + b);
+}
+Array *insight_jl_sub_scalar(const Array *a, double b) {
+  return new Array((*a) - b);
 }
 
 // ============================================================================
@@ -688,8 +736,17 @@ Array *insight_jl_pulse_doppler(const Array *x) {
   return new Array(signal::pulse_doppler(*x));
 }
 
+Array *insight_jl_pulse_doppler_window(const Array *x, const char *window,
+                                        int64_t nfft) {
+  return new Array(signal::pulse_doppler(*x, std::string(window), nfft));
+}
+
 Array *insight_jl_mvdr(const Array *x, const Array *sv) {
   return new Array(signal::mvdr(*x, *sv));
+}
+
+Array *insight_jl_ambgfun(const Array *x, double fs, double prf) {
+  return new Array(signal::ambgfun(*x, fs, prf));
 }
 
 // ca_cfar returns (threshold, detections) — two arrays

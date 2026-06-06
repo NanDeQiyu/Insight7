@@ -715,7 +715,10 @@ Array fftshift(const Array &x, int axis) {
   auto last = x.slice(ax, mid, n, 1);
   auto first = x.slice(ax, 0, mid, 1);
 
-  Array result = concat({last, first}, ax);
+  // Make contiguous copies to avoid view offset issues in backend kernels
+  Array last_contig = contiguous(last);
+  Array first_contig = contiguous(first);
+  Array result = concat({last_contig, first_contig}, ax);
 
   return result;
 }
@@ -744,7 +747,10 @@ Array ifftshift(const Array &x, int axis) {
   auto last = x.slice(ax, mid, n, 1);
   auto first = x.slice(ax, 0, mid, 1);
 
-  return concat({last, first}, ax);
+  // Make contiguous copies to avoid view offset issues in backend kernels
+  Array last_contig = contiguous(last);
+  Array first_contig = contiguous(first);
+  return concat({last_contig, first_contig}, ax);
 }
 
 int next_fast_len(int target) {

@@ -66,13 +66,15 @@ y5 = Insight.fft(x5)
 check("fft_non_pow2", Insight.numel(y5) == 10)
 
 # fftshift
-x6 = Insight.to_array(Insight.from_data([1.0, 2.0, 3.0, 4.0]), Insight.GPUPlace(0))
+x6 = Insight.to_array(Insight.from_data([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]), Insight.GPUPlace(0))
 y6 = Insight.fftshift(x6)
-check("fftshift", Insight.numel(y6) == 4)
+a6 = Insight.to_array(y6)
+check("fftshift", length(a6) == 8 && a6[1] ≈ 5.0 && a6[5] ≈ 1.0)
 
 # ifftshift
 y7 = Insight.ifftshift(x6)
-check("ifftshift", Insight.numel(y7) == 4)
+a7 = Insight.to_array(y7)
+check("ifftshift", length(a7) == 8 && a7[1] ≈ 5.0 && a7[5] ≈ 1.0)
 
 # next_fast_len
 n = Insight.next_fast_len(100)

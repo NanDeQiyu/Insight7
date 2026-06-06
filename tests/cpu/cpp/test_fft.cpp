@@ -210,6 +210,19 @@ TEST_F(FFTTest, FFTShift) {
 
   EXPECT_NEAR(y.at(0).item<double>(), 4.0, 1e-10);
   EXPECT_NEAR(y.at(4).item<double>(), 0.0, 1e-10);
+  EXPECT_NEAR(y.at(n / 2 - 1).item<double>(), static_cast<double>(n) - 1.0,
+              1e-10);
+  EXPECT_NEAR(y.at(n - 1).item<double>(), static_cast<double>(n / 2) - 1.0,
+              1e-10);
+
+  // Test fftfreq + fftshift: matches NumPy convention
+  // fftfreq(8, 1.0) = [0, 0.125, 0.25, 0.375, -0.5, -0.375, -0.25, -0.125]
+  // fftshift → [-0.5, -0.375, -0.25, -0.125, 0, 0.125, 0.25, 0.375]
+  Array freq = fft::fftfreq(n, 1.0);
+  Array shifted = fft::fftshift(freq, 0);
+  EXPECT_NEAR(shifted.at(0).item<double>(), -0.5, 1e-10);
+  EXPECT_NEAR(shifted.at(n / 2).item<double>(), 0.0, 1e-10);
+  EXPECT_NEAR(shifted.at(n - 1).item<double>(), 0.375, 1e-10);
 }
 
 TEST_F(FFTTest, IFFTShift) {
@@ -219,6 +232,14 @@ TEST_F(FFTTest, IFFTShift) {
 
   EXPECT_NEAR(y.at(0).item<double>(), 4.0, 1e-10);
   EXPECT_NEAR(y.at(4).item<double>(), 0.0, 1e-10);
+
+  // Test fftfreq + ifftshift: matches NumPy convention
+  // fftfreq(8, 1.0) = [0, 0.125, 0.25, 0.375, -0.5, -0.375, -0.25, -0.125]
+  // ifftshift → [-0.5, -0.375, -0.25, -0.125, 0, 0.125, 0.25, 0.375]
+  Array freq = fft::fftfreq(n, 1.0);
+  Array shifted = fft::ifftshift(freq, 0);
+  EXPECT_NEAR(shifted.at(0).item<double>(), -0.5, 1e-10);
+  EXPECT_NEAR(shifted.at(n / 2).item<double>(), 0.0, 1e-10);
 }
 
 TEST_F(FFTTest, HFFT_IFFT_Hermitian) {

@@ -17,6 +17,7 @@ module Insight
 using Libdl
 
 export Array, zeros, ones, full, arange, linspace, eye,
+       CPUPlace, GPUPlace,
        add, sub, mul, div, pow, matmul, dot, det, inv, solve, svd,
        fft, ifft, rand, randn, cast,
        # Convenience
@@ -63,7 +64,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        morlet, ricker,
        mel2hz, hz2mel, mel_frequencies, hz2bark, bark2hz,
        fm_demod, argrelmax, argrelmin, cfar_alpha, ca_cfar,
-       pulse_compression, pulse_doppler, mvdr,
+       pulse_compression, pulse_doppler, mvdr, ambgfun,
        read_bin, write_bin, pack_bin, unpack_bin, read_sigmf, write_sigmf,
        cosine_win, general_hamming, parzen_win, bohman_win, barthann_win,
        exponential_win, general_gaussian_win,
@@ -153,16 +154,48 @@ function get_device()::Tuple{Int,Int}
 end
 
 """
-    set_device(device_type::Int, device_id::Int=0)
+    CPUPlace() -> Place
+    GPUPlace(id=0) -> Place
 
-Set the current default device. 0=CPU, 1=GPU.
-Throws if the requested device is not available.
+Create a Place object for device specification.
+"""
+const CPUPlace = () -> (Int32(0), Int32(0))
+const GPUPlace = (id::Int=0) -> (Int32(1), Int32(id))
+
+_place_type(p::Tuple{Int32,Int32}) = p[1]
+_place_id(p::Tuple{Int32,Int32}) = p[2]
+
+_place_type(::Nothing) = Int32(-1)  # "unspecified"
+
+# Get current device type (0=CPU, 1=GPU) as Int32
+function _current_device()::Int32
+    return ccall((:insight_jl_get_device_type, LIB_INSIGHT), Int32, ())
+end
+
+"""
+    set_device(device_type::Int, device_id::Int=0)
+    set_device(p::Tuple{Int32,Int32})  e.g. CPUPlace() or GPUPlace(0)
+    set_device(s::String)              "cpu" or "gpu"
+
+Set the current default device. Throws if the requested device is not available.
 """
 function set_device(device_type::Int, device_id::Int=0)
     ok = ccall((:insight_jl_set_device, LIB_INSIGHT), Int32,
                (Int32, Int32), Int32(device_type), Int32(device_id))
     if ok == 0
         error("Insight: device not available (type=$device_type, id=$device_id)")
+    end
+end
+function set_device(p::Tuple{Int32,Int32})
+    set_device(Int(p[1]), Int(p[2]))
+end
+function set_device(s::String)
+    if s == "cpu"
+        set_device(Int32(0), Int32(0))
+    elseif s == "gpu"
+        set_device(Int32(1), Int32(0))
+    else
+        error("Insight: unknown device \"$s\", use \"cpu\" or \"gpu\"")
     end
 end
 
@@ -306,6 +339,24 @@ function copy_from_!(dst::InsightArray, src::InsightArray)
     dst
 end
 
+"""
+    slice(arr::InsightArray, dim::Int, start::Int, stop::Int) -> InsightArray
+
+Create a slice view of arr along dimension dim (1-based).
+start is inclusive, stop is exclusive. Returns a view (no data copy).
+"""
+function slice(arr::InsightArray, dim::Int, start::Int, stop::Int)::InsightArray
+    ptr = ccall((:insight_jl_slice, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Int32, Int64, Int64),
+                arr, Int32(dim - 1), Int64(start - 1), Int64(stop - 1))
+    if ptr == C_NULL
+        error("Insight: slice failed")
+    end
+    result = InsightArray(ptr)
+    finalizer(_free, result)
+    return result
+end
+
 # ============================================================================
 # Metadata
 # ============================================================================
@@ -339,7 +390,7 @@ end
 # ============================================================================
 
 """
-    zeros(dims::Vector{Int64}, dtype_val::Int32=float32, device::Int32=CPU) -> InsightArray
+    zeros(dims::Vector{Int64}, dtype_val::Int32=float32, device::Int32=_current_device()) -> InsightArray
 
 Create an array filled with zeros.
 
@@ -358,7 +409,7 @@ Insight.numel(a)  # 6
 ```
 """
 function zeros(dims::Vector{Int64}, dtype_val::Int32=float32,
-               device::Int32=CPU)::InsightArray
+               device::Int32=_current_device())::InsightArray
 
     ptr = ccall((:insight_jl_zeros, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
@@ -369,7 +420,7 @@ function zeros(dims::Vector{Int64}, dtype_val::Int32=float32,
 end
 
 """
-    ones(dims::Vector{Int64}, dtype_val::Int32=float32, device::Int32=CPU) -> InsightArray
+    ones(dims::Vector{Int64}, dtype_val::Int32=float32, device::Int32=_current_device()) -> InsightArray
 
 Create an array filled with ones.
 
@@ -382,7 +433,7 @@ Create an array filled with ones.
 - `InsightArray`: Array of ones with the given shape and dtype.
 """
 function ones(dims::Vector{Int64}, dtype_val::Int32=float32,
-              device::Int32=CPU)::InsightArray
+              device::Int32=_current_device())::InsightArray
 
     ptr = ccall((:insight_jl_ones, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
@@ -393,7 +444,7 @@ function ones(dims::Vector{Int64}, dtype_val::Int32=float32,
 end
 
 function full(dims::Vector{Int64}, fill_value::Float64,
-              dtype_val::Int32=float32, device::Int32=CPU)::InsightArray
+              dtype_val::Int32=float32, device::Int32=_current_device())::InsightArray
 
     ptr = ccall((:insight_jl_full, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Float64, Int32, Int32),
@@ -404,7 +455,7 @@ function full(dims::Vector{Int64}, fill_value::Float64,
 end
 
 function eye(n::Int64, m::Int64=Int64(-1), dtype_val::Int32=float32,
-             device::Int32=CPU)::InsightArray
+             device::Int32=_current_device())::InsightArray
     ptr = ccall((:insight_jl_eye, LIB_INSIGHT), Ptr{Cvoid},
                 (Int64, Int64, Int32, Int32), n, m, dtype_val, device)
     arr = InsightArray(ptr)
@@ -413,7 +464,7 @@ function eye(n::Int64, m::Int64=Int64(-1), dtype_val::Int32=float32,
 end
 
 function arange(start::Float64, stop::Float64, step::Float64=1.0,
-                dtype_val::Int32=int64, device::Int32=CPU)::InsightArray
+                dtype_val::Int32=int64, device::Int32=_current_device())::InsightArray
     ptr = ccall((:insight_jl_arange, LIB_INSIGHT), Ptr{Cvoid},
                 (Float64, Float64, Float64, Int32, Int32),
                 start, stop, step, dtype_val, device)
@@ -423,7 +474,7 @@ function arange(start::Float64, stop::Float64, step::Float64=1.0,
 end
 
 function linspace(start::Float64, stop::Float64, num::Int64,
-                  dtype_val::Int32=float32, device::Int32=CPU)::InsightArray
+                  dtype_val::Int32=float32, device::Int32=_current_device())::InsightArray
     ptr = ccall((:insight_jl_linspace, LIB_INSIGHT), Ptr{Cvoid},
                 (Float64, Float64, Int64, Int32, Int32),
                 start, stop, num, dtype_val, device)
@@ -449,7 +500,7 @@ _auto_dtype(::Type{Complex{Float64}}) = DTypeValues.C64
 _auto_dtype(::Type) = DTypeValues.F32  # fallback
 
 function from_data(data::AbstractArray{T}, dtype_val::Int32=Int32(-1),
-                   device::Int32=CPU) where T
+                   device::Int32=_current_device()) where T
     # Auto-detect dtype from Julia element type when not explicitly specified
     actual_dtype = dtype_val == Int32(-1) ? _auto_dtype(T) : dtype_val
 
@@ -557,6 +608,12 @@ Base.:/(a::InsightArray, b::InsightArray) = div(a, b)
 # Scalar promotion: Array * Number and Number * Array
 Base.:*(a::InsightArray, b::Number) = mul(a, from_data([b], float64))
 Base.:*(a::Number, b::InsightArray) = mul(from_data([a], float64), b)
+Base.:+(a::InsightArray, b::Number) = add(a, from_data([b], float64))
+Base.:+(a::Number, b::InsightArray) = add(from_data([a], float64), b)
+Base.:-(a::InsightArray, b::Number) = sub(a, from_data([b], float64))
+Base.:-(a::Number, b::InsightArray) = sub(from_data([a], float64), b)
+Base.:/(a::InsightArray, b::Number) = div(a, from_data([b], float64))
+Base.:/(a::Number, b::InsightArray) = div(from_data([a], float64), b)
 Base.:-(x::InsightArray) = begin
     ptr = ccall((:insight_jl_negative, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid},), x)
@@ -983,7 +1040,7 @@ end
 # ============================================================================
 
 function rand(dims::Vector{Int64}, dtype_val::Int32=float32,
-              device::Int32=CPU)::InsightArray
+              device::Int32=_current_device())::InsightArray
     ptr = ccall((:insight_jl_rand, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
                 dims, Int32(length(dims)), dtype_val, device)
@@ -993,7 +1050,7 @@ function rand(dims::Vector{Int64}, dtype_val::Int32=float32,
 end
 
 function randn(dims::Vector{Int64}, dtype_val::Int32=float32,
-               device::Int32=CPU)::InsightArray
+               device::Int32=_current_device())::InsightArray
 
     ptr = ccall((:insight_jl_randn, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Int64}, Int32, Int32, Int32),
@@ -1269,9 +1326,33 @@ function randn_like(x::InsightArray)::InsightArray
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
 
+"""
+    item_flat(arr::InsightArray, idx::Integer) -> Float64
+
+Get a single element by flat index (0-based). Transfers to CPU if needed.
+"""
+function item_flat(arr::InsightArray, idx::Integer)::Float64
+    return ccall((:insight_jl_item_flat, LIB_INSIGHT), Float64,
+                 (Ptr{Cvoid}, Int64), arr, Int64(idx))
+end
+
+"""
+    nonzero(x::InsightArray) -> InsightArray
+
+Return indices of non-zero elements. Returns [ndim, n_nonzero] array.
+"""
+function nonzero(x::InsightArray)::InsightArray
+    ptr = ccall((:insight_jl_nonzero, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid},), x)
+    if ptr == C_NULL
+        error("Insight: nonzero failed")
+    end
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
 function exponential(scale::Float64, dims::Vector{Int64};
                      dtype_val::Int32=float32,
-                     device::Int32=CPU)::InsightArray
+                     device::Int32=_current_device())::InsightArray
     ptr = ccall((:insight_jl_exponential, LIB_INSIGHT), Ptr{Cvoid},
                 (Float64, Ptr{Int64}, Int32, Int32, Int32),
                 scale, dims, Int32(length(dims)), dtype_val, device)
@@ -1280,7 +1361,7 @@ end
 
 function gamma_dist(shape_param::Float64, rate::Float64,
                     dims::Vector{Int64}; dtype_val::Int32=float32,
-                    device::Int32=CPU)::InsightArray
+                    device::Int32=_current_device())::InsightArray
     ptr = ccall((:insight_jl_gamma, LIB_INSIGHT), Ptr{Cvoid},
                 (Float64, Float64, Ptr{Int64}, Int32, Int32, Int32),
                 shape_param, rate, dims, Int32(length(dims)),
@@ -1290,7 +1371,7 @@ end
 
 function beta_dist(a::Float64, b::Float64, dims::Vector{Int64};
                    dtype_val::Int32=float32,
-                   device::Int32=CPU)::InsightArray
+                   device::Int32=_current_device())::InsightArray
     ptr = ccall((:insight_jl_beta_dist, LIB_INSIGHT), Ptr{Cvoid},
                 (Float64, Float64, Ptr{Int64}, Int32, Int32, Int32),
                 a, b, dims, Int32(length(dims)), dtype_val, device)
@@ -1299,7 +1380,7 @@ end
 
 function binomial_dist(n::Int64, p::Float64, dims::Vector{Int64};
                        dtype_val::Int32=int64,
-                       device::Int32=CPU)::InsightArray
+                       device::Int32=_current_device())::InsightArray
     ptr = ccall((:insight_jl_binomial, LIB_INSIGHT), Ptr{Cvoid},
                 (Int64, Float64, Ptr{Int64}, Int32, Int32, Int32),
                 n, p, dims, Int32(length(dims)), dtype_val, device)
@@ -1308,7 +1389,7 @@ end
 
 function poisson_dist(lam::Float64, dims::Vector{Int64};
                       dtype_val::Int32=int64,
-                      device::Int32=CPU)::InsightArray
+                      device::Int32=_current_device())::InsightArray
     ptr = ccall((:insight_jl_poisson, LIB_INSIGHT), Ptr{Cvoid},
                 (Float64, Ptr{Int64}, Int32, Int32, Int32),
                 lam, dims, Int32(length(dims)), dtype_val, device)
@@ -1486,6 +1567,16 @@ end
 Alias for `to_array`. Copies data from an InsightArray to a Julia Array.
 """
 const to_data = to_array
+
+"""
+    Base.collect(arr::InsightArray) -> Vector
+
+Extract all elements from an InsightArray as a flat Julia Vector.
+Internally calls `to_array` and flattens with `vec()`.
+"""
+function Base.collect(arr::InsightArray)
+    return vec(to_array(arr))
+end
 
 """
     to(x::InsightArray, device_type::Int) -> InsightArray

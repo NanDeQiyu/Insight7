@@ -277,29 +277,48 @@ TEST_F(FFTTestGPU, NextFastLen) {
 }
 
 TEST_F(FFTTestGPU, FFTShift) {
-  // fftshift uses concat internally which is not implemented on CUDA yet.
-  // Test on CPU and verify the function works correctly.
+  set_device(GPUPlace(0));
   int n = 8;
-  set_device(CPUPlace());
   Array x = arange(0.0, static_cast<double>(n), 1.0, DType::F64);
-
   Array y = fft::fftshift(x, 0);
 
-  EXPECT_NEAR(y.at(0).item<double>(), 4.0, 1e-10);
-  EXPECT_NEAR(y.at(4).item<double>(), 0.0, 1e-10);
+  Array y_cpu = y.to(CPUPlace());
+  EXPECT_NEAR(y_cpu.at(0).item<double>(), 4.0, 1e-10);
+  EXPECT_NEAR(y_cpu.at(4).item<double>(), 0.0, 1e-10);
+  EXPECT_NEAR(y_cpu.at(n / 2 - 1).item<double>(), static_cast<double>(n) - 1.0,
+              1e-10);
+  EXPECT_NEAR(y_cpu.at(n - 1).item<double>(), static_cast<double>(n / 2) - 1.0,
+              1e-10);
+
+  // Test fftfreq + fftshift on GPU: matches NumPy convention
+  // fftfreq(8, 1.0) = [0, 0.125, 0.25, 0.375, -0.5, -0.375, -0.25, -0.125]
+  // fftshift → [-0.5, -0.375, -0.25, -0.125, 0, 0.125, 0.25, 0.375]
+  Array freq = fft::fftfreq(n, 1.0);
+  Array shifted = fft::fftshift(freq, 0);
+  Array shifted_cpu = shifted.to(CPUPlace());
+  EXPECT_NEAR(shifted_cpu.at(0).item<double>(), -0.5, 1e-10);
+  EXPECT_NEAR(shifted_cpu.at(n / 2).item<double>(), 0.0, 1e-10);
+  EXPECT_NEAR(shifted_cpu.at(n - 1).item<double>(), 0.375, 1e-10);
 }
 
 TEST_F(FFTTestGPU, IFFTShift) {
-  // ifftshift uses concat internally which is not implemented on CUDA yet.
-  // Test on CPU and verify the function works correctly.
+  set_device(GPUPlace(0));
   int n = 8;
-  set_device(CPUPlace());
   Array x = arange(0.0, static_cast<double>(n), 1.0, DType::F64);
-
   Array y = fft::ifftshift(x, 0);
 
-  EXPECT_NEAR(y.at(0).item<double>(), 4.0, 1e-10);
-  EXPECT_NEAR(y.at(4).item<double>(), 0.0, 1e-10);
+  Array y_cpu = y.to(CPUPlace());
+  EXPECT_NEAR(y_cpu.at(0).item<double>(), 4.0, 1e-10);
+  EXPECT_NEAR(y_cpu.at(4).item<double>(), 0.0, 1e-10);
+
+  // Test fftfreq + ifftshift on GPU: matches NumPy convention
+  // fftfreq(8, 1.0) = [0, 0.125, 0.25, 0.375, -0.5, -0.375, -0.25, -0.125]
+  // ifftshift → [-0.5, -0.375, -0.25, -0.125, 0, 0.125, 0.25, 0.375]
+  Array freq = fft::fftfreq(n, 1.0);
+  Array shifted = fft::ifftshift(freq, 0);
+  Array shifted_cpu = shifted.to(CPUPlace());
+  EXPECT_NEAR(shifted_cpu.at(0).item<double>(), -0.5, 1e-10);
+  EXPECT_NEAR(shifted_cpu.at(n / 2).item<double>(), 0.0, 1e-10);
 }
 
 TEST_F(FFTTestGPU, HFFT_IFFT_Hermitian) {
