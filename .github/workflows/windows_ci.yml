@@ -195,6 +195,15 @@ jobs:
         shell: bash
         run: |
           choco install lua51 luarocks -y
+          # Normalize library name for CMake find_library(NAMES lua)
+          # Chocolatey installs lua51.lib, CMake expects lua.lib
+          LDIR="/c/ProgramData/chocolatey/lib/lua51/tools"
+          if [ -f "$LDIR/lua51.lib" ] && [ ! -f "$LDIR/lua.lib" ]; then
+            cp "$LDIR/lua51.lib" "$LDIR/lua.lib"
+          fi
+          if [ -f "$LDIR/lua51.dll" ] && [ ! -f "$LDIR/lua.dll" ]; then
+            cp "$LDIR/lua51.dll" "$LDIR/lua.dll"
+          fi
           # Create link.cmd wrapper in chocolatey bin (already in PATH)
           # to redirect MSYS2 'link' to MSVC link.exe
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
