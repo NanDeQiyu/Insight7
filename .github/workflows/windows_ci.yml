@@ -198,21 +198,22 @@ jobs:
           tar xzf lua-5.1.5.tar.gz
           cd lua-5.1.5
           # Build Lua as DLL with MSVC (x86)
-          cl.exe /nologo /MD /O2 /W3 /c /D_CRT_SECURE_NO_DEPRECATE /DLUA_BUILD_AS_DLL \
+          # Use '-' prefix for flags (Git Bash converts '/flag' to paths)
+          cl.exe -nologo -MD -O2 -W3 -c -D_CRT_SECURE_NO_DEPRECATE -DLUA_BUILD_AS_DLL \
             src/lapi.c src/lcode.c src/ldebug.c src/ldo.c src/ldump.c src/lfunc.c \
             src/lgc.c src/llex.c src/lmem.c src/lobject.c src/lopcodes.c src/lparser.c \
             src/lstate.c src/lstring.c src/ltable.c src/ltm.c src/lundump.c src/lvm.c \
             src/lzio.c src/lauxlib.c src/lbaselib.c src/ldblib.c src/liolib.c \
             src/lmathlib.c src/loslib.c src/ltablib.c src/lstrlib.c src/loadlib.c src/linit.c
-          link.exe /nologo /DLL /OUT:lua51.dll /IMPLIB:lua51.lib \
+          link.exe -nologo -DLL -OUT:lua51.dll -IMPLIB:lua51.lib \
             lapi.obj lcode.obj ldebug.obj ldo.obj ldump.obj lfunc.obj \
             lgc.obj llex.obj lmem.obj lobject.obj lopcodes.obj lparser.obj \
             lstate.obj lstring.obj ltable.obj ltm.obj lundump.obj lvm.obj \
             lzio.obj lauxlib.obj lbaselib.obj ldblib.obj liolib.obj \
             lmathlib.obj loslib.obj ltablib.obj lstrlib.obj loadlib.obj linit.obj
           # Build interpreter
-          cl.exe /nologo /MD /O2 /W3 /c /D_CRT_SECURE_NO_DEPRECATE src/lua.c
-          link.exe /nologo /OUT:lua.exe lua.obj lua51.lib
+          cl.exe -nologo -MD -O2 -W3 -c -D_CRT_SECURE_NO_DEPRECATE src/lua.c
+          link.exe -nologo -OUT:lua.exe lua.obj lua51.lib
           # Install to a known location
           LUA_INSTALL="C:/lua51"
           mkdir -p "$LUA_INSTALL/include" "$LUA_INSTALL/lib" "$LUA_INSTALL/bin"
