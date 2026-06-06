@@ -58,6 +58,9 @@ C_Status full_kernel_gpu(void **inputs, void **outputs) {
   double fill_val = *static_cast<double *>(inputs[1]);
   int64_t n = out->numel;
   int32_t dtype = out->dtype;
+  size_t elem_size = insight_dtype_size(dtype);
+  char *data_with_offset =
+      static_cast<char *>(out->data) + out->offset * elem_size;
 
   int threads = creation_threads();
   int blocks = creation_blocks(n);
@@ -65,73 +68,80 @@ C_Status full_kernel_gpu(void **inputs, void **outputs) {
   switch (dtype) {
   case INSIGHT_DTYPE_BOOL: {
     bool val = (fill_val != 0.0);
-    full_kernel<<<blocks, threads>>>(static_cast<bool *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(reinterpret_cast<bool *>(data_with_offset),
+                                     val, n);
     break;
   }
   case INSIGHT_DTYPE_U8: {
     uint8_t val = static_cast<uint8_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<uint8_t *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<uint8_t *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_I8: {
     int8_t val = static_cast<int8_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<int8_t *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<int8_t *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_I16: {
     int16_t val = static_cast<int16_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<int16_t *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<int16_t *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_I32: {
     int32_t val = static_cast<int32_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<int32_t *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<int32_t *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_I64: {
     int64_t val = static_cast<int64_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<int64_t *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<int64_t *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_U16: {
     uint16_t val = static_cast<uint16_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<uint16_t *>(out->data), val,
-                                     n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<uint16_t *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_U32: {
     uint32_t val = static_cast<uint32_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<uint32_t *>(out->data), val,
-                                     n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<uint32_t *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_U64: {
     uint64_t val = static_cast<uint64_t>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<uint64_t *>(out->data), val,
-                                     n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<uint64_t *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_F32: {
     float val = static_cast<float>(fill_val);
-    full_kernel<<<blocks, threads>>>(static_cast<float *>(out->data), val, n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<float *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_F64: {
-    full_kernel<<<blocks, threads>>>(static_cast<double *>(out->data), fill_val,
-                                     n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<double *>(data_with_offset), fill_val, n);
     break;
   }
   case INSIGHT_DTYPE_C32: {
     cuFloatComplex val =
         make_cuFloatComplex(static_cast<float>(fill_val), 0.0f);
-    full_kernel<<<blocks, threads>>>(static_cast<cuFloatComplex *>(out->data),
-                                     val, n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<cuFloatComplex *>(data_with_offset), val, n);
     break;
   }
   case INSIGHT_DTYPE_C64: {
     cuDoubleComplex val = make_cuDoubleComplex(fill_val, 0.0);
-    full_kernel<<<blocks, threads>>>(static_cast<cuDoubleComplex *>(out->data),
-                                     val, n);
+    full_kernel<<<blocks, threads>>>(
+        reinterpret_cast<cuDoubleComplex *>(data_with_offset), val, n);
     break;
   }
   default:

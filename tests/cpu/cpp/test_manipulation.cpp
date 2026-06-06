@@ -566,3 +566,140 @@ TEST_F(ManipulationTest, Diff2DAxis1) {
     EXPECT_FLOAT_EQ(d_data[i], 1.0f);
   }
 }
+
+// ========== In-place assignment: fill_, copy_from_, operator=, operator[]
+// ==========
+
+TEST_F(ManipulationTest, FillScalar) {
+  Array a({3, 4}, DType::F32);
+  fill_sequential<float>(a, 0);
+
+  a.fill_(5.0);
+
+  const float *data = a.data<float>();
+  for (int64_t i = 0; i < a.numel(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], 5.0f);
+  }
+}
+
+TEST_F(ManipulationTest, FillViaOperator) {
+  Array a({3, 4}, DType::F32);
+  fill_sequential<float>(a, 0);
+
+  a = 7.0;
+
+  const float *data = a.data<float>();
+  for (int64_t i = 0; i < a.numel(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], 7.0f);
+  }
+}
+
+TEST_F(ManipulationTest, CopyFromArray) {
+  Array src({3, 4}, DType::F32);
+  fill_sequential<float>(src, 10);
+
+  Array dst({3, 4}, DType::F32);
+  dst.fill_(0.0);
+
+  dst.copy_from_(src);
+
+  const float *data = dst.data<float>();
+  for (int64_t i = 0; i < dst.numel(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], static_cast<float>(10 + i));
+  }
+  // src unchanged
+  const float *src_data = src.data<float>();
+  for (int64_t i = 0; i < src.numel(); ++i) {
+    EXPECT_FLOAT_EQ(src_data[i], static_cast<float>(10 + i));
+  }
+}
+
+TEST_F(ManipulationTest, SliceAssignScalar) {
+  Array a({6}, DType::F32);
+  fill_sequential<float>(a, 0); // [0, 1, 2, 3, 4, 5]
+
+  a[":"] = 3.0;
+
+  const float *data = a.data<float>();
+  for (int64_t i = 0; i < a.numel(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], 3.0f);
+  }
+}
+
+TEST_F(ManipulationTest, SliceAssignArray) {
+  Array a({6}, DType::F32);
+  fill_sequential<float>(a, 0); // [0, 1, 2, 3, 4, 5]
+
+  Array src({6}, DType::F32);
+  fill_sequential<float>(src, 100); // [100, 101, 102, 103, 104, 105]
+
+  a[":"] = src;
+
+  const float *data = a.data<float>();
+  for (int64_t i = 0; i < a.numel(); ++i) {
+    EXPECT_FLOAT_EQ(data[i], static_cast<float>(100 + i));
+  }
+}
+
+TEST_F(ManipulationTest, SliceAssign2D) {
+  // 4x4 array filled sequentially
+  // [[ 0,  1,  2,  3],
+  //  [ 4,  5,  6,  7],
+  //  [ 8,  9, 10, 11],
+  //  [12, 13, 14, 15]]
+  Array a({4, 4}, DType::F32);
+  fill_sequential<float>(a, 0);
+
+  // 2x2 source filled with 99
+  Array src({2, 2}, DType::F32);
+  src.fill_(99.0);
+
+  // Assign to rows 0..1, cols 1..2
+  a["0:2,1:3"] = src;
+
+  const float *data = a.data<float>();
+  // Row 0: [0, 99, 99, 3]
+  EXPECT_FLOAT_EQ(data[0], 0.0f);
+  EXPECT_FLOAT_EQ(data[1], 99.0f);
+  EXPECT_FLOAT_EQ(data[2], 99.0f);
+  EXPECT_FLOAT_EQ(data[3], 3.0f);
+  // Row 1: [4, 99, 99, 7]
+  EXPECT_FLOAT_EQ(data[4], 4.0f);
+  EXPECT_FLOAT_EQ(data[5], 99.0f);
+  EXPECT_FLOAT_EQ(data[6], 99.0f);
+  EXPECT_FLOAT_EQ(data[7], 7.0f);
+  // Row 2 unchanged: [8, 9, 10, 11]
+  EXPECT_FLOAT_EQ(data[8], 8.0f);
+  EXPECT_FLOAT_EQ(data[9], 9.0f);
+  EXPECT_FLOAT_EQ(data[10], 10.0f);
+  EXPECT_FLOAT_EQ(data[11], 11.0f);
+  // Row 3 unchanged: [12, 13, 14, 15]
+  EXPECT_FLOAT_EQ(data[12], 12.0f);
+  EXPECT_FLOAT_EQ(data[13], 13.0f);
+  EXPECT_FLOAT_EQ(data[14], 14.0f);
+  EXPECT_FLOAT_EQ(data[15], 15.0f);
+}
+
+TEST_F(ManipulationTest, ScalarIndexAssign) {
+  // 3x3 array filled sequentially
+  // [[0, 1, 2],
+  //  [3, 4, 5],
+  //  [6, 7, 8]]
+  Array a({3, 3}, DType::F32);
+  fill_sequential<float>(a, 0);
+
+  // Get a scalar view at position (1,1) — value is 4
+  Array view = a.at({1, 1});
+  EXPECT_EQ(view.numel(), 1);
+  EXPECT_FLOAT_EQ(view.item<float>(), 4.0f);
+
+  // Assign through the view — should modify the parent
+  view = 99.0;
+
+  // Parent array should have 99 at (1,1)
+  const float *data = a.data<float>();
+  EXPECT_FLOAT_EQ(data[0], 0.0f);
+  EXPECT_FLOAT_EQ(data[1], 1.0f);
+  EXPECT_FLOAT_EQ(data[4], 99.0f); // (1,1) = row*3 + col = 1*3+1 = 4
+  EXPECT_FLOAT_EQ(data[8], 8.0f);
+}

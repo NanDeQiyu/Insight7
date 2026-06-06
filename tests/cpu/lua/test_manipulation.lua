@@ -168,4 +168,27 @@ describe("Manipulation CPU Tests", function()
     assert.are.equal(6, b.numel)
     assert.are.equal(1, b.ndim)
   end)
+
+  -- ====================================================================
+  -- In-place mutation (fill_, copy_from_)
+  -- ====================================================================
+
+  it("fill_ scalar", function()
+    local a = ins.from_table({ 1.0, 2.0, 3.0, 4.0 })
+    a:fill_(99.0)
+    assert.near(99.0, a:get(0), 1e-10)
+    assert.near(99.0, a:get(1), 1e-10)
+    assert.near(99.0, a:get(2), 1e-10)
+    assert.near(99.0, a:get(3), 1e-10)
+  end)
+
+  it("copy_from_ array", function()
+    local a = ins.from_table({ 1.0, 2.0, 3.0, 4.0 })
+    local src = ins.from_table({ 10.0, 20.0, 30.0, 40.0 })
+    a:copy_from_(src)
+    assert.near(10.0, a:get(0), 1e-10)
+    assert.near(20.0, a:get(1), 1e-10)
+    assert.near(30.0, a:get(2), 1e-10)
+    assert.near(40.0, a:get(3), 1e-10)
+  end)
 end)

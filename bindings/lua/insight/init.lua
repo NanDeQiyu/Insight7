@@ -132,6 +132,39 @@ local M = {}
 -- Save native reference for internal use
 M._native = native
 
+-- Set up __newindex on Array metatable for assignment syntax
+-- a["spec"] = value and a[int] = value
+do
+  local tmp = native.zeros({ 1 }, native.float64, native.CPUPlace())
+  local mt = getmetatable(tmp)
+  if mt then
+    local orig_newindex = mt.__newindex
+    mt.__newindex = function(self, key, value)
+      if type(key) == "number" then
+        if key == 0 then
+          error("Lua arrays are 1-based: index 0 is invalid")
+        end
+        local idx = key > 0 and (key - 1) or key
+        local view = self:at(idx)
+        if type(value) == "number" then
+          view:fill_(value)
+        else
+          view:copy_from_(value)
+        end
+      elseif type(key) == "string" then
+        local view = self[key] -- uses __index for string slicing
+        if type(value) == "number" then
+          view:fill_(value)
+        else
+          view:copy_from_(value)
+        end
+      elseif orig_newindex then
+        orig_newindex(self, key, value)
+      end
+    end
+  end
+end
+
 -- Re-export all native functions and values
 for k, v in pairs(native) do
   M[k] = v

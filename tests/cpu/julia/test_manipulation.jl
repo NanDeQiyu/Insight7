@@ -82,6 +82,27 @@ a = Insight.zeros(Int64[1, 3, 1], Insight.float64)
 b = Insight.reshape(a, Int64[3])
 check("squeeze_via_reshape", Insight.numel(b) == 3)
 
+# ====================================================================
+# In-place mutation (fill_!, copy_from_!)
+# ====================================================================
+
+# fill_!
+a = Insight.from_data([1.0, 2.0, 3.0, 4.0])
+Insight.fill_!(a, 99.0)
+check("fill_!_0", isapprox(Insight.item(a, 0), 99.0; atol=1e-10))
+check("fill_!_1", isapprox(Insight.item(a, 1), 99.0; atol=1e-10))
+check("fill_!_2", isapprox(Insight.item(a, 2), 99.0; atol=1e-10))
+check("fill_!_3", isapprox(Insight.item(a, 3), 99.0; atol=1e-10))
+
+# copy_from_!
+dst = Insight.from_data([1.0, 2.0, 3.0, 4.0])
+src = Insight.from_data([10.0, 20.0, 30.0, 40.0])
+Insight.copy_from_!(dst, src)
+check("copy_from_!_0", isapprox(Insight.item(dst, 0), 10.0; atol=1e-10))
+check("copy_from_!_1", isapprox(Insight.item(dst, 1), 20.0; atol=1e-10))
+check("copy_from_!_2", isapprox(Insight.item(dst, 2), 30.0; atol=1e-10))
+check("copy_from_!_3", isapprox(Insight.item(dst, 3), 40.0; atol=1e-10))
+
 println("\n" * "="^40)
 println("Results: $passed passed, $failed failed")
 if failed > 0; exit(1); end

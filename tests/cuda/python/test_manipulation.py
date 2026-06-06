@@ -167,6 +167,50 @@ class TestManipulationCUDA:
         assert b.numel() == 6
         assert b.ndim() == 1
 
+    # --- In-place assignment (__setitem__) ---
+
+    def test_setitem_scalar_index(self):
+        """a[1] = 5.0 on a 1-D GPU array."""
+        a = to_gpu(np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64))
+        a[1] = 5.0
+        np.testing.assert_allclose(to_numpy(a), [1.0, 5.0, 3.0, 4.0])
+
+    def test_setitem_slice_scalar(self):
+        """a[0:3] = 9.0 — fill a GPU slice with a scalar."""
+        a = to_gpu(np.array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float64))
+        a[0:3] = 9.0
+        np.testing.assert_allclose(to_numpy(a), [9.0, 9.0, 9.0, 4.0, 5.0])
+
+    def test_setitem_slice_array(self):
+        """a[1:4] = arr — copy an array into a GPU slice."""
+        a = to_gpu(np.array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float64))
+        src = to_gpu(np.array([7.0, 8.0, 9.0], dtype=np.float64))
+        a[1:4] = src
+        np.testing.assert_allclose(to_numpy(a), [1.0, 7.0, 8.0, 9.0, 5.0])
+
+    def test_setitem_2d_scalar(self):
+        """a[0:2, 1:3] = 5.0 — fill a 2-D GPU sub-region with a scalar."""
+        a = to_gpu(np.zeros([3, 4], dtype=np.float64))
+        a[0:2, 1:3] = 5.0
+        expected = np.zeros([3, 4], dtype=np.float64)
+        expected[0:2, 1:3] = 5.0
+        np.testing.assert_allclose(to_numpy(a), expected)
+
+    def test_setitem_2d_array(self):
+        """a[0:2, 1:3] = src — copy an array into a 2-D GPU sub-region."""
+        a = to_gpu(np.zeros([3, 4], dtype=np.float64))
+        src = to_gpu(np.array([[7.0, 8.0], [9.0, 10.0]], dtype=np.float64))
+        a[0:2, 1:3] = src
+        expected = np.zeros([3, 4], dtype=np.float64)
+        expected[0:2, 1:3] = [[7.0, 8.0], [9.0, 10.0]]
+        np.testing.assert_allclose(to_numpy(a), expected)
+
+    def test_setitem_string_spec(self):
+        """a["1:3"] = 7.0 — string-spec in-place assignment on GPU."""
+        a = to_gpu(np.array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float64))
+        a["1:3"] = 7.0
+        np.testing.assert_allclose(to_numpy(a), [1.0, 7.0, 7.0, 4.0, 5.0])
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

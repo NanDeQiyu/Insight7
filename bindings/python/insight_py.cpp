@@ -543,6 +543,9 @@ PYBIND11_MODULE(_insight, m) {
            })
       .def("at",
            [](const Array &a, std::vector<int64_t> idx) { return a.at(idx); })
+      // --- In-place mutation ---
+      .def("fill_", &Array::fill_, py::arg("value"))
+      .def("copy_from_", &Array::copy_from_, py::arg("src"))
       // --- __setitem__ (in-place assignment via view) ---
       .def("__setitem__",
            [](Array &a, int64_t idx, double val) {

@@ -144,9 +144,10 @@ static void flatten_lua_table(sol::table t, std::vector<double> &out) {
 
 // Public API: convert a Lua table (nested or flat) to an Array.
 // Strict validation: only number/bool/table allowed. nil/string/etc → error.
-static Array from_lua_table(sol::table t) {
+static Array from_lua_table(sol::table t, sol::optional<Place> place) {
+  Place p = place.value_or(get_device());
   if (t.size() == 0) {
-    return Array(Shape({0}), DType::F64, CPUPlace());
+    return Array(Shape({0}), DType::F64, p);
   }
   std::vector<int64_t> shape;
   std::string path = "root";
@@ -161,6 +162,9 @@ static Array from_lua_table(sol::table t) {
   }
   Array result(Shape(shape), DType::F64, CPUPlace());
   std::memcpy(result.data(), data.data(), data.size() * sizeof(double));
+  if (p.kind() != DeviceKind::CPU) {
+    result = result.to(p);
+  }
   return result;
 }
 
@@ -347,9 +351,9 @@ extern "C" int luaopen__insight(lua_State *L) {
   place_type["device_id"] = &Place::device_id;
 
   m["CPUPlace"] = []() { return CPUPlace(); };
-  m["GPUPlace"] = [](int id, sol::this_state ts) -> Place {
+  m["GPUPlace"] = [](sol::optional<int> id, sol::this_state ts) -> Place {
     try {
-      return GPUPlace(id);
+      return GPUPlace(id.value_or(0));
     } catch (const std::exception &e) {
       luaL_error(ts, "%s", e.what());
       return CPUPlace();
@@ -366,6 +370,36 @@ extern "C" int luaopen__insight(lua_State *L) {
   sol::usertype<Array> array_type = m.new_usertype<Array>(
       "Array",
       sol::constructors<Array(), Array(const Shape &, DType, const Place &)>());
+
+  // Array(table) constructor: ins.Array{3,4,5} → creates Array from table
+  // Must be set on the usertype table's metatable (not instances)
+  {
+    sol::stack::push(lua, m);
+    lua_getfield(L, -1, "Array");
+    if (!lua_isnil(L, -1)) {
+      // Get or create the metatable for the Array table
+      if (!lua_getmetatable(L, -1)) {
+        lua_newtable(L);
+        lua_setmetatable(L, -2);
+        lua_getmetatable(L, -1);
+      }
+      // Now the metatable is on top of the stack
+      lua_pushcfunction(L, [](lua_State *L) -> int {
+        // Stack: table(self), args...
+        sol::table t(L, 2); // first arg after self
+        sol::optional<Place> place;
+        if (lua_gettop(L) > 2) {
+          place = sol::stack::get<Place>(L, 3);
+        }
+        Array result = from_lua_table(t, place);
+        sol::stack::push(L, std::move(result));
+        return 1;
+      });
+      lua_setfield(L, -2, "__call");
+      lua_pop(L, 1); // pop metatable
+    }
+    lua_pop(L, 2); // pop Array table and module table
+  }
 
   // Properties
   array_type["shape"] = sol::property([](const Array &a, sol::this_state L) {
