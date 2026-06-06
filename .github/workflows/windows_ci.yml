@@ -224,16 +224,13 @@ jobs:
       - name: Install luarocks and busted
         shell: bash
         run: |
-          # Use our built Lua, not Chocolatey's
-          export PATH="/c/lua51/bin:$PATH"
-          which lua && lua -v
           choco install luarocks -y
           # Create link.cmd wrapper for MSVC link.exe
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
           MSVC_LINK_WIN="$(cygpath -w "$MSVC_LINK")"
           printf '@"%s" %%*\r\n' "$MSVC_LINK_WIN" > "/c/ProgramData/chocolatey/bin/link.cmd"
-          export PATH="/c/ProgramData/chocolatey/bin:/c/lua51/bin:$PATH"
-          luarocks install busted --with-lua=/c/lua51
+          export PATH="/c/ProgramData/chocolatey/bin:$PATH"
+          luarocks install busted
 
       - name: Install vcpkg dependencies
         shell: pwsh
@@ -315,7 +312,7 @@ jobs:
           LROCKS="C:\\ProgramData\\chocolatey\\lib\\luarocks\\luarocks-2.4.4-win32"
           BINDIR="$(cygpath -w "$GITHUB_WORKSPACE/bindings/lua")"
           BUILDDIR="$(cygpath -w "$GITHUB_WORKSPACE/build_x86/bindings/lua")"
-          export PATH="/c/lua51/bin:/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/deps_x86/OpenBLAS-0.3.33-x86/bin:/c/vcpkg/installed/x86-windows/bin:$PATH"
+          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/deps_x86/OpenBLAS-0.3.33-x86/bin:/c/vcpkg/installed/x86-windows/bin:$PATH"
           export LUA_CPATH="$BUILDDIR\\?.dll;$LROCKS\\systree\\lib\\lua\\5.1\\?.dll;$LROCKS\\systree\\lib\\lua\\5.1\\?\\init.dll;;"
           export LUA_PATH="$BINDIR\\?\\init.lua;$BINDIR\\?.lua;$LROCKS\\systree\\share\\lua\\5.1\\?.lua;$LROCKS\\systree\\share\\lua\\5.1\\?\\init.lua;;"
           echo "LUA_CPATH=$LUA_CPATH"
@@ -323,7 +320,7 @@ jobs:
           echo "=== Check if _insight.dll exists ==="
           ls -la "$GITHUB_WORKSPACE/build_x86/bindings/lua/_insight.dll" 2>/dev/null || echo "MISSING: build_x86/bindings/lua/_insight.dll"
           ls -la "$GITHUB_WORKSPACE/bindings/lua/_insight.dll" 2>/dev/null || echo "MISSING: bindings/lua/_insight.dll"
-          busted.bat --lua=lua --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
+          busted.bat --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
 
   julia-binding:
     name: Julia Binding
