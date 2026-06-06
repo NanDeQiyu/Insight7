@@ -285,7 +285,7 @@ def main():
         targets = extract_targets(detected, energy, range_bins, doppler_bins)
 
         # ----- 保存帧 -----
-        path = save_frame(
+        _path = save_frame(
             frame_idx,
             pc_all,
             energy,
