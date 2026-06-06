@@ -85,26 +85,30 @@ export Array, zeros, ones, full, arange, linspace, eye,
 # ============================================================================
 
 const LIB_INSIGHT = let
-    _local = joinpath(@__DIR__, "libinsight_julia.so")
-    _parent = joinpath(@__DIR__, "..", "libinsight_julia.so")
+    _suffix = Sys.iswindows() ? ".dll" : ".so"
+    _prefix = Sys.iswindows() ? "" : "lib"
+    _basename = _prefix * "insight_julia" * _suffix
+    _local = joinpath(@__DIR__, _basename)
+    _parent = joinpath(@__DIR__, "..", _basename)
     if isfile(_local)
         _local
     elseif isfile(_parent)
         _parent
     else
-        "libinsight_julia.so"
+        _basename
     end
 end
 
 # Auto-initialize CPU backend on module load
 function __init__()
-    # Pre-load ALL backend .so files (CPU + GPU) so that C++ dlopen finds them
+    # Pre-load ALL backend .so/.dll files (CPU + GPU) so that C++ dlopen finds them
     _dir = @__DIR__
     _parent = joinpath(_dir, "..")
+    _backend_suffix = Sys.iswindows() ? ".dll" : ".so"
     for _d in (_dir, _parent)
         if isdir(_d)
             for _f in readdir(_d; join=true)
-                if occursin("libinsight_", _f) && endswith(_f, "_backend.so")
+                if occursin("insight_", _f) && endswith(_f, _backend_suffix) && occursin("_backend", _f)
                     try
                         Libdl.dlopen(_f, Libdl.RTLD_GLOBAL)
                     catch
@@ -116,7 +120,7 @@ function __init__()
             push!(Libdl.DL_LOAD_PATH, _d)
         end
     end
-    ccall((:insight_jl_init_cpu, LIB_INSIGHT), Cvoid, ())
+    ccall((:insight_jl_init, LIB_INSIGHT), Cvoid, ())
 end
 
 """
@@ -1721,7 +1725,7 @@ function Base.show(io::IO, a::InsightArray)
                  (Ptr{Cvoid},), a)
     if cstr != C_NULL
         s = unsafe_string(cstr)
-        Libc.free(cstr)
+        # NOTE: cstr points to a static buffer inside the DLL — do NOT free it
         print(io, s)
     else
         # Fallback to metadata-only

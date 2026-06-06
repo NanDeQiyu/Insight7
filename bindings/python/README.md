@@ -113,6 +113,79 @@ PYTHONPATH=bindings/python LD_LIBRARY_PATH=build/backends/cpu \
     python3 -c "import insight as ins; print('Insight7 loaded:', ins.float32)"
 ```
 
+### Windows Installation Guide
+
+#### 1. Prerequisites
+
+- Visual Studio 2022+ with C++ workload
+- CMake 3.15+ and Ninja (install via `winget install Kitware.CMake Ninja-build.Ninja`)
+- Python 3.8+
+
+#### 2. Dependencies (via vcpkg)
+
+```powershell
+# Install vcpkg if not already installed
+git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+cd C:\vcpkg && bootstrap-vcpkg.bat
+
+# Install FFTW3 and OpenBLAS
+.\vcpkg install fftw3:x64-windows openblas:x64-windows
+```
+
+#### 3. Clone and Build
+
+```powershell
+# Open VS Developer Command Prompt (x64)
+call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+
+git clone https://github.com/PlumBlossomMaid/Insight7.git
+cd Insight7
+cmake -S . -B build -G Ninja ^
+    -DCMAKE_C_COMPILER=cl.exe ^
+    -DCMAKE_CXX_COMPILER=cl.exe ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DINSIGHT_WITH_CUDA=ON ^
+    -DCMAKE_PREFIX_PATH="C:/vcpkg/installed/x64-windows"
+cmake --build build -j %NUMBER_OF_PROCESSORS%
+```
+
+#### 4. Python Setup
+
+```powershell
+pip install numpy pytest
+
+# Build with Python binding
+cmake -S . -B build -G Ninja -DINSIGHT_BUILD_PYTHON_BINDING=ON ^
+    -DCMAKE_PREFIX_PATH="C:/vcpkg/installed/x64-windows"
+cmake --build build --target insight_python -j %NUMBER_OF_PROCESSORS%
+
+# Install the Python package
+pip install .
+```
+
+#### 5. DLL Discovery
+
+On Windows, native DLLs must be discoverable at import time. Choose one of:
+
+```powershell
+# Option A: Add backend directories to PATH
+$env:PATH = "$PWD\build\backends\cpu;$PWD\build\backends\cuda;$env:PATH"
+python -c "import insight as ins; print('Insight7 loaded:', ins.float32)"
+
+# Option B: Use os.add_dll_directory() in your script
+python -c "import os; os.add_dll_directory(r'E:\code\insight\Insight7\build\backends\cpu'); import insight as ins; print(ins.float32)"
+```
+
+#### 6. Run Tests
+
+```powershell
+$env:PYTHONPATH = "bindings/python"
+$env:PATH = "$PWD\build\backends\cpu;$PWD\build\backends\cuda;$env:PATH"
+python -m pytest tests/bindings/ -v
+```
+
+> **Note:** For plot functionality, install [gnuplot](http://www.gnuplot.info/) and ensure it is in your `PATH`.
+
 ## Quick Start
 
 ```python

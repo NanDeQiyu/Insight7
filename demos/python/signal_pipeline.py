@@ -75,7 +75,7 @@ def apply_filter(sig_arr, taps_arr, numtaps):
     """应用 FIR 滤波器，补偿群延迟。"""
     full = ins.signal.fftconvolve(sig_arr, taps_arr, "full")
     half = numtaps // 2
-    n = sig_arr.shape()[0]
+    n = sig_arr.shape[0]
     return full[half : half + n]
 
 
@@ -84,7 +84,7 @@ def apply_filter(sig_arr, taps_arr, numtaps):
 # ============================================================
 def gaussian_smooth(sig_arr, smooth_factor=0.1):
     """使用高斯核 + fftconvolve 平滑信号。"""
-    n = sig_arr.shape()[0]
+    n = sig_arr.shape[0]
     kernel_size = max(3, int(smooth_factor * n))
     if kernel_size % 2 == 0:
         kernel_size += 1
@@ -137,10 +137,10 @@ def extract_features(sig_arr, fs):
     features["cwt_matrix"] = ins.abs(ins.signal.cwt(sig_arr, ins.signal.morlet2, widths_list))
 
     # 自相关
-    seg_len = min(int(sig_arr.shape()[0]), 2048)
+    seg_len = min(int(sig_arr.shape[0]), 2048)
     seg = sig_arr[0:seg_len]
     autocorr_full = ins.signal.correlate(seg, seg, "full")
-    half = autocorr_full.shape()[0] // 2
+    half = autocorr_full.shape[0] // 2
     autocorr = autocorr_full[half:]
     norm_val = autocorr[0]
     if float(norm_val) != 0:
@@ -215,7 +215,7 @@ def estimate_parameters(inst_freq_arr, fs, peaks):
 
     params = []
     for i, p in enumerate(peaks):
-        if 0 <= int(p) < int(inst_freq_arr.shape()[0]):
+        if 0 <= int(p) < int(inst_freq_arr.shape[0]):
             params.append(
                 {
                     "index": int(p),
@@ -284,11 +284,11 @@ def run_pipeline(device="cpu"):
     t0 = time.time()
     features = extract_features(signal_smooth, fs)
     timings["features"] = time.time() - t0
-    print(f"  fm_demod: {features['fm_demod'].shape()[0]} 点")
-    print(f"  STFT:     {features['stft_Sxx'].shape()}")
-    print(f"  频谱图:   {features['spec_Sxx'].shape()}")
-    print(f"  CWT:      {features['cwt_matrix'].shape()}")
-    print(f"  自相关:   {features['autocorr'].shape()[0]} 延迟")
+    print(f"  fm_demod: {features['fm_demod'].shape[0]} 点")
+    print(f"  STFT:     {features['stft_Sxx'].shape}")
+    print(f"  频谱图:   {features['spec_Sxx'].shape}")
+    print(f"  CWT:      {features['cwt_matrix'].shape}")
+    print(f"  自相关:   {features['autocorr'].shape[0]} 延迟")
     print(f"  耗时: {timings['features']:.4f} 秒")
 
     # --- 步骤 6: 峰值查找 + Kalman ---
@@ -370,10 +370,11 @@ def save_plots(result, output_dir, prefix):
 
     # (3) 频谱图
     ax = axes[1, 0]
+    spec_db = 10 * np.log10(features["spec_Sxx"].numpy() + 1e-12)
     ax.pcolormesh(
         features["spec_t"].numpy(),
         features["spec_f"].numpy(),
-        10 * np.log10(features["spec_Sxx"].numpy() + 1e-12),
+        spec_db.T,
         shading="gouraud",
         cmap="inferno",
     )

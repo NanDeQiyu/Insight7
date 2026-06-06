@@ -28,7 +28,7 @@ class TestSignalIOCPU:
             ins.signal.write_bin(path, data)
             result = ins.signal.read_bin(path, dtype="float64")
             assert result is not None
-            assert result.numel() == 5
+            assert result.numel == 5
             np.testing.assert_allclose(result.numpy(), data_np, rtol=1e-10)
         finally:
             os.unlink(path)
@@ -42,7 +42,7 @@ class TestSignalIOCPU:
             ins.signal.write_bin(path, data)
             result = ins.signal.read_bin(path, dtype="float32")
             assert result is not None
-            assert result.numel() == 3
+            assert result.numel == 3
         finally:
             os.unlink(path)
 
@@ -55,7 +55,7 @@ class TestSignalIOCPU:
             ins.signal.write_bin(path, data)
             result = ins.signal.read_bin(path, dtype="int16")
             assert result is not None
-            assert result.numel() == 4
+            assert result.numel == 4
         finally:
             os.unlink(path)
 
@@ -68,7 +68,7 @@ class TestSignalIOCPU:
             ins.signal.write_bin(path, data)
             result = ins.signal.read_bin(path, dtype="float64")
             assert result is not None
-            assert result.numel() == 1024
+            assert result.numel == 1024
             np.testing.assert_allclose(result.numpy(), data_np, rtol=1e-10)
         finally:
             os.unlink(path)
@@ -94,7 +94,7 @@ class TestSignalIOCPU:
             ins.signal.write_bin(path, data)
             result = ins.signal.unpack_bin(path, count=32)
             assert result is not None
-            assert result.numel() > 0
+            assert result.numel > 0
         finally:
             os.unlink(path)
 

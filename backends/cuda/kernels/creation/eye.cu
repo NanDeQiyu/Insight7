@@ -144,6 +144,8 @@ C_Status eye_kernel_gpu(void **inputs, void **outputs) {
   int64_t rows = out->dims[0];
   int64_t cols = out->dims[1];
   int64_t total = rows * cols;
+  if (total == 0)
+    return C_SUCCESS;
   int32_t dtype = out->dtype;
 
   int threads = creation_threads();

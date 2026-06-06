@@ -38,7 +38,7 @@ def to_gpu(np_arr, dtype=None):
 
 
 def to_numpy(gpu_arr):
-    return gpu_arr.to(CPU).numpy()
+    return gpu_arr.contiguous().to(CPU).numpy()
 
 
 # ============================================================================
@@ -51,38 +51,38 @@ class TestCreation:
 
     def test_zeros(self):
         a = ins.zeros([2, 3], ins.float32).to(GPU)
-        assert a.numel() == 6
+        assert a.numel == 6
         assert np.allclose(to_numpy(a), 0)
 
     def test_ones(self):
         a = ins.ones([2, 3], ins.float32).to(GPU)
-        assert a.numel() == 6
+        assert a.numel == 6
         np.testing.assert_allclose(to_numpy(a), np.ones([2, 3]))
 
     def test_full(self):
         a = ins.full([2, 3], 7.0, ins.float32).to(GPU)
-        assert a.numel() == 6
+        assert a.numel == 6
         np.testing.assert_allclose(to_numpy(a), np.full([2, 3], 7.0))
 
     def test_eye(self):
         a = ins.eye(3).to(GPU)
-        assert a.numel() == 9
+        assert a.numel == 9
         np.testing.assert_allclose(to_numpy(a), np.eye(3))
 
     def test_arange(self):
         a = ins.arange(10, ins.float32).to(GPU)
-        assert a.numel() == 10
+        assert a.numel == 10
         np.testing.assert_allclose(to_numpy(a), np.arange(10, dtype=np.float32))
 
     def test_linspace(self):
         a = ins.linspace(0.0, 1.0, 5, ins.float64).to(GPU)
-        assert a.numel() == 5
+        assert a.numel == 5
         np.testing.assert_allclose(to_numpy(a), np.linspace(0, 1, 5), rtol=1e-6)
 
     def test_from_numpy(self):
         data = np.array([1.5, 2.5, 3.5], dtype=np.float64)
         a = ins.from_numpy(data).to(GPU)
-        assert a.numel() == 3
+        assert a.numel == 3
         np.testing.assert_allclose(to_numpy(a), data)
 
 
@@ -236,7 +236,7 @@ class TestManipulation:
     def test_reshape(self):
         a = to_gpu(np.arange(6, dtype=np.float64))
         b = ins.reshape(a, [2, 3])
-        assert b.numel() == 6
+        assert b.numel == 6
 
     def test_transpose(self):
         a = to_gpu(np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float64))
@@ -248,7 +248,7 @@ class TestManipulation:
     def test_squeeze(self):
         a = to_gpu(np.zeros([1, 3, 1], dtype=np.float64))
         b = ins.squeeze(a)
-        assert b.numel() == 3
+        assert b.numel == 3
 
 
 # ============================================================================
@@ -314,7 +314,7 @@ class TestSignal:
 
     def test_hann(self):
         w = ins.signal.hann(16)
-        assert w.numel() == 16
+        assert w.numel == 16
         assert w.numpy()[0] == pytest.approx(0.0, abs=1e-5)
         assert w.numpy()[8] == pytest.approx(1.0, abs=1e-1)
 

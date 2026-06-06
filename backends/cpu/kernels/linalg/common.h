@@ -22,7 +22,21 @@
 
 #ifdef INSIGHT_USE_OPENBLAS
 #include <cblas.h>
+// MSVC does not support C99 _Complex type used in OpenBLAS lapack.h.
+// Provide a compatibility shim so lapacke.h can be included.
+#ifdef _MSC_VER
+#include <complex>
+typedef std::complex<float> _lapack_complex_float;
+typedef std::complex<double> _lapack_complex_double;
+#define lapack_complex_float _lapack_complex_float
+#define lapack_complex_double _lapack_complex_double
+// Redefine _Complex as a macro so lapack.h declarations parse
+#define _Complex
+#endif
 #include <lapacke.h> // LAPACK C Interface
+#ifdef _MSC_VER
+#undef _Complex
+#endif
 #endif
 
 // ============================================================================

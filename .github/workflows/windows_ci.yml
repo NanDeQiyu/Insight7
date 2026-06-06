@@ -1,0 +1,418 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'backends/**'
+      - 'cmake/**'
+      - 'include/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'bindings/**'
+      - '!bindings/**/*.md'
+      - 'CMakeLists.txt'
+      - '.github/workflows/windows_ci.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'backends/**'
+      - 'include/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'bindings/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/windows_ci.yml'
+  workflow_dispatch:
+
+jobs:
+  cpp-tests:
+    name: C++ Tests (MSVC x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          vcpkg install fftw3:x64-windows
+          $ProgressPreference = 'SilentlyContinue'
+          Write-Host "Downloading OpenBLAS..."
+          try {
+            Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip -UseBasicParsing -ErrorAction Stop
+          } catch {
+            Write-Host "Invoke-WebRequest failed, falling back to curl: $_"
+            & curl.exe -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
+          }
+          $sz = (Get-Item openblas.zip).Length
+          Write-Host "Downloaded file size: $sz bytes"
+          if ($sz -lt 100000) { Write-Error "Download too small, likely failed"; exit 1 }
+          New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
+          # Find libopenblas.dll and determine OpenBLAS root
+          $obDll = Get-ChildItem C:\deps -Recurse -Filter "libopenblas.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $obDll) {
+            Get-ChildItem C:\deps -Recurse -Name | Select-Object -First 30
+            Write-Error "libopenblas.dll not found"; exit 1
+          }
+          $obRoot = Split-Path (Split-Path $obDll.FullName)
+          Write-Host "OpenBLAS root: $obRoot"
+          # If files are at C:\deps\ (no wrapper dir), move to C:\deps\OpenBLAS-0.3.33-x64
+          if ($obRoot -eq "C:\deps") {
+            New-Item -ItemType Directory -Force -Path C:\deps\OpenBLAS-0.3.33-x64 | Out-Null
+            Move-Item C:\deps\bin C:\deps\OpenBLAS-0.3.33-x64\bin -Force
+            Move-Item C:\deps\include C:\deps\OpenBLAS-0.3.33-x64\include -Force
+            Move-Item C:\deps\lib C:\deps\OpenBLAS-0.3.33-x64\lib -Force
+          } elseif ($obRoot -ne "C:\deps\OpenBLAS-0.3.33-x64") {
+            Move-Item $obRoot "C:\deps\OpenBLAS-0.3.33-x64" -Force
+          }
+
+      - name: Configure & Build
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=cl.exe \
+            -DCMAKE_CXX_COMPILER=cl.exe \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=ON \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=OFF \
+            -DINSIGHT_USE_SNDFILE=OFF \
+            -DINSIGHT_USE_MATPLOT=OFF \
+            -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
+          cmake --build build -j $(nproc)
+
+      - name: Run tests
+        shell: bash
+        run: |
+          cp /c/deps/OpenBLAS-0.3.33-x64/bin/*.dll build/tests/
+          cp /c/vcpkg/installed/x64-windows/bin/fftw*.dll build/tests/
+          cd build/tests && ./insight_tests_cpu.exe
+
+  python-binding:
+    name: Python Binding
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          pip install numpy pytest
+          vcpkg install fftw3:x64-windows
+          $ProgressPreference = 'SilentlyContinue'
+          Write-Host "Downloading OpenBLAS..."
+          try {
+            Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip -UseBasicParsing -ErrorAction Stop
+          } catch {
+            Write-Host "Invoke-WebRequest failed, falling back to curl: $_"
+            & curl.exe -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
+          }
+          $sz = (Get-Item openblas.zip).Length
+          Write-Host "Downloaded file size: $sz bytes"
+          if ($sz -lt 100000) { Write-Error "Download too small, likely failed"; exit 1 }
+          New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
+          $obDll = Get-ChildItem C:\deps -Recurse -Filter "libopenblas.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $obDll) {
+            Get-ChildItem C:\deps -Recurse -Name | Select-Object -First 30
+            Write-Error "libopenblas.dll not found"; exit 1
+          }
+          $obRoot = Split-Path (Split-Path $obDll.FullName)
+          if ($obRoot -eq "C:\deps") {
+            New-Item -ItemType Directory -Force -Path C:\deps\OpenBLAS-0.3.33-x64 | Out-Null
+            Move-Item C:\deps\bin C:\deps\OpenBLAS-0.3.33-x64\bin -Force
+            Move-Item C:\deps\include C:\deps\OpenBLAS-0.3.33-x64\include -Force
+            Move-Item C:\deps\lib C:\deps\OpenBLAS-0.3.33-x64\lib -Force
+          } elseif ($obRoot -ne "C:\deps\OpenBLAS-0.3.33-x64") {
+            Move-Item $obRoot "C:\deps\OpenBLAS-0.3.33-x64" -Force
+          }
+
+      - name: Configure & Build
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=cl.exe \
+            -DCMAKE_CXX_COMPILER=cl.exe \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=OFF \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=ON \
+            -DINSIGHT_BUILD_PYTHON_BINDING=ON \
+            -DINSIGHT_BUILD_LUA_BINDING=OFF \
+            -DINSIGHT_BUILD_JULIA_BINDING=OFF \
+            -DINSIGHT_USE_SNDFILE=OFF \
+            -DINSIGHT_USE_MATPLOT=OFF \
+            -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
+          cmake --build build -j $(nproc)
+
+      - name: Run tests
+        shell: bash
+        run: |
+          export PYTHONPATH="$GITHUB_WORKSPACE/bindings/python"
+          export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:/c/vcpkg/installed/x64-windows/bin:$PATH"
+          python -m pytest tests/cpu/python/ -v --tb=short
+
+  lua-binding:
+    name: Lua Binding (x86)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSVC x86
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Build Lua 5.1 from source
+        shell: pwsh
+        run: |
+          curl -L -o lua-5.1.5.tar.gz https://www.lua.org/ftp/lua-5.1.5.tar.gz
+          tar xzf lua-5.1.5.tar.gz
+          Push-Location lua-5.1.5
+          # Build Lua as DLL with MSVC (x86)
+          $src = Get-ChildItem src/*.c | Where-Object { $_.Name -ne 'lua.c' -and $_.Name -ne 'luac.c' } | ForEach-Object { $_.FullName }
+          & cl.exe /nologo /MD /O2 /W3 /c /D_CRT_SECURE_NO_DEPRECATE /DLUA_BUILD_AS_DLL $src
+          if ($LASTEXITCODE -ne 0) { Write-Error "cl.exe failed"; exit 1 }
+          $objs = Get-ChildItem *.obj | ForEach-Object { $_.FullName }
+          & link.exe /nologo /DLL /OUT:lua51.dll /IMPLIB:lua51.lib $objs
+          if ($LASTEXITCODE -ne 0) { Write-Error "link.exe (DLL) failed"; exit 1 }
+          # Build interpreter
+          & cl.exe /nologo /MD /O2 /W3 /c /D_CRT_SECURE_NO_DEPRECATE src/lua.c
+          & link.exe /nologo /OUT:lua.exe lua.obj lua51.lib
+          if ($LASTEXITCODE -ne 0) { Write-Error "link.exe (interpreter) failed"; exit 1 }
+          Pop-Location
+          # Install to a known location
+          $LUA_INSTALL = "C:\lua51"
+          New-Item -ItemType Directory -Force -Path "$LUA_INSTALL\include","$LUA_INSTALL\lib","$LUA_INSTALL\bin" | Out-Null
+          Copy-Item lua-5.1.5\src\*.h "$LUA_INSTALL\include\"
+          Copy-Item lua-5.1.5\lua51.lib "$LUA_INSTALL\lib\"
+          Copy-Item lua-5.1.5\lua51.dll,"lua-5.1.5\lua.exe" "$LUA_INSTALL\bin\"
+          Write-Host "Lua installed to $LUA_INSTALL"
+          Get-ChildItem "$LUA_INSTALL\lib"
+          Get-ChildItem "$LUA_INSTALL\bin"
+          # Add to PATH for subsequent steps
+          "$LUA_INSTALL\bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+
+      - name: Install luarocks and busted
+        shell: bash
+        run: |
+          choco install luarocks -y
+          # Create link.cmd wrapper for MSVC link.exe
+          MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
+          MSVC_LINK_WIN="$(cygpath -w "$MSVC_LINK")"
+          printf '@"%s" %%*\r\n' "$MSVC_LINK_WIN" > "/c/ProgramData/chocolatey/bin/link.cmd"
+          export PATH="/c/ProgramData/chocolatey/bin:$PATH"
+          luarocks install busted
+
+      - name: Install vcpkg dependencies
+        shell: pwsh
+        run: |
+          vcpkg install fftw3:x86-windows
+          $ProgressPreference = 'SilentlyContinue'
+          Write-Host "Downloading OpenBLAS x86..."
+          try {
+            Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x86.zip" -OutFile openblas.zip -UseBasicParsing -ErrorAction Stop
+          } catch {
+            & curl.exe -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x86.zip"
+          }
+          $sz = (Get-Item openblas.zip).Length
+          Write-Host "Downloaded file size: $sz bytes"
+          if ($sz -lt 100000) { Write-Error "Download too small"; exit 1 }
+          New-Item -ItemType Directory -Force -Path C:\deps_x86 | Out-Null
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps_x86 -Force
+          $obDll = Get-ChildItem C:\deps_x86 -Recurse -Filter "libopenblas.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $obDll) {
+            Get-ChildItem C:\deps_x86 -Recurse -Name | Select-Object -First 30
+            Write-Error "libopenblas.dll not found"; exit 1
+          }
+          $obRoot = Split-Path (Split-Path $obDll.FullName)
+          if ($obRoot -eq "C:\deps_x86") {
+            New-Item -ItemType Directory -Force -Path C:\deps_x86\OpenBLAS-0.3.33-x86 | Out-Null
+            Move-Item C:\deps_x86\bin C:\deps_x86\OpenBLAS-0.3.33-x86\bin -Force
+            Move-Item C:\deps_x86\include C:\deps_x86\OpenBLAS-0.3.33-x86\include -Force
+            Move-Item C:\deps_x86\lib C:\deps_x86\OpenBLAS-0.3.33-x86\lib -Force
+          } elseif ($obRoot -ne "C:\deps_x86\OpenBLAS-0.3.33-x86") {
+            Move-Item $obRoot "C:\deps_x86\OpenBLAS-0.3.33-x86" -Force
+          }
+
+      - name: Configure & Build
+        shell: bash
+        run: |
+          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$PATH"
+          cmake -S . -B build_x86 -G Ninja \
+            -DCMAKE_C_COMPILER=cl.exe \
+            -DCMAKE_CXX_COMPILER=cl.exe \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=OFF \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=ON \
+            -DINSIGHT_BUILD_PYTHON_BINDING=OFF \
+            -DINSIGHT_BUILD_LUA_BINDING=ON \
+            -DINSIGHT_BUILD_JULIA_BINDING=OFF \
+            -DINSIGHT_USE_SNDFILE=OFF \
+            -DINSIGHT_USE_MATPLOT=OFF \
+            -DLUA_DIR="C:/lua51" \
+            -DCMAKE_PREFIX_PATH="C:/deps_x86/OpenBLAS-0.3.33-x86;C:/vcpkg/installed/x86-windows"
+          cmake --build build_x86 -j $(nproc)
+
+      - name: Diagnose build artifacts
+        shell: bash
+        run: |
+          echo "=== Searching for _insight.dll ==="
+          find "$GITHUB_WORKSPACE/build_x86" -name "_insight.dll" 2>/dev/null || echo "NOT FOUND in build_x86"
+          find "$GITHUB_WORKSPACE/bindings" -name "_insight.dll" 2>/dev/null || echo "NOT FOUND in bindings"
+          echo ""
+          echo "=== build_x86/bindings/lua/ contents ==="
+          ls -la "$GITHUB_WORKSPACE/build_x86/bindings/lua/" 2>/dev/null || echo "DIR NOT FOUND"
+          echo ""
+          echo "=== All DLLs in build_x86 ==="
+          find "$GITHUB_WORKSPACE/build_x86" -name "*.dll" 2>/dev/null | head -30
+          echo ""
+          echo "=== Check CPU backend DLL ==="
+          ls -la "$GITHUB_WORKSPACE/build_x86/backends/cpu/"*.dll 2>/dev/null || echo "NO DLLs"
+          echo ""
+          echo "=== Lua lib found by CMake ==="
+          grep -r "Lua binding:" "$GITHUB_WORKSPACE/build_x86/CMakeCache.txt" 2>/dev/null || echo "Not in cache"
+          grep -r "LUA_LIB" "$GITHUB_WORKSPACE/build_x86/CMakeCache.txt" 2>/dev/null | head -5
+
+      - name: Run tests
+        shell: bash
+        run: |
+          LROCKS="C:\\ProgramData\\chocolatey\\lib\\luarocks\\luarocks-2.4.4-win32"
+          BINDIR="$(cygpath -w "$GITHUB_WORKSPACE/bindings/lua")"
+          BUILDDIR="$(cygpath -w "$GITHUB_WORKSPACE/build_x86/bindings/lua")"
+          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/deps_x86/OpenBLAS-0.3.33-x86/bin:/c/vcpkg/installed/x86-windows/bin:$PATH"
+          export LUA_CPATH="$BUILDDIR\\?.dll;$LROCKS\\systree\\lib\\lua\\5.1\\?.dll;$LROCKS\\systree\\lib\\lua\\5.1\\?\\init.dll;;"
+          export LUA_PATH="$BINDIR\\?\\init.lua;$BINDIR\\?.lua;$LROCKS\\systree\\share\\lua\\5.1\\?.lua;$LROCKS\\systree\\share\\lua\\5.1\\?\\init.lua;;"
+          echo "LUA_CPATH=$LUA_CPATH"
+          echo "LUA_PATH=$LUA_PATH"
+          echo "=== Check if _insight.dll exists ==="
+          ls -la "$GITHUB_WORKSPACE/build_x86/bindings/lua/_insight.dll" 2>/dev/null || echo "MISSING: build_x86/bindings/lua/_insight.dll"
+          ls -la "$GITHUB_WORKSPACE/bindings/lua/_insight.dll" 2>/dev/null || echo "MISSING: bindings/lua/_insight.dll"
+          busted.bat --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
+
+  julia-binding:
+    name: Julia Binding
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          vcpkg install fftw3:x64-windows
+          $ProgressPreference = 'SilentlyContinue'
+          Write-Host "Downloading OpenBLAS..."
+          try {
+            Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip -UseBasicParsing -ErrorAction Stop
+          } catch {
+            Write-Host "Invoke-WebRequest failed, falling back to curl: $_"
+            & curl.exe -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
+          }
+          $sz = (Get-Item openblas.zip).Length
+          Write-Host "Downloaded file size: $sz bytes"
+          if ($sz -lt 100000) { Write-Error "Download too small, likely failed"; exit 1 }
+          New-Item -ItemType Directory -Force -Path C:\deps | Out-Null
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps -Force
+          $obDll = Get-ChildItem C:\deps -Recurse -Filter "libopenblas.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $obDll) {
+            Get-ChildItem C:\deps -Recurse -Name | Select-Object -First 30
+            Write-Error "libopenblas.dll not found"; exit 1
+          }
+          $obRoot = Split-Path (Split-Path $obDll.FullName)
+          if ($obRoot -eq "C:\deps") {
+            New-Item -ItemType Directory -Force -Path C:\deps\OpenBLAS-0.3.33-x64 | Out-Null
+            Move-Item C:\deps\bin C:\deps\OpenBLAS-0.3.33-x64\bin -Force
+            Move-Item C:\deps\include C:\deps\OpenBLAS-0.3.33-x64\include -Force
+            Move-Item C:\deps\lib C:\deps\OpenBLAS-0.3.33-x64\lib -Force
+          } elseif ($obRoot -ne "C:\deps\OpenBLAS-0.3.33-x64") {
+            Move-Item $obRoot "C:\deps\OpenBLAS-0.3.33-x64" -Force
+          }
+
+      - name: Configure & Build
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER=cl.exe \
+            -DCMAKE_CXX_COMPILER=cl.exe \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINSIGHT_WITH_CUDA=OFF \
+            -DINSIGHT_USE_FFTW3=ON \
+            -DINSIGHT_USE_OPENBLAS=ON \
+            -DINSIGHT_BUILD_TESTS=OFF \
+            -DINSIGHT_BUILD_DEMOS=OFF \
+            -DINSIGHT_BUILD_BINDINGS=ON \
+            -DINSIGHT_BUILD_PYTHON_BINDING=OFF \
+            -DINSIGHT_BUILD_LUA_BINDING=OFF \
+            -DINSIGHT_BUILD_JULIA_BINDING=ON \
+            -DINSIGHT_USE_SNDFILE=OFF \
+            -DINSIGHT_USE_MATPLOT=OFF \
+            -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;C:/vcpkg/installed/x64-windows"
+          cmake --build build -j $(nproc)
+
+      - name: Run tests
+        shell: bash
+        run: |
+          export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:/c/vcpkg/installed/x64-windows/bin:$PATH"
+          # Use forward-slash paths to avoid Julia backslash escape issues
+          JLDIR="$(cygpath -m "$GITHUB_WORKSPACE")"
+          total_pass=0; total_fail=0; fail_list=""
+          for f in tests/cpu/julia/test_*.jl; do
+            echo "=== Running $f ==="
+            if julia -e "push!(LOAD_PATH, raw\"$JLDIR/bindings/julia\"); include(raw\"$JLDIR/$f\")"; then
+              total_pass=$((total_pass + 1))
+            else
+              total_fail=$((total_fail + 1))
+              fail_list="$fail_list $f"
+              echo "WARN: $f had errors"
+            fi
+          done
+          echo ""
+          echo "=== Julia test summary: $total_pass passed, $total_fail failed ==="
+          if [ -n "$fail_list" ]; then
+            echo "Failed tests:$fail_list"
+            exit 1
+          fi

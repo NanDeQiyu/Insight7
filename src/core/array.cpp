@@ -901,18 +901,22 @@ Array Array::to(const Place &target) const {
   if (place_ == target)
     return *this;
 
+  // For non-contiguous views (e.g. permuted arrays), make a contiguous copy
+  // first so the raw memcpy below transfers the correct data layout.
+  const Array &src = is_contiguous() ? *this : contiguous();
+
   Array result(shape_, dtype(), target);
   size_t bytes = numel() * dtype_size(dtype());
 
-  if (place_.is_cpu() && target.is_cpu()) {
-    std::memcpy(result.data(), data(), bytes);
-  } else if (place_.is_cpu() && target.is_gpu()) {
-    target.copy_from_host(result.data(), data(), bytes);
-  } else if (place_.is_gpu() && target.is_cpu()) {
-    place_.copy_to_host(result.data(), data(), bytes);
-  } else if (place_.is_gpu() && target.is_gpu()) {
+  if (src.place().is_cpu() && target.is_cpu()) {
+    std::memcpy(result.data(), src.data(), bytes);
+  } else if (src.place().is_cpu() && target.is_gpu()) {
+    target.copy_from_host(result.data(), src.data(), bytes);
+  } else if (src.place().is_gpu() && target.is_cpu()) {
+    src.place().copy_to_host(result.data(), src.data(), bytes);
+  } else if (src.place().is_gpu() && target.is_gpu()) {
     void *host_buf = std::malloc(bytes);
-    place_.copy_to_host(host_buf, data(), bytes);
+    src.place().copy_to_host(host_buf, src.data(), bytes);
     target.copy_from_host(result.data(), host_buf, bytes);
     std::free(host_buf);
   }

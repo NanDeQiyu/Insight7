@@ -4,7 +4,7 @@
 #
 # Tries multiple methods:
 #   1. git apply --ignore-whitespace (most tolerant)
-#   2. patch -p1 (works without git)
+#   2. patch -p1 (works without git, Linux/macOS only)
 #   3. Reverse check (already applied)
 #
 # FATAL_ERROR if all methods fail — patches MUST apply.
@@ -28,7 +28,7 @@ function(apply_patch SOURCE_DIR PATCH_FILE)
 
     message(STATUS "[patch] ${PATCH_NAME}: applying to ${SOURCE_DIR} ...")
 
-    # Method 1: git apply (preferred)
+    # Method 1: git apply (preferred, works on all platforms)
     execute_process(
         COMMAND git apply --check --ignore-whitespace "${PATCH_FILE}"
         WORKING_DIRECTORY "${SOURCE_DIR}"
@@ -53,45 +53,47 @@ function(apply_patch SOURCE_DIR PATCH_FILE)
         message(STATUS "[patch] ${PATCH_NAME}: git apply --check failed: ${E1}")
     endif()
 
-    # Method 2: patch -p1
-    execute_process(
-        COMMAND patch -p1 --forward --dry-run
-        INPUT_FILE "${PATCH_FILE}"
-        WORKING_DIRECTORY "${SOURCE_DIR}"
-        RESULT_VARIABLE R2
-        OUTPUT_VARIABLE O2 ERROR_VARIABLE E2
-    )
-    message(STATUS "[patch] ${PATCH_NAME}: patch -p1 --dry-run result=${R2}")
-    if(R2 EQUAL 0)
+    # Method 2: patch -p1 (Linux/macOS only — not available on Windows by default)
+    if(NOT WIN32)
         execute_process(
-            COMMAND patch -p1 --forward
+            COMMAND patch -p1 --forward --dry-run
             INPUT_FILE "${PATCH_FILE}"
             WORKING_DIRECTORY "${SOURCE_DIR}"
-            RESULT_VARIABLE R2A
-            ERROR_VARIABLE E2A
+            RESULT_VARIABLE R2
+            OUTPUT_VARIABLE O2 ERROR_VARIABLE E2
         )
-        if(R2A EQUAL 0)
-            file(WRITE "${PATCH_STAMP}" "Applied via patch -p1")
-            message(STATUS "[patch] ${PATCH_NAME}: OK (patch -p1)")
+        message(STATUS "[patch] ${PATCH_NAME}: patch -p1 --dry-run result=${R2}")
+        if(R2 EQUAL 0)
+            execute_process(
+                COMMAND patch -p1 --forward
+                INPUT_FILE "${PATCH_FILE}"
+                WORKING_DIRECTORY "${SOURCE_DIR}"
+                RESULT_VARIABLE R2A
+                ERROR_VARIABLE E2A
+            )
+            if(R2A EQUAL 0)
+                file(WRITE "${PATCH_STAMP}" "Applied via patch -p1")
+                message(STATUS "[patch] ${PATCH_NAME}: OK (patch -p1)")
+                return()
+            endif()
+            message(STATUS "[patch] ${PATCH_NAME}: patch -p1 failed: ${E2A}")
+        else()
+            message(STATUS "[patch] ${PATCH_NAME}: patch dry-run failed: ${E2}")
+        endif()
+
+        # Method 3: Already applied? (reverse check, Linux/macOS only)
+        execute_process(
+            COMMAND patch -p1 --reverse --dry-run
+            INPUT_FILE "${PATCH_FILE}"
+            WORKING_DIRECTORY "${SOURCE_DIR}"
+            RESULT_VARIABLE R3
+            OUTPUT_QUIET ERROR_QUIET
+        )
+        if(R3 EQUAL 0)
+            file(WRITE "${PATCH_STAMP}" "Already applied")
+            message(STATUS "[patch] ${PATCH_NAME}: OK (already applied)")
             return()
         endif()
-        message(STATUS "[patch] ${PATCH_NAME}: patch -p1 failed: ${E2A}")
-    else()
-        message(STATUS "[patch] ${PATCH_NAME}: patch dry-run failed: ${E2}")
-    endif()
-
-    # Method 3: Already applied?
-    execute_process(
-        COMMAND patch -p1 --reverse --dry-run
-        INPUT_FILE "${PATCH_FILE}"
-        WORKING_DIRECTORY "${SOURCE_DIR}"
-        RESULT_VARIABLE R3
-        OUTPUT_QUIET ERROR_QUIET
-    )
-    if(R3 EQUAL 0)
-        file(WRITE "${PATCH_STAMP}" "Already applied")
-        message(STATUS "[patch] ${PATCH_NAME}: OK (already applied)")
-        return()
     endif()
 
     # All methods failed — this is a build-breaking error
@@ -100,6 +102,5 @@ function(apply_patch SOURCE_DIR PATCH_FILE)
         "  Source: ${SOURCE_DIR}\n"
         "  Patch:  ${PATCH_FILE}\n"
         "  git apply error: ${E1}\n"
-        "  patch -p1 error: ${E2}\n"
         "  This must be fixed — the patch is required for headless CI.")
 endfunction()

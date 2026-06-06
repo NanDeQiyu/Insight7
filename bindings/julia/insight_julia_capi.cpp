@@ -34,21 +34,26 @@
 using namespace ins;
 
 // All exported functions use C linkage for Julia ccall().
+#if defined(_WIN32) || defined(_WIN64)
+#define JULIA_EXPORT __declspec(dllexport)
+#else
+#define JULIA_EXPORT
+#endif
+
 extern "C" {
 
 // ============================================================================
 // Initialization
 // ============================================================================
 
-void insight_jl_init_cpu() {
+JULIA_EXPORT
+void insight_jl_init() {
   if (!ins::is_initialized()) {
     try {
       ins::init(); // Smart discovery: CPU + first GPU if available
     } catch (...) {
-      // If dynamic loading fails, the user needs to set LD_LIBRARY_PATH
-      fprintf(stderr,
-              "[insight] Warning: CPU backend not found. "
-              "Set LD_LIBRARY_PATH to include the backend directory.\n");
+      fprintf(stderr, "[insight] Warning: backend not found. "
+                      "Set PATH to include the backend directory.\n");
     }
   }
 }
@@ -233,12 +238,12 @@ char *insight_jl_array_tostring(const Array *arr) {
   if (!arr || !arr->defined())
     return nullptr;
   try {
-    std::string s = ins::to_string(*arr);
-    char *result = static_cast<char *>(std::malloc(s.size() + 1));
-    if (!result)
-      return nullptr;
-    std::memcpy(result, s.c_str(), s.size() + 1);
-    return result;
+    // Use a static buffer to avoid cross-runtime malloc/free issues on Windows
+    // (Julia uses its own CRT, DLL uses MSVC CRT — malloc/free are
+    // incompatible)
+    static thread_local std::string buf;
+    buf = ins::to_string(*arr);
+    return const_cast<char *>(buf.c_str());
   } catch (...) {
     return nullptr;
   }

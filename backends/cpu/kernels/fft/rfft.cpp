@@ -40,7 +40,7 @@ C_Status rfft_kernel_cpu(void **inputs, void **outputs) {
     double *dst = (double *)out->data;
 
     fftw_plan plan = fft_ensure_plan_f64(fft_len, batch_size, FFTW_FORWARD,
-                                         FFT_KIND_R2C, NULL);
+                                         FFT_KIND_R2C, src, dst);
     fftw_execute_dft_r2c(plan, src, (fftw_complex *)dst);
   }
   // Single precision
@@ -49,7 +49,7 @@ C_Status rfft_kernel_cpu(void **inputs, void **outputs) {
     float *dst = (float *)out->data;
 
     fftwf_plan plan = fft_ensure_plan_f32(fft_len, batch_size, FFTW_FORWARD,
-                                          FFT_KIND_R2C, NULL);
+                                          FFT_KIND_R2C, src, dst);
     fftwf_execute_dft_r2c(plan, src, (fftwf_complex *)dst);
   } else {
     cpu_set_last_error("rfft: input must be float32 or float64");

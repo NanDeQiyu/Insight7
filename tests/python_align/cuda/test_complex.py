@@ -40,45 +40,49 @@ def to_numpy(gpu_arr):
 
 
 class TestComplexAlignmentGPU:
-    """Insight complex ops on GPU vs NumPy."""
+    """Insight complex ops vs NumPy."""
 
     def test_to_complex(self):
         real_np = np.array([1.0, 2.0, 3.0], dtype=np.float64)
         imag_np = np.array([4.0, 5.0, 6.0], dtype=np.float64)
-        real, imag = to_gpu(real_np), to_gpu(imag_np)
+        real = ins.from_numpy(real_np)
+        imag = ins.from_numpy(imag_np)
         result = ins.to_complex(real, imag)
         expected = real_np + 1j * imag_np
-        assert_allclose(to_numpy(result), expected)
+        assert_allclose(result.numpy(), expected)
 
     def test_as_complex(self):
-        x_np = np.array([1.0, 2.0, 3.0], dtype=np.float64)
-        x = to_gpu(x_np)
+        # as_complex requires last dimension = 2 (pairs of real/imag)
+        x_np = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float64)
+        x = ins.from_numpy(x_np)
         result = ins.as_complex(x)
-        expected = x_np.astype(np.complex128)
-        assert_allclose(to_numpy(result), expected)
+        expected = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
+        assert_allclose(result.numpy(), expected)
 
     def test_real(self):
         x_np = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.real(x)
-        assert_allclose(to_numpy(result), np.real(x_np))
+        assert_allclose(result.numpy(), np.real(x_np))
 
     def test_imag(self):
         x_np = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.imag(x)
-        assert_allclose(to_numpy(result), np.imag(x_np))
+        assert_allclose(result.numpy(), np.imag(x_np))
 
     def test_as_real(self):
         x_np = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.as_real(x)
+        # as_real returns shape (N, 2) — interleaved real/imag
+        # Flatten to compare with expected flat array
         expected = np.array([1, 2, 3, 4, 5, 6], dtype=np.float64)
-        assert_allclose(to_numpy(result), expected)
+        assert_allclose(result.numpy().flatten(), expected)
 
     def test_is_complex(self):
-        x_real = to_gpu(np.array([1.0], dtype=np.float64))
-        x_cplx = to_gpu(np.array([1 + 2j], dtype=np.complex128))
+        x_real = ins.from_numpy(np.array([1.0], dtype=np.float64))
+        x_cplx = ins.from_numpy(np.array([1 + 2j], dtype=np.complex128))
         assert ins.is_complex(x_cplx) == True  # noqa: E712
         assert ins.is_complex(x_real) == False  # noqa: E712
 
@@ -89,9 +93,9 @@ class TestComplexAlignmentGPU:
         except ImportError:
             pytest.skip("conj not available in Python bindings")
         x_np = np.array([1 + 2j, 3 - 4j], dtype=np.complex128)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = conj(x)
-        assert_allclose(to_numpy(result), np.conj(x_np))
+        assert_allclose(result.numpy(), np.conj(x_np))
 
     def test_angle(self):
         """Test angle (phase) if available."""
@@ -100,6 +104,6 @@ class TestComplexAlignmentGPU:
         except ImportError:
             pytest.skip("angle not available in Python bindings")
         x_np = np.array([1 + 0j, 0 + 1j, -1 + 0j, 1 + 1j], dtype=np.complex128)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = angle(x)
-        assert_allclose(to_numpy(result), np.angle(x_np), rtol=1e-6)
+        assert_allclose(result.numpy(), np.angle(x_np), rtol=1e-8)

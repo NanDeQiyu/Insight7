@@ -499,6 +499,7 @@ __all__ = [
     "unsqueeze",
     "roll",
     "permute",
+    "transpose",
     "swapaxes",
     "moveaxis",
     "fliplr",

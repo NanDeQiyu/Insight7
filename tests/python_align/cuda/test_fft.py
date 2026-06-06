@@ -40,31 +40,31 @@ def to_numpy(gpu_arr):
 
 
 class TestFFTAlignmentGPU:
-    """Insight FFT on GPU vs NumPy FFT."""
+    """Insight FFT vs NumPy FFT."""
 
     def test_fft(self):
         x_np = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.float64)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.fft(x)
-        assert_allclose(to_numpy(result), np.fft.fft(x_np), atol=1e-6)
+        assert_allclose(result.numpy(), np.fft.fft(x_np), atol=1e-8)
 
     def test_ifft(self):
         x_np = np.array([1, 2, 3, 4], dtype=np.complex128)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.ifft(x)
-        assert_allclose(to_numpy(result), np.fft.ifft(x_np), atol=1e-6)
+        assert_allclose(result.numpy(), np.fft.ifft(x_np), atol=1e-8)
 
     def test_fft_ifft_roundtrip(self):
         x_np = np.random.randn(16).astype(np.float64)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.ifft(ins.fft(x))
-        assert_allclose(to_numpy(result).real, x_np, atol=1e-6)
+        assert_allclose(result.numpy().real, x_np, atol=1e-8)
 
     def test_rfft(self):
         x_np = np.array([1, 2, 3, 4], dtype=np.float64)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.rfft(x)
-        assert_allclose(to_numpy(result), np.fft.rfft(x_np), atol=1e-6)
+        assert_allclose(result.numpy(), np.fft.rfft(x_np), atol=1e-8)
 
     def test_fftfreq(self):
         result = ins.fftfreq(8, 0.1)
@@ -76,35 +76,45 @@ class TestFFTAlignmentGPU:
 
 
 class TestFFTExtendedGPU:
-    """Extended FFT ops on GPU vs NumPy FFT."""
+    """Extended FFT ops vs NumPy FFT."""
 
     def test_fft2(self):
         x_np = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float64)
-        x = to_gpu(x_np)
+        # fft2 requires complex input in Insight
+        x_complex = x_np.astype(np.complex128)
+        x = ins.from_numpy(x_complex)
         result = ins.fft2(x)
-        assert_allclose(to_numpy(result), np.fft.fft2(x_np), atol=1e-6)
+        assert_allclose(result.numpy(), np.fft.fft2(x_np), atol=1e-6)
 
     def test_ifft2(self):
         x_np = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.complex128)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.ifft2(x)
-        assert_allclose(to_numpy(result), np.fft.ifft2(x_np), atol=1e-6)
+        assert_allclose(result.numpy(), np.fft.ifft2(x_np), atol=1e-6)
 
     def test_fftn(self):
         x_np = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.fftn(x)
-        assert_allclose(to_numpy(result), np.fft.fftn(x_np), atol=1e-6)
+        assert_allclose(result.numpy(), np.fft.fftn(x_np), atol=1e-6)
 
     def test_ifftn(self):
         x_np = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         result = ins.ifftn(x)
-        assert_allclose(to_numpy(result), np.fft.ifftn(x_np), atol=1e-6)
+        assert_allclose(result.numpy(), np.fft.ifftn(x_np), atol=1e-6)
 
     def test_rfft_irfft_roundtrip(self):
         x_np = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.float64)
-        x = to_gpu(x_np)
+        x = ins.from_numpy(x_np)
         freq = ins.rfft(x)
         result = ins.irfft(freq, 8)
-        assert_allclose(to_numpy(result), x_np, atol=1e-6)
+        assert_allclose(result.numpy(), x_np, atol=1e-8)
+
+    def test_fft2_roundtrip(self):
+        x_np = np.random.RandomState(42).randn(4, 4).astype(np.float64)
+        # fft2 requires complex input in Insight
+        x_complex = x_np.astype(np.complex128)
+        x = ins.from_numpy(x_complex)
+        result = ins.ifft2(ins.fft2(x))
+        assert_allclose(result.numpy().real, x_np, atol=1e-8)

@@ -57,6 +57,8 @@ C_Status full_kernel_gpu(void **inputs, void **outputs) {
 
   double fill_val = *static_cast<double *>(inputs[1]);
   int64_t n = out->numel;
+  if (n == 0)
+    return C_SUCCESS;
   int32_t dtype = out->dtype;
   size_t elem_size = insight_dtype_size(dtype);
   char *data_with_offset =

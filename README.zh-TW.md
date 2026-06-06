@@ -57,6 +57,8 @@ insight/
 
 ### 從原始碼編譯
 
+**Linux / macOS：**
+
 ```bash
 git clone https://github.com/PlumBlossomMaid/Insight7.git
 cd Insight7
@@ -68,6 +70,32 @@ cmake .. \
     -DINSIGHT_USE_OPENBLAS=ON
 cmake --build . -j$(nproc)
 ```
+
+**Windows (MSVC)：**
+
+```powershell
+# 前置要求：Visual Studio 2022+（C++ 工作負載）、CMake 3.15+、Ninja
+# 透過 vcpkg 安裝依賴（建議）：
+#   vcpkg install fftw3:x64-windows openblas:x64-windows
+# 或從 https://github.com/OpenMathLib/OpenBLAS/releases 下載 OpenBLAS
+#   解壓縮至如 C:\deps\OpenBLAS-0.3.33-x64
+
+# 開啟 VS 開發者命令提示字元（x64）
+# 請根據你的 Visual Studio 安裝路徑調整：
+call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+
+git clone https://github.com/PlumBlossomMaid/Insight7.git
+cd Insight7
+cmake -S . -B build -G Ninja ^
+    -DCMAKE_C_COMPILER=cl.exe ^
+    -DCMAKE_CXX_COMPILER=cl.exe ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DINSIGHT_WITH_CUDA=ON ^
+    -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;E:/vcpkg/installed/x64-windows"
+cmake --build build -j %NUMBER_OF_PROCESSORS%
+```
+
+> **注意：** 如需繪圖功能，請安裝 [gnuplot](http://www.gnuplot.info/) 並確保其在系統 `PATH` 中。
 
 ### 安裝語言繫結
 

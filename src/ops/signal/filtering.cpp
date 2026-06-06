@@ -263,6 +263,75 @@ Array firfilter(const Array &b, const Array &x, int axis) {
 }
 
 // ============================================================================
+// firfilter_zi_state — FIR filter with initial/final state
+// ============================================================================
+
+std::pair<Array, Array> firfilter_zi_state(const Array &b, const Array &x,
+                                           const Array &zi, int axis) {
+  INS_CHECK(b.defined() && x.defined() && zi.defined(),
+            "firfilter_zi_state: inputs are undefined");
+  INS_CHECK(b.shape().ndim() == 1, "firfilter_zi_state: b must be 1D");
+  INS_CHECK(zi.shape().ndim() == 1, "firfilter_zi_state: zi must be 1D");
+  INS_CHECK(zi.numel() == b.numel() - 1,
+            "firfilter_zi_state: zi length must be len(b)-1");
+
+  int64_t nb = b.numel();
+  int64_t zi_len = zi.numel();
+  int64_t n = x.numel();
+
+  // Work on CPU
+  Place cpu = CPUPlace();
+  Array b_cpu = (b.place().kind() == DeviceKind::CPU) ? b : b.to(cpu);
+  Array x_cpu = (x.place().kind() == DeviceKind::CPU) ? x : x.to(cpu);
+  Array zi_cpu = (zi.place().kind() == DeviceKind::CPU) ? zi : zi.to(cpu);
+
+  // Ensure consistent dtype
+  DType work_dtype = (x.dtype() == DType::F32) ? DType::F32 : DType::F64;
+  if (b_cpu.dtype() != work_dtype)
+    b_cpu = b_cpu.to(work_dtype);
+  if (x_cpu.dtype() != work_dtype)
+    x_cpu = x_cpu.to(work_dtype);
+  if (zi_cpu.dtype() != work_dtype)
+    zi_cpu = zi_cpu.to(work_dtype);
+
+  // Build extended input: [zi, x]
+  Array x_ext = concat({zi_cpu, x_cpu}, 0);
+  int64_t n_ext = zi_len + n;
+
+  // Full convolution: y = convolve(x_ext, b, "full")
+  // Output length = n_ext + nb - 1 = zi_len + n + nb - 1
+  Array y_full = convolve(x_ext, b_cpu, "full");
+
+  // Extract the relevant portion: we want the "same" part relative to x_ext
+  // For lfilter-style output, we want the last n elements (matching x length)
+  // But firfilter_zi_state returns the full convolution result
+  // Output length should be n + nb - 1 (full convolution of x with b,
+  // but with zi providing initial conditions)
+  // Actually, the output should be length n (same as input) for lfilter
+  // compatibility The kernel computes full convolution of [zi, x] with b,
+  // output length = n_ext + nb - 1 But we want just the portion corresponding
+  // to x: indices [zi_len-1 .. zi_len-1+n-1] which is length n
+  Array y = slice(y_full, {0}, {static_cast<int>(zi_len - 1)},
+                  {static_cast<int>(zi_len - 1 + n)});
+
+  // Final state: last zi_len elements of extended input x_ext
+  Array zf = slice(x_ext, {0}, {static_cast<int>(n_ext - zi_len)},
+                   {static_cast<int>(n_ext)});
+
+  // Transfer back to original device
+  if (x.place().kind() != DeviceKind::CPU) {
+    y = y.to(x.place());
+    zf = zf.to(x.place());
+  }
+  if (y.dtype() != x.dtype())
+    y = y.to(x.dtype());
+  if (zf.dtype() != x.dtype())
+    zf = zf.to(x.dtype());
+
+  return {y, zf};
+}
+
+// ============================================================================
 // lfilter — IIR/FIR digital filter (sequential, requires backend kernel)
 // ============================================================================
 

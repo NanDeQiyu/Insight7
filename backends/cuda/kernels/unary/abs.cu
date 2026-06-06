@@ -117,7 +117,13 @@ C_Status abs_kernel_gpu(void **inputs, void **outputs) {
   cudaMemcpy(d_out_strides, out->strides, ndim * sizeof(int64_t),
              cudaMemcpyHostToDevice);
 
-  switch (out->dtype) {
+  // For complex input, abs returns real output. Dispatch on input dtype
+  // for complex cases, output dtype for everything else.
+  int32_t dispatch_dtype = out->dtype;
+  if (x->dtype == INSIGHT_DTYPE_C32 || x->dtype == INSIGHT_DTYPE_C64)
+    dispatch_dtype = x->dtype;
+
+  switch (dispatch_dtype) {
   case INSIGHT_DTYPE_I8:
     abs_signed_kernel<int8_t><<<blocks, threads>>>(
         static_cast<const int8_t *>(x->data), static_cast<int8_t *>(out->data),

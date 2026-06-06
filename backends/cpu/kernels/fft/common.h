@@ -207,17 +207,18 @@ static inline void *fft_cache_find_or_create(int n, int64_t batch,
  * @param batch    Number of transforms
  * @param direction FFTW_FORWARD or FFTW_BACKWARD
  * @param kind     Transform kind (C2C, R2C, C2R)
- * @param buf      Actual data buffer (used for C2C plan creation)
+ * @param buf_in   Input buffer (for C2C, same as buf_out)
+ * @param buf_out  Output buffer (for C2C, same as buf_in)
  * @return fftw_plan Valid plan
  */
 fftw_plan fft_ensure_plan_f64(int n, int64_t batch, int direction, FFTKind kind,
-                              void *buf);
+                              void *buf_in, void *buf_out);
 
 /**
  * @brief Ensure FFTW plan exists for given parameters (single precision).
  */
 fftwf_plan fft_ensure_plan_f32(int n, int64_t batch, int direction,
-                               FFTKind kind, void *buf);
+                               FFTKind kind, void *buf_in, void *buf_out);
 
 #ifdef __cplusplus
 }

@@ -35,6 +35,9 @@ C_Status any_kernel_cpu(void **inputs, void **outputs) {
   }
 
   switch (prepared->dtype) {
+  case INSIGHT_DTYPE_BOOL:
+    REDUCE_ANY_LOOP(bool);
+    break;
   case INSIGHT_DTYPE_U8:
     REDUCE_ANY_LOOP(uint8_t);
     break;
@@ -77,6 +80,7 @@ C_Status any_kernel_cpu(void **inputs, void **outputs) {
 }
 #endif
 
+REGISTER_CPU_KERNEL(any, INSIGHT_DTYPE_BOOL, any_kernel_cpu);
 REGISTER_CPU_KERNEL(any, INSIGHT_DTYPE_U8, any_kernel_cpu);
 REGISTER_CPU_KERNEL(any, INSIGHT_DTYPE_I8, any_kernel_cpu);
 REGISTER_CPU_KERNEL(any, INSIGHT_DTYPE_I16, any_kernel_cpu);

@@ -36,8 +36,8 @@ C_Status contiguous_copy_cpu(void **inputs, void **outputs) {
   int64_t total = in->numel;
   int ndim = in->ndim;
 
-  // Fast path: BOTH input and output must be contiguous
-  if (ndim <= 1 || (in->offset == 0 && out->offset == 0)) {
+  // Fast path: both arrays contiguous AND no offset
+  if (in->offset == 0 && out->offset == 0) {
     bool is_contiguous = true;
     int64_t expected_stride = 1;
     for (int d = ndim - 1; d >= 0; --d) {
@@ -48,7 +48,6 @@ C_Status contiguous_copy_cpu(void **inputs, void **outputs) {
       expected_stride *= in->dims[d];
     }
     if (is_contiguous) {
-      // Also check output contiguity
       bool out_contiguous = true;
       int out_ndim = out->ndim;
       expected_stride = 1;

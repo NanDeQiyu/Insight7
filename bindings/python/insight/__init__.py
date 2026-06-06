@@ -47,11 +47,20 @@ try:
 
     _pkg_dir = _os.path.dirname(_os.path.abspath(__file__))
 
-    # Ensure package directory is in LD_LIBRARY_PATH so ins::init() can
-    # discover backend .so files regardless of current working directory
-    _ld = _os.environ.get("LD_LIBRARY_PATH", "")
-    if _pkg_dir not in _ld.split(":"):
-        _os.environ["LD_LIBRARY_PATH"] = _pkg_dir + ":" + _ld if _ld else _pkg_dir
+    # Windows: add DLL search directories (Python 3.8+)
+    if _os.name == "nt" and hasattr(_os, "add_dll_directory"):
+        _os.add_dll_directory(_pkg_dir)
+        # Discover build*/backends/* directories for DLL resolution.
+        _project_root = _os.path.normpath(_os.path.join(_pkg_dir, "..", "..", ".."))
+        for _d in _gl.glob(_os.path.join(_project_root, "build*", "backends", "*")):
+            if _os.path.isdir(_d):
+                _os.add_dll_directory(_d)
+
+    # Linux/macOS: ensure package directory is in LD_LIBRARY_PATH
+    if _os.name != "nt":
+        _ld = _os.environ.get("LD_LIBRARY_PATH", "")
+        if _pkg_dir not in _ld.split(":"):
+            _os.environ["LD_LIBRARY_PATH"] = _pkg_dir + ":" + _ld if _ld else _pkg_dir
 
     # Also chdir to package dir so discover_backends() (which scans ".")
     # finds the backends — needed for editable installs (pip install -e .)
@@ -94,6 +103,14 @@ try:
                 _add_search_path(_native_dir)
     except Exception:
         pass
+
+    # On Windows, register build*/backends/* as search paths so init() can
+    # discover and load GPU backends (cuda, npu, etc.) by absolute path.
+    if _os.name == "nt":
+        _project_root = _os.path.normpath(_os.path.join(_pkg_dir, "..", "..", ".."))
+        for _d in _gl.glob(_os.path.join(_project_root, "build*", "backends", "*")):
+            if _os.path.isdir(_d):
+                _add_search_path(_d)
 
     if not _is_init():
         _native_init()
@@ -321,6 +338,9 @@ __all__ = [
     "logical_or",
     "logical_xor",
     "logical_not",
+    "bitwise_and",
+    "bitwise_or",
+    "bitwise_xor",
     # Unary
     "abs",
     "negative",
@@ -404,6 +424,7 @@ __all__ = [
     "unsqueeze",
     "roll",
     "permute",
+    "transpose",
     "swapaxes",
     "moveaxis",
     "fliplr",

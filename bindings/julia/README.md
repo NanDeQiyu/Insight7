@@ -128,6 +128,71 @@ export LD_LIBRARY_PATH=build/backends/cpu:$LD_LIBRARY_PATH
 julia -e 'push!(LOAD_PATH, "bindings/julia"); using Insight; println("Insight7 loaded")'
 ```
 
+### Windows Installation Guide
+
+#### 1. Prerequisites
+
+- Visual Studio 2022+ with C++ workload
+- CMake 3.15+ and Ninja (install via `winget install Kitware.CMake Ninja-build.Ninja`)
+- Julia 1.6+
+
+#### 2. Dependencies (via vcpkg)
+
+```powershell
+# Install vcpkg if not already installed
+git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+cd C:\vcpkg && bootstrap-vcpkg.bat
+
+# Install FFTW3 and OpenBLAS
+.\vcpkg install fftw3:x64-windows openblas:x64-windows
+```
+
+#### 3. Install Julia
+
+```powershell
+# Option A: Install via winget
+winget install julia -s msstore
+
+# Option B: Download from https://julialang.org/downloads/
+```
+
+#### 4. Clone and Build
+
+```powershell
+# Open VS Developer Command Prompt (x64)
+call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+
+git clone https://github.com/PlumBlossomMaid/Insight7.git
+cd Insight7
+cmake -S . -B build -G Ninja ^
+    -DCMAKE_C_COMPILER=cl.exe ^
+    -DCMAKE_CXX_COMPILER=cl.exe ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DINSIGHT_WITH_CUDA=ON ^
+    -DCMAKE_PREFIX_PATH="C:/vcpkg/installed/x64-windows"
+cmake --build build -j %NUMBER_OF_PROCESSORS%
+```
+
+#### 5. DLL Discovery
+
+On Windows, native DLLs must be discoverable at runtime. Add the backend directories to `PATH`:
+
+```powershell
+$env:PATH = "$PWD\build\backends\cpu;$PWD\build\backends\cuda;$env:PATH"
+$env:JULIA_LOAD_PATH = "$PWD\bindings\julia;$env:JULIA_LOAD_PATH"
+julia -e 'using Insight; println("Insight7 loaded")'
+```
+
+#### 6. Run Tests
+
+```powershell
+$env:PATH = "$PWD\build\backends\cpu;$env:PATH"
+$env:JULIA_LOAD_PATH = "$PWD\bindings\julia;$env:JULIA_LOAD_PATH"
+julia tests/bindings/test_binding.jl
+```
+
+> **Note:** For plot functionality, install [gnuplot](http://www.gnuplot.info/) and ensure it is in your `PATH`.
+
 ## Quick Start
 
 ```julia

@@ -7,6 +7,8 @@ find_path(FFTW3_INCLUDE_DIR
         /opt/fftw3/include
         $ENV{FFTW3_HOME}/include
         ${CMAKE_PREFIX_PATH}/include
+        # Windows local / vcpkg
+        "E:/code/vcpkg/installed/x64-windows/include"
 )
 
 find_library(FFTW3_LIBRARY
@@ -17,6 +19,7 @@ find_library(FFTW3_LIBRARY
         /opt/fftw3/lib
         $ENV{FFTW3_HOME}/lib
         ${CMAKE_PREFIX_PATH}/lib
+        "E:/code/vcpkg/installed/x64-windows/lib"
 )
 
 find_library(FFTW3f_LIBRARY
@@ -27,6 +30,7 @@ find_library(FFTW3f_LIBRARY
         /opt/fftw3/lib
         $ENV{FFTW3_HOME}/lib
         ${CMAKE_PREFIX_PATH}/lib
+        "E:/code/vcpkg/installed/x64-windows/lib"
 )
 
 if(FFTW3_INCLUDE_DIR AND FFTW3_LIBRARY AND FFTW3f_LIBRARY)
