@@ -186,15 +186,14 @@ jobs:
         shell: bash
         run: |
           choco install lua51 luarocks -y
-          # Create wrapper to intercept MSVC link.exe (MSYS2 link shadows it)
+          # Create link.cmd wrapper in chocolatey bin (already in PATH)
+          # to redirect MSYS2 'link' to MSVC link.exe
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
           echo "Found MSVC link.exe at: $MSVC_LINK"
-          mkdir -p /usr/local/bin
-          printf '#!/bin/bash\nexec "%s" "$@"\n' "$MSVC_LINK" > /usr/local/bin/link
-          chmod +x /usr/local/bin/link
-          # Verify wrapper works
-          echo "Testing link wrapper..."
-          link --version 2>&1 || true
+          # Write a .cmd wrapper (Windows native, Git Bash will find it)
+          MSVC_LINK_WIN="$(cygpath -w "$MSVC_LINK")"
+          printf '@"%s" %%*\r\n' "$MSVC_LINK_WIN" > "/c/ProgramData/chocolatey/bin/link.cmd"
+          cat "/c/ProgramData/chocolatey/bin/link.cmd"
           export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$PATH"
           luarocks install busted
 
