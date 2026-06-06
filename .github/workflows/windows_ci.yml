@@ -262,18 +262,11 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/deps_x86/OpenBLAS-0.3.33-x86/bin:/c/vcpkg/installed/x86-windows/bin:$PATH"
-          export LUA_CPATH="$GITHUB_WORKSPACE/build_x86/bindings/lua/?.dll;;"
-          export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
-          # Debug: find busted
-          echo "=== Looking for busted ==="
-          ls -la /c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin/ 2>/dev/null || echo "systree/bin not found"
-          which busted 2>/dev/null || echo "busted not in PATH"
-          find /c/ProgramData/chocolatey/lib/luarocks -name "busted*" 2>/dev/null
-          # Try different ways to run busted
-          busted --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/ || \
-          busted.bat --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/ || \
-          lua5.1 /c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin/busted --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
+          LROCKS="/c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32"
+          export PATH="/c/ProgramData/chocolatey/bin:$LROCKS/systree/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/deps_x86/OpenBLAS-0.3.33-x86/bin:/c/vcpkg/installed/x86-windows/bin:$PATH"
+          export LUA_CPATH="$GITHUB_WORKSPACE/build_x86/bindings/lua/?.dll;$LROCKS/systree/lib/lua/5.1/?.dll;$LROCKS/systree/lib/lua/5.1/?/init.dll;;"
+          export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;$LROCKS/systree/share/lua/5.1/?.lua;$LROCKS/systree/share/lua/5.1/?/init.lua;;"
+          busted.bat --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
 
   julia-binding:
     name: Julia Binding
