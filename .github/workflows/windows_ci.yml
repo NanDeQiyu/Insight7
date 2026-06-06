@@ -232,8 +232,8 @@ jobs:
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
           MSVC_LINK_WIN="$(cygpath -w "$MSVC_LINK")"
           printf '@"%s" %%*\r\n' "$MSVC_LINK_WIN" > "/c/ProgramData/chocolatey/bin/link.cmd"
-          export PATH="/c/ProgramData/chocolatey/bin:$PATH"
-          luarocks install busted
+          export PATH="/c/ProgramData/chocolatey/bin:/c/lua51/bin:$PATH"
+          luarocks install busted --with-lua=/c/lua51
 
       - name: Install vcpkg dependencies
         shell: pwsh
