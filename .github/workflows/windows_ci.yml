@@ -224,7 +224,9 @@ jobs:
       - name: Install luarocks and busted
         shell: bash
         run: |
+          # Use our built Lua, not Chocolatey's
           export PATH="/c/lua51/bin:$PATH"
+          which lua && lua -v
           choco install luarocks -y
           # Create link.cmd wrapper for MSVC link.exe
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
