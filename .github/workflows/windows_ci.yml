@@ -195,21 +195,6 @@ jobs:
         shell: bash
         run: |
           choco install lua51 luarocks -y
-          LDIR="/c/ProgramData/chocolatey/lib/lua51/tools"
-          # Diagnostic: list all files in the Lua directory
-          echo "=== Files in $LDIR ==="
-          ls -la "$LDIR/" 2>/dev/null || echo "Directory not found"
-          echo "=== Looking for .lib files ==="
-          find "$LDIR" -name "*.lib" 2>/dev/null || echo "No .lib files"
-          echo "=== Looking for .dll files ==="
-          find "$LDIR" -name "*.dll" 2>/dev/null || echo "No .dll files"
-          # Normalize library names: create aliases if needed
-          if [ -f "$LDIR/lua51.lib" ] && [ ! -f "$LDIR/lua.lib" ]; then
-            cp "$LDIR/lua51.lib" "$LDIR/lua.lib"
-          fi
-          if [ -f "$LDIR/lua51.dll" ] && [ ! -f "$LDIR/lua.dll" ]; then
-            cp "$LDIR/lua51.dll" "$LDIR/lua.dll"
-          fi
           # Create link.cmd wrapper in chocolatey bin (already in PATH)
           # to redirect MSYS2 'link' to MSVC link.exe
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
@@ -270,7 +255,6 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=OFF \
             -DINSIGHT_USE_SNDFILE=OFF \
             -DINSIGHT_USE_MATPLOT=OFF \
-            -DLUA_DIR="C:/ProgramData/chocolatey/lib/lua51/tools" \
             -DCMAKE_PREFIX_PATH="C:/deps_x86/OpenBLAS-0.3.33-x86;C:/vcpkg/installed/x86-windows"
           cmake --build build_x86 -j $(nproc)
 
