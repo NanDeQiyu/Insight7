@@ -33,10 +33,11 @@ class TestComplexAlignment:
         assert_allclose(result.numpy(), expected)
 
     def test_as_complex(self):
-        x_np = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        # as_complex requires last dimension = 2 (pairs of real/imag)
+        x_np = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float64)
         x = ins.from_numpy(x_np)
         result = ins.as_complex(x)
-        expected = x_np.astype(np.complex128)
+        expected = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
         assert_allclose(result.numpy(), expected)
 
     def test_real(self):
@@ -55,9 +56,10 @@ class TestComplexAlignment:
         x_np = np.array([1 + 2j, 3 + 4j, 5 + 6j], dtype=np.complex128)
         x = ins.from_numpy(x_np)
         result = ins.as_real(x)
-        # as_real returns interleaved real/imag: [1, 2, 3, 4, 5, 6]
+        # as_real returns shape (N, 2) — interleaved real/imag
+        # Flatten to compare with expected flat array
         expected = np.array([1, 2, 3, 4, 5, 6], dtype=np.float64)
-        assert_allclose(result.numpy(), expected)
+        assert_allclose(result.numpy().flatten(), expected)
 
     def test_is_complex(self):
         x_real = ins.from_numpy(np.array([1.0], dtype=np.float64))

@@ -61,6 +61,8 @@ C_Status linspace_kernel_gpu(void **inputs, void **outputs) {
   double start = *static_cast<double *>(inputs[1]);
   double stop = *static_cast<double *>(inputs[2]);
   int64_t n = out->numel;
+  if (n == 0)
+    return C_SUCCESS;
   int32_t dtype = out->dtype;
 
   // Compute step on host

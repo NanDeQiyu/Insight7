@@ -2,6 +2,9 @@
 find_path(OpenBLAS_INCLUDE_DIR
     NAMES cblas.h
     PATHS
+        # Windows local (prefer newer version with LAPACKE)
+        "E:/code/insight/deps/OpenBLAS-0.3.33-x64/include"
+        "E:/code/vcpkg/installed/x64-windows/include"
         /usr/include
         /usr/local/include
         /opt/OpenBLAS/include
@@ -14,6 +17,9 @@ find_path(OpenBLAS_INCLUDE_DIR
 find_library(OpenBLAS_LIBRARY
     NAMES openblas libopenblas
     PATHS
+        # Windows local (prefer newer version with LAPACKE)
+        "E:/code/insight/deps/OpenBLAS-0.3.33-x64/lib"
+        "E:/code/vcpkg/installed/x64-windows/lib"
         /usr/lib
         /usr/local/lib
         /opt/OpenBLAS/lib

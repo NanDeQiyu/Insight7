@@ -135,13 +135,25 @@ static std::vector<std::string> discover_backends() {
   auto cwd = scan_dir_for_backends(".");
   found.insert(found.end(), cwd.begin(), cwd.end());
 
-  // 2. LD_LIBRARY_PATH directories
-  const char *ld_path = getenv("LD_LIBRARY_PATH");
-  if (ld_path) {
-    std::string ld(ld_path);
+  // 2. Extra search paths (registered by language bindings)
+  for (const auto &path : g_extra_search_paths) {
+    auto extra_found = scan_dir_for_backends(path.c_str());
+    found.insert(found.end(), extra_found.begin(), extra_found.end());
+  }
+
+  // 3. LD_LIBRARY_PATH (Linux/macOS) or PATH (Windows)
+#ifdef _WIN32
+  const char *env_path = getenv("PATH");
+  char path_sep = ';';
+#else
+  const char *env_path = getenv("LD_LIBRARY_PATH");
+  char path_sep = ':';
+#endif
+  if (env_path) {
+    std::string ld(env_path);
     std::istringstream ss(ld);
     std::string dir;
-    while (std::getline(ss, dir, ':')) {
+    while (std::getline(ss, dir, path_sep)) {
       if (!dir.empty()) {
         auto ld_found = scan_dir_for_backends(dir.c_str());
         found.insert(found.end(), ld_found.begin(), ld_found.end());
@@ -165,10 +177,14 @@ static bool try_load_backend(DeviceKind kind, const char *lib_name) {
   // Try default search (LD_LIBRARY_PATH, system paths)
   LibHandle lib = load_library(lib_filename.c_str());
 
-  // Try extra search paths (e.g. Python package directory)
+  // Try extra search paths (e.g. Python package directory, build dir)
   if (!lib) {
     for (const auto &path : g_extra_search_paths) {
+#ifdef _WIN32
+      std::string full = path + "\\" + lib_filename;
+#else
       std::string full = path + "/" + lib_filename;
+#endif
       lib = load_library(full.c_str());
       if (lib)
         break;
@@ -203,6 +219,15 @@ static bool try_load_backend(DeviceKind kind, const char *lib_name) {
   }
 
   set_device_interface(kind, params.interface, params.device_type);
+
+  // Initialize the default device (e.g. create CUDA context).
+  // Without this, the first GPU operation fails because no context exists.
+  if (params.interface->init_device) {
+    C_Device_st dev;
+    std::memset(&dev, 0, sizeof(dev));
+    params.interface->init_device(&dev);
+  }
+
   return true;
 }
 
@@ -230,17 +255,35 @@ void init(std::optional<std::vector<std::string>> backends) {
         break;
       }
     }
-    // 3. If no GPU backend found via scan, scan LD_LIBRARY_PATH directories
-    //    for any libinsight_*_backend.so (cuda, npu, rocm, etc.)
+    // 3. If no GPU backend found via scan, scan environment path directories
+    //    for any insight_*_backend.dll/.so (cuda, npu, rocm, etc.)
     if (!get_device_interface(DeviceKind::GPU)) {
-      const char *ld_path = getenv("LD_LIBRARY_PATH");
-      if (ld_path) {
-        std::string ld(ld_path);
+#ifdef _WIN32
+      const char *env_path = getenv("PATH");
+      char path_sep = ';';
+#else
+      const char *env_path = getenv("LD_LIBRARY_PATH");
+      char path_sep = ':';
+#endif
+      if (env_path) {
+        std::string ld(env_path);
         std::istringstream ss(ld);
         std::string dir;
-        while (std::getline(ss, dir, ':')) {
+        while (std::getline(ss, dir, path_sep)) {
           if (dir.empty())
             continue;
+#ifdef _WIN32
+          // Windows: use scan_dir_for_backends which handles FindFirstFileA
+          auto gpu_found = scan_dir_for_backends(dir.c_str());
+          for (const auto &name : gpu_found) {
+            if (name == "cpu")
+              continue;
+            if (try_load_backend(DeviceKind::GPU,
+                                 ("insight_" + name + "_backend").c_str())) {
+              goto gpu_found;
+            }
+          }
+#else
           auto *dp = opendir(dir.c_str());
           if (!dp)
             continue;
@@ -262,6 +305,7 @@ void init(std::optional<std::vector<std::string>> backends) {
             }
           }
           closedir(dp);
+#endif
         }
       gpu_found:;
       }

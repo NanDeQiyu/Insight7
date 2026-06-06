@@ -22,13 +22,13 @@ class TestSignalAcousticsCPU:
         mel = ins.from_numpy(np.array([0.0, 1000.0, 2000.0]))
         hz = ins.signal.mel2hz(mel)
         assert hz is not None
-        assert hz.numel() == 3
+        assert hz.numel == 3
 
     def test_hz2mel(self):
         hz = ins.from_numpy(np.array([0.0, 1000.0, 4000.0]))
         mel = ins.signal.hz2mel(hz)
         assert mel is not None
-        assert mel.numel() == 3
+        assert mel.numel == 3
 
     def test_mel_roundtrip(self):
         hz_orig = np.array([100.0, 500.0, 1000.0, 4000.0, 8000.0])
@@ -39,24 +39,24 @@ class TestSignalAcousticsCPU:
     def test_mel_frequencies(self):
         freqs = ins.signal.mel_frequencies(128, fmin=0.0, fmax=11025.0)
         assert freqs is not None
-        assert freqs.numel() == 128
+        assert freqs.numel == 128
 
     def test_mel_frequencies_custom(self):
         freqs = ins.signal.mel_frequencies(64, fmin=20.0, fmax=8000.0)
         assert freqs is not None
-        assert freqs.numel() == 64
+        assert freqs.numel == 64
 
     def test_hz2bark(self):
         hz = ins.from_numpy(np.array([100.0, 500.0, 2000.0]))
         bark = ins.signal.hz2bark(hz)
         assert bark is not None
-        assert bark.numel() == 3
+        assert bark.numel == 3
 
     def test_bark2hz(self):
         bark = ins.from_numpy(np.array([1.0, 5.0, 15.0]))
         hz = ins.signal.bark2hz(bark)
         assert hz is not None
-        assert hz.numel() == 3
+        assert hz.numel == 3
 
     def test_bark_roundtrip(self):
         hz_orig = np.array([100.0, 500.0, 2000.0, 6000.0])

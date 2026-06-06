@@ -52,8 +52,6 @@
 #include <string>
 #include <vector>
 
-using namespace ins;
-
 // Helper: convert Lua table {1,2,3} to std::vector<int64_t>
 static std::vector<int64_t> table_to_shape(sol::table t) {
   std::vector<int64_t> v;
@@ -63,16 +61,16 @@ static std::vector<int64_t> table_to_shape(sol::table t) {
   return v;
 }
 
-// Helper: convert Lua table of Arrays to std::vector<Array>
-static std::vector<Array> table_to_arrays(sol::table t) {
-  std::vector<Array> v;
+// Helper: convert Lua table of Arrays to std::vector<ins::Array>
+static std::vector<ins::Array> table_to_arrays(sol::table t) {
+  std::vector<ins::Array> v;
   for (size_t i = 1; i <= t.size(); i++) {
-    v.push_back(t.get<Array>(i));
+    v.push_back(t.get<ins::Array>(i));
   }
   return v;
 }
 
-// ── Strict Lua table → Array conversion ──────────────────────────────
+// ── Strict Lua table → ins::Array conversion ──────────────────────────────
 
 // Validate a Lua table element: must be number, boolean, or table.
 // nil, string, function, userdata, thread → error.
@@ -106,7 +104,7 @@ static void infer_lua_shape(sol::table t, std::vector<int64_t> &shape,
                             int depth, const std::string &path) {
   if (depth >= INSIGHT_MAX_NDIM) {
     throw std::runtime_error(
-        "Table nesting exceeds maximum supported dimensions (" +
+        "Table nesting exceeds ins::maximum supported dimensions (" +
         std::to_string(INSIGHT_MAX_NDIM) + ") at " + path);
   }
   int64_t len = static_cast<int64_t>(t.size());
@@ -142,12 +140,13 @@ static void flatten_lua_table(sol::table t, std::vector<double> &out) {
   }
 }
 
-// Public API: convert a Lua table (nested or flat) to an Array.
+// Public API: convert a Lua table (nested or flat) to an ins::Array.
 // Strict validation: only number/bool/table allowed. nil/string/etc → error.
-static Array from_lua_table(sol::table t, sol::optional<Place> place) {
-  Place p = place.value_or(get_device());
+static ins::Array from_lua_table(sol::table t,
+                                 sol::optional<ins::Place> place) {
+  ins::Place p = place.value_or(ins::get_device());
   if (t.size() == 0) {
-    return Array(Shape({0}), DType::F64, p);
+    return ins::Array(ins::Shape({0}), ins::DType::F64, p);
   }
   std::vector<int64_t> shape;
   std::string path = "root";
@@ -158,18 +157,18 @@ static Array from_lua_table(sol::table t, sol::optional<Place> place) {
   for (auto d : shape)
     expected *= d;
   if (static_cast<int64_t>(data.size()) != expected) {
-    throw std::runtime_error("Shape/data size mismatch");
+    throw std::runtime_error("ins::Shape/data size mismatch");
   }
-  Array result(Shape(shape), DType::F64, CPUPlace());
+  ins::Array result(ins::Shape(shape), ins::DType::F64, ins::CPUPlace());
   std::memcpy(result.data(), data.data(), data.size() * sizeof(double));
-  if (p.kind() != DeviceKind::CPU) {
+  if (p.kind() != ins::DeviceKind::CPU) {
     result = result.to(p);
   }
   return result;
 }
 
-// Helper: Array __tostring — delegates to C++ ins::to_string()
-static std::string array_tostring(const Array &a) {
+// Helper: ins::Array __tostring — delegates to C++ ins::to_string()
+static std::string array_tostring(const ins::Array &a) {
   if (!a.defined())
     return "<insight.Array (undefined)>";
   char *s = insight_array_tostring(a.layout_ptr());
@@ -181,29 +180,32 @@ static std::string array_tostring(const Array &a) {
   return "<insight.Array (error)>";
 }
 
-// Helper: signal::write_bin wrapper (avoids sol2 default-param issues)
-static void lua_write_bin(const std::string &file, const Array &data,
+// Helper: ins::signal::write_bin wrapper (avoids sol2 default-param issues)
+static void lua_write_bin(const std::string &file, const ins::Array &data,
                           sol::optional<bool> append) {
-  signal::write_bin(file, data, append.value_or(true));
+  ins::signal::write_bin(file, data, append.value_or(true));
 }
 
-// Helper: signal::read_bin wrapper
-static Array lua_read_bin(const std::string &file, sol::optional<int> dtype) {
-  DType dt = dtype.has_value() ? static_cast<DType>(dtype.value()) : DType::U8;
-  return signal::read_bin(file, dt);
+// Helper: ins::signal::read_bin wrapper
+static ins::Array lua_read_bin(const std::string &file,
+                               sol::optional<int> dtype) {
+  ins::DType dt = dtype.has_value() ? static_cast<ins::DType>(dtype.value())
+                                    : ins::DType::U8;
+  return ins::signal::read_bin(file, dt);
 }
 
-// Helper: signal::unpack_bin wrapper (avoids sol2 default-param issues)
-static Array lua_unpack_bin(const Array &binary, int dtype,
-                            sol::optional<std::string> endianness) {
-  return signal::unpack_bin(binary, static_cast<DType>(dtype),
-                            endianness.value_or("L"));
+// Helper: ins::signal::unpack_bin wrapper (avoids sol2 default-param issues)
+static ins::Array lua_unpack_bin(const ins::Array &binary, int dtype,
+                                 sol::optional<std::string> endianness) {
+  return ins::signal::unpack_bin(binary, static_cast<ins::DType>(dtype),
+                                 endianness.value_or("L"));
 }
 
-// Helper: signal::write_sigmf wrapper (avoids sol2 default-param issues)
-static void lua_write_sigmf(const std::string &data_file, const Array &data,
+// Helper: ins::signal::write_sigmf wrapper (avoids sol2 default-param issues)
+static void lua_write_sigmf(const std::string &data_file,
+                            const ins::Array &data,
                             sol::optional<bool> append) {
-  signal::write_sigmf(data_file, data, append.value_or(true));
+  ins::signal::write_sigmf(data_file, data, append.value_or(true));
 }
 
 // Convert a Lua 1-based slice spec string to C++ 0-based.
@@ -240,7 +242,13 @@ static std::string lua_spec_to_cpp(const std::string &spec) {
 // Module entry point
 // ============================================================================
 
-extern "C" int luaopen__insight(lua_State *L) {
+#if defined(_WIN32) || defined(_WIN64)
+#define INSIGHT_LUA_EXPORT __declspec(dllexport)
+#else
+#define INSIGHT_LUA_EXPORT __attribute__((visibility("default")))
+#endif
+
+extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
   sol::state_view lua(L);
   sol::table m = lua.create_table();
 
@@ -296,9 +304,9 @@ extern "C" int luaopen__insight(lua_State *L) {
   // Check if a device kind is available (e.g., "cpu", "gpu")
   m["has_device"] = [](const std::string &kind) -> bool {
     if (kind == "cpu")
-      return ins::has_device(DeviceKind::CPU);
+      return ins::has_device(ins::DeviceKind::CPU);
     if (kind == "gpu")
-      return ins::has_device(DeviceKind::GPU);
+      return ins::has_device(ins::DeviceKind::GPU);
     return false;
   };
 
@@ -306,70 +314,73 @@ extern "C" int luaopen__insight(lua_State *L) {
   m["device_name"] = [](sol::optional<std::string> kind,
                         sol::optional<int> device_id) {
     std::string k = kind.value_or("cpu");
-    DeviceKind dk =
-        (k == "gpu" || k == "cuda") ? DeviceKind::GPU : DeviceKind::CPU;
-    return device_name(dk, device_id.value_or(0));
+    ins::DeviceKind dk = (k == "gpu" || k == "cuda") ? ins::DeviceKind::GPU
+                                                     : ins::DeviceKind::CPU;
+    return ins::device_name(dk, device_id.value_or(0));
   };
-  m["gpu_version"] = []() { return cuda_version(); };
-  m["driver_version"] = []() { return driver_version(); };
+  m["gpu_version"] = []() { return ins::cuda_version(); };
+  m["driver_version"] = []() { return ins::driver_version(); };
   m["compute_capability"] = [](sol::optional<int> device_id) {
-    return compute_capability(device_id.value_or(0));
+    return ins::compute_capability(device_id.value_or(0));
   };
   m["device_memory"] = [](sol::optional<int> device_id) {
-    auto info = device_memory(device_id.value_or(0));
+    auto info = ins::device_memory(device_id.value_or(0));
     return std::make_tuple(info.total, info.free);
   };
   m["gpu_count"] = []() {
-    return static_cast<int>(device_count(DeviceKind::GPU));
+    return static_cast<int>(ins::device_count(ins::DeviceKind::GPU));
   };
   m["device_count"] = [](int kind) {
-    return static_cast<int>(device_count(static_cast<DeviceKind>(kind)));
+    return static_cast<int>(
+        ins::device_count(static_cast<ins::DeviceKind>(kind)));
   };
 
-  // ===== DType shortcuts (Paddle-style: ins.float32, ins.int64, ...) =====
-  m["float32"] = DType::F32;
-  m["float64"] = DType::F64;
-  m["float16"] = DType::F16;
-  m["bfloat16"] = DType::BF16;
-  m["int8"] = DType::I8;
-  m["int16"] = DType::I16;
-  m["int32"] = DType::I32;
-  m["int64"] = DType::I64;
-  m["uint8"] = DType::U8;
-  m["uint16"] = DType::U16;
-  m["uint32"] = DType::U32;
-  m["uint64"] = DType::U64;
-  m["bool"] = DType::BOOL;
-  m["complex64"] = DType::C32;
-  m["complex128"] = DType::C64;
+  // ===== ins::DType shortcuts (Paddle-style: ins.float32, ins.int64, ...)
+  // =====
+  m["float32"] = ins::DType::F32;
+  m["float64"] = ins::DType::F64;
+  m["float16"] = ins::DType::F16;
+  m["bfloat16"] = ins::DType::BF16;
+  m["int8"] = ins::DType::I8;
+  m["int16"] = ins::DType::I16;
+  m["int32"] = ins::DType::I32;
+  m["int64"] = ins::DType::I64;
+  m["uint8"] = ins::DType::U8;
+  m["uint16"] = ins::DType::U16;
+  m["uint32"] = ins::DType::U32;
+  m["uint64"] = ins::DType::U64;
+  m["bool"] = ins::DType::BOOL;
+  m["complex64"] = ins::DType::C32;
+  m["complex128"] = ins::DType::C64;
 
-  // ===== Place constructors =====
-  sol::usertype<Place> place_type =
-      m.new_usertype<Place>("Place", sol::constructors<Place()>());
-  place_type["is_cpu"] = &Place::is_cpu;
-  place_type["is_gpu"] = &Place::is_gpu;
-  place_type["device_id"] = &Place::device_id;
+  // ===== ins::Place constructors =====
+  sol::usertype<ins::Place> place_type =
+      m.new_usertype<ins::Place>("Place", sol::constructors<ins::Place()>());
+  place_type["is_cpu"] = &ins::Place::is_cpu;
+  place_type["is_gpu"] = &ins::Place::is_gpu;
+  place_type["device_id"] = &ins::Place::device_id;
 
-  m["CPUPlace"] = []() { return CPUPlace(); };
-  m["GPUPlace"] = [](sol::optional<int> id, sol::this_state ts) -> Place {
+  m["CPUPlace"] = []() { return ins::CPUPlace(); };
+  m["GPUPlace"] = [](sol::optional<int> id, sol::this_state ts) -> ins::Place {
     try {
-      return GPUPlace(id.value_or(0));
+      return ins::GPUPlace(id.value_or(0));
     } catch (const std::exception &e) {
       luaL_error(ts, "%s", e.what());
-      return CPUPlace();
+      return ins::CPUPlace();
     }
   };
 
-  m["set_device"] = [](const Place &p) { set_device(p); };
-  m["get_device"] = []() { return get_device(); };
+  m["set_device"] = [](const ins::Place &p) { ins::set_device(p); };
+  m["get_device"] = []() { return ins::get_device(); };
 
-  // ===== Shape helper =====
-  m["Shape"] = [](sol::table dims) { return Shape(table_to_shape(dims)); };
+  // ===== ins::Shape helper =====
+  m["Shape"] = [](sol::table dims) { return ins::Shape(table_to_shape(dims)); };
 
-  // ===== Array usertype =====
-  sol::usertype<Array> array_type = m.new_usertype<Array>(
+  // ===== ins::Array usertype =====
+  sol::usertype<ins::Array> array_type = m.new_usertype<ins::Array>(
       "Array",
-      sol::constructors<Array(), Array(const Shape &, DType, const Place &)>());
+      sol::constructors<ins::Array(), ins::Array(const ins::Shape &, ins::DType,
+                                                 const ins::Place &)>());
 
   // Array(table) constructor: ins.Array{3,4,5} → creates Array from table
   // Must be set on the usertype table's metatable (not instances)
@@ -387,11 +398,11 @@ extern "C" int luaopen__insight(lua_State *L) {
       lua_pushcfunction(L, [](lua_State *L) -> int {
         // Stack: table(self), args...
         sol::table t(L, 2); // first arg after self
-        sol::optional<Place> place;
+        sol::optional<ins::Place> place;
         if (lua_gettop(L) > 2) {
-          place = sol::stack::get<Place>(L, 3);
+          place = sol::stack::get<ins::Place>(L, 3);
         }
-        Array result = from_lua_table(t, place);
+        ins::Array result = from_lua_table(t, place);
         sol::stack::push(L, std::move(result));
         return 1;
       });
@@ -402,43 +413,46 @@ extern "C" int luaopen__insight(lua_State *L) {
   }
 
   // Properties
-  array_type["shape"] = sol::property([](const Array &a, sol::this_state L) {
-    sol::table t = sol::table::create(L.lua_state(), a.shape().ndim());
-    for (int i = 0; i < a.shape().ndim(); i++) {
-      t[i + 1] = a.shape().dim(i);
-    }
-    return t;
-  });
-  array_type["dtype"] = sol::property(&Array::dtype);
-  array_type["place"] = sol::property(&Array::place);
-  array_type["numel"] = sol::property(&Array::numel);
-  array_type["nbytes"] = sol::property(&Array::nbytes);
+  array_type["shape"] =
+      sol::property([](const ins::Array &a, sol::this_state L) {
+        sol::table t = sol::table::create(L.lua_state(), a.shape().ndim());
+        for (int i = 0; i < a.shape().ndim(); i++) {
+          t[i + 1] = a.shape().dim(i);
+        }
+        return t;
+      });
+  array_type["dtype"] = sol::property(&ins::Array::dtype);
+  array_type["place"] = sol::property(&ins::Array::place);
+  array_type["numel"] = sol::property(&ins::Array::numel);
+  array_type["nbytes"] = sol::property(&ins::Array::nbytes);
   array_type["ndim"] =
-      sol::property([](const Array &a) { return a.shape().ndim(); });
-  array_type["is_contiguous"] = sol::property(&Array::is_contiguous);
-  array_type["defined"] = sol::property(&Array::defined);
+      sol::property([](const ins::Array &a) { return a.shape().ndim(); });
+  array_type["is_contiguous"] = sol::property(&ins::Array::is_contiguous);
+  array_type["defined"] = sol::property(&ins::Array::defined);
 
   // Scalar extraction
-  array_type["item"] = [](const Array &a, sol::this_state ts) -> sol::object {
+  array_type["item"] = [](const ins::Array &a,
+                          sol::this_state ts) -> sol::object {
     if (a.numel() != 1) {
       return sol::make_object(ts.lua_state(), sol::lua_nil);
     }
-    Array cpu = (a.place().kind() == DeviceKind::CPU) ? a : a.to(CPUPlace());
+    ins::Array cpu =
+        (a.place().kind() == ins::DeviceKind::CPU) ? a : a.to(ins::CPUPlace());
     double val = 0;
     switch (cpu.dtype()) {
-    case DType::F64:
+    case ins::DType::F64:
       val = cpu.data<double>()[0];
       break;
-    case DType::F32:
+    case ins::DType::F32:
       val = (double)cpu.data<float>()[0];
       break;
-    case DType::I64:
+    case ins::DType::I64:
       val = (double)cpu.data<int64_t>()[0];
       break;
-    case DType::I32:
+    case ins::DType::I32:
       val = (double)cpu.data<int32_t>()[0];
       break;
-    case DType::BOOL:
+    case ins::DType::BOOL:
       val = (double)cpu.data<bool>()[0];
       break;
     default:
@@ -446,26 +460,27 @@ extern "C" int luaopen__insight(lua_State *L) {
     }
     return sol::make_object(ts.lua_state(), val);
   };
-  array_type["get"] = [](const Array &a, int64_t idx) -> double {
-    Array cpu = (a.place().kind() == DeviceKind::CPU) ? a : a.to(CPUPlace());
+  array_type["get"] = [](const ins::Array &a, int64_t idx) -> double {
+    ins::Array cpu =
+        (a.place().kind() == ins::DeviceKind::CPU) ? a : a.to(ins::CPUPlace());
     if (idx < 0 || idx >= cpu.numel())
       return 0.0;
     switch (cpu.dtype()) {
-    case DType::F64:
+    case ins::DType::F64:
       return cpu.data<double>()[idx];
-    case DType::F32:
+    case ins::DType::F32:
       return (double)cpu.data<float>()[idx];
-    case DType::I64:
+    case ins::DType::I64:
       return (double)cpu.data<int64_t>()[idx];
-    case DType::I32:
+    case ins::DType::I32:
       return (double)cpu.data<int32_t>()[idx];
-    case DType::I16:
+    case ins::DType::I16:
       return (double)cpu.data<int16_t>()[idx];
-    case DType::I8:
+    case ins::DType::I8:
       return (double)cpu.data<int8_t>()[idx];
-    case DType::U8:
+    case ins::DType::U8:
       return (double)cpu.data<uint8_t>()[idx];
-    case DType::BOOL:
+    case ins::DType::BOOL:
       return cpu.data<bool>()[idx] ? 1.0 : 0.0;
     default:
       return 0.0;
@@ -473,60 +488,56 @@ extern "C" int luaopen__insight(lua_State *L) {
   };
 
   // View ops
-  array_type["contiguous"] = &Array::contiguous;
-  array_type["reshape"] = [](const Array &a, sol::table new_shape) {
-    return a.reshape(Shape(table_to_shape(new_shape)));
+  array_type["contiguous"] = &ins::Array::contiguous;
+  array_type["reshape"] = [](const ins::Array &a, sol::table new_shape) {
+    return a.reshape(ins::Shape(table_to_shape(new_shape)));
   };
-  array_type["transpose"] = sol::overload(
-      [](const Array &a) { return a.transpose(); },
-      [](const Array &a, std::vector<int> perm) { return a.transpose(perm); });
-  array_type["squeeze"] = [](const Array &a, sol::optional<int> axis) {
+  array_type["transpose"] =
+      sol::overload([](const ins::Array &a) { return a.transpose(); },
+                    [](const ins::Array &a, std::vector<int> perm) {
+                      return a.transpose(perm);
+                    });
+  array_type["squeeze"] = [](const ins::Array &a, sol::optional<int> axis) {
     return a.squeeze(axis ? std::optional<int>(*axis) : std::nullopt);
   };
-  array_type["unsqueeze"] = &Array::unsqueeze;
+  array_type["unsqueeze"] = &ins::Array::unsqueeze;
 
   // Device/type conversion
+  // NOTE: No to(int) overload — DType values are numbers in Lua and would
+  // conflict. Users must pass Place objects: ins.CPUPlace(), ins.GPUPlace(0).
   array_type["to"] = sol::overload(
-      [](const Array &a, const Place &p, sol::this_state ts) -> Array {
+      [](const ins::Array &a, const ins::Place &p,
+         sol::this_state ts) -> ins::Array {
         try {
           return a.to(p);
         } catch (const std::exception &e) {
           luaL_error(ts, "%s", e.what());
-          return Array();
+          return ins::Array();
         }
       },
-      [](const Array &a, int device_type, sol::this_state ts) -> Array {
-        try {
-          Place p = device_type == 1 ? GPUPlace(0) : CPUPlace();
-          return a.to(p);
-        } catch (const std::exception &e) {
-          luaL_error(ts, "%s", e.what());
-          return Array();
-        }
-      },
-      [](const Array &a, DType dt) { return a.to(dt); },
-      [](const Array &a, const Place &p, DType dt,
-         sol::this_state ts) -> Array {
+      [](const ins::Array &a, ins::DType dt) { return a.to(dt); },
+      [](const ins::Array &a, const ins::Place &p, ins::DType dt,
+         sol::this_state ts) -> ins::Array {
         try {
           return a.to(p, dt);
         } catch (const std::exception &e) {
           luaL_error(ts, "%s", e.what());
-          return Array();
+          return ins::Array();
         }
       });
-  array_type["copy"] = &Array::copy;
+  array_type["copy"] = &ins::Array::copy;
 
   // In-place mutation
-  array_type["fill_"] = &Array::fill_;
-  array_type["copy_from_"] = &Array::copy_from_;
+  array_type["fill_"] = &ins::Array::fill_;
+  array_type["copy_from_"] = &ins::Array::copy_from_;
 
   // String slicing: a[":,1:-1"] (Lua 1-based → auto-convert to 0-based)
   // Integer indexing: a[1] → first element, a[3] → third element
   array_type[sol::meta_function::index] = sol::overload(
-      [](const Array &a, const std::string &spec) {
+      [](const ins::Array &a, const std::string &spec) {
         return a[lua_spec_to_cpp(spec)];
       },
-      [](const Array &a, int64_t idx) {
+      [](const ins::Array &a, int64_t idx) {
         // 1-based integer indexing → 0-based
         if (idx == 0)
           throw std::runtime_error(
@@ -535,42 +546,44 @@ extern "C" int luaopen__insight(lua_State *L) {
           idx -= 1;
         return a.at({idx});
       },
-      [](const Array &a, const Slice &s) { return a[s]; });
+      [](const ins::Array &a, const ins::Slice &s) { return a[s]; });
 
   // Arithmetic metamethods
-  array_type[sol::meta_function::addition] =
-      sol::overload([](const Array &a, const Array &b) { return a + b; },
-                    [](const Array &a, double b) { return a + b; },
-                    [](double a, const Array &b) { return a + b; });
-  array_type[sol::meta_function::subtraction] =
-      sol::overload([](const Array &a, const Array &b) { return a - b; },
-                    [](const Array &a, double b) { return a - b; },
-                    [](double a, const Array &b) { return a - b; });
-  array_type[sol::meta_function::multiplication] =
-      sol::overload([](const Array &a, const Array &b) { return a * b; },
-                    [](const Array &a, double b) { return a * b; },
-                    [](double a, const Array &b) { return a * b; });
-  array_type[sol::meta_function::division] =
-      sol::overload([](const Array &a, const Array &b) { return a / b; },
-                    [](const Array &a, double b) { return a / b; },
-                    [](double a, const Array &b) { return a / b; });
-  array_type[sol::meta_function::modulus] =
-      sol::overload([](const Array &a, const Array &b) { return a % b; },
-                    [](const Array &a, double b) { return a % b; });
-  array_type[sol::meta_function::unary_minus] = [](const Array &a) {
+  array_type[sol::meta_function::addition] = sol::overload(
+      [](const ins::Array &a, const ins::Array &b) { return a + b; },
+      [](const ins::Array &a, double b) { return a + b; },
+      [](double a, const ins::Array &b) { return a + b; });
+  array_type[sol::meta_function::subtraction] = sol::overload(
+      [](const ins::Array &a, const ins::Array &b) { return a - b; },
+      [](const ins::Array &a, double b) { return a - b; },
+      [](double a, const ins::Array &b) { return a - b; });
+  array_type[sol::meta_function::multiplication] = sol::overload(
+      [](const ins::Array &a, const ins::Array &b) { return a * b; },
+      [](const ins::Array &a, double b) { return a * b; },
+      [](double a, const ins::Array &b) { return a * b; });
+  array_type[sol::meta_function::division] = sol::overload(
+      [](const ins::Array &a, const ins::Array &b) { return a / b; },
+      [](const ins::Array &a, double b) { return a / b; },
+      [](double a, const ins::Array &b) { return a / b; });
+  array_type[sol::meta_function::modulus] = sol::overload(
+      [](const ins::Array &a, const ins::Array &b) { return a % b; },
+      [](const ins::Array &a, double b) { return a % b; });
+  array_type[sol::meta_function::unary_minus] = [](const ins::Array &a) {
     return -a;
   };
-  array_type[sol::meta_function::bitwise_not] = [](const Array &a) {
+  array_type[sol::meta_function::bitwise_not] = [](const ins::Array &a) {
     return ~a;
   };
 
   // Comparison metamethods
   array_type[sol::meta_function::equal_to] =
-      [](const Array &a, const Array &b) { return equal(a, b); };
+      [](const ins::Array &a, const ins::Array &b) { return ins::equal(a, b); };
   array_type[sol::meta_function::less_than] =
-      [](const Array &a, const Array &b) { return less(a, b); };
+      [](const ins::Array &a, const ins::Array &b) { return ins::less(a, b); };
   array_type[sol::meta_function::less_than_or_equal_to] =
-      [](const Array &a, const Array &b) { return less_equal(a, b); };
+      [](const ins::Array &a, const ins::Array &b) {
+        return ins::less_equal(a, b);
+      };
 
   // String representation metamethod (enables print(arr) and tostring(arr))
   array_type[sol::meta_function::to_string] = &array_tostring;
@@ -579,420 +592,479 @@ extern "C" int luaopen__insight(lua_State *L) {
   // Creation
   // ====================================================================
   m["from_table"] = &from_lua_table;
-  m["zeros"] = [](sol::table shape, sol::optional<DType> dtype,
-                  sol::optional<Place> place) {
-    return zeros(Shape(table_to_shape(shape)), dtype.value_or(DType::F32),
-                 place.value_or(get_device()));
+  m["zeros"] = [](sol::table shape, sol::optional<ins::DType> dtype,
+                  sol::optional<ins::Place> place) {
+    return ins::zeros(ins::Shape(table_to_shape(shape)),
+                      dtype.value_or(ins::DType::F32),
+                      place.value_or(ins::get_device()));
   };
-  m["ones"] = [](sol::table shape, sol::optional<DType> dtype,
-                 sol::optional<Place> place) {
-    return ones(Shape(table_to_shape(shape)), dtype.value_or(DType::F32),
-                place.value_or(get_device()));
+  m["ones"] = [](sol::table shape, sol::optional<ins::DType> dtype,
+                 sol::optional<ins::Place> place) {
+    return ins::ones(ins::Shape(table_to_shape(shape)),
+                     dtype.value_or(ins::DType::F32),
+                     place.value_or(ins::get_device()));
   };
-  m["full"] = [](sol::table shape, double fill, sol::optional<DType> dtype,
-                 sol::optional<Place> place) {
-    return full(Shape(table_to_shape(shape)), fill, dtype.value_or(DType::F32),
-                place.value_or(get_device()));
+  m["full"] = [](sol::table shape, double fill, sol::optional<ins::DType> dtype,
+                 sol::optional<ins::Place> place) {
+    return ins::full(ins::Shape(table_to_shape(shape)), fill,
+                     dtype.value_or(ins::DType::F32),
+                     place.value_or(ins::get_device()));
   };
   m["eye"] = [](int64_t n, sol::optional<int64_t> m_opt,
-                sol::optional<int64_t> k, sol::optional<DType> dtype,
-                sol::optional<Place> place) {
-    return eye(n, m_opt.value_or(-1), k.value_or(0), dtype.value_or(DType::F32),
-               place.value_or(get_device()));
+                sol::optional<int64_t> k, sol::optional<ins::DType> dtype,
+                sol::optional<ins::Place> place) {
+    return ins::eye(n, m_opt.value_or(-1), k.value_or(0),
+                    dtype.value_or(ins::DType::F32),
+                    place.value_or(ins::get_device()));
   };
   m["arange"] = sol::overload(
-      [](double end, sol::optional<DType> dtype, sol::optional<Place> place) {
-        return arange(end, dtype.value_or(DType::I64),
-                      place.value_or(get_device()));
+      [](double end, sol::optional<ins::DType> dtype,
+         sol::optional<ins::Place> place) {
+        return ins::arange(end, dtype.value_or(ins::DType::I64),
+                           place.value_or(ins::get_device()));
       },
       [](double start, double end, sol::optional<double> step,
-         sol::optional<DType> dtype, sol::optional<Place> place) {
-        return arange(start, end, step.value_or(1.0),
-                      dtype.value_or(DType::I64), place.value_or(get_device()));
+         sol::optional<ins::DType> dtype, sol::optional<ins::Place> place) {
+        return ins::arange(start, end, step.value_or(1.0),
+                           dtype.value_or(ins::DType::I64),
+                           place.value_or(ins::get_device()));
       });
   m["linspace"] = [](double start, double stop, int64_t num,
-                     sol::optional<DType> dtype, sol::optional<Place> place) {
-    return linspace(start, stop, num, dtype.value_or(DType::F32),
-                    place.value_or(get_device()));
+                     sol::optional<ins::DType> dtype,
+                     sol::optional<ins::Place> place) {
+    return ins::linspace(start, stop, num, dtype.value_or(ins::DType::F32),
+                         place.value_or(ins::get_device()));
   };
-  m["zeros_like"] = &zeros_like;
-  m["ones_like"] = &ones_like;
+  m["zeros_like"] = &ins::zeros_like;
+  m["ones_like"] = &ins::ones_like;
 
   // ====================================================================
   // Elementwise
   // ====================================================================
-  m["add"] = [](const Array &a, const Array &b) { return add(a, b); };
-  m["sub"] = [](const Array &a, const Array &b) { return sub(a, b); };
-  m["mul"] = [](const Array &a, const Array &b) { return mul(a, b); };
-  m["div"] = [](const Array &a, const Array &b) { return div(a, b); };
-  m["pow"] = [](const Array &a, const Array &b) { return pow(a, b); };
-  m["mod"] = [](const Array &a, const Array &b) { return mod(a, b); };
-  m["maximum"] = [](const Array &a, const Array &b) { return maximum(a, b); };
-  m["minimum"] = [](const Array &a, const Array &b) { return minimum(a, b); };
-  m["equal"] = [](const Array &a, const Array &b) { return equal(a, b); };
-  m["not_equal"] = [](const Array &a, const Array &b) {
-    return not_equal(a, b);
+  m["add"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::add(a, b);
   };
-  m["greater"] = [](const Array &a, const Array &b) { return greater(a, b); };
-  m["less"] = [](const Array &a, const Array &b) { return less(a, b); };
-  m["greater_equal"] = [](const Array &a, const Array &b) {
-    return greater_equal(a, b);
+  m["sub"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::sub(a, b);
   };
-  m["less_equal"] = [](const Array &a, const Array &b) {
-    return less_equal(a, b);
+  m["mul"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::mul(a, b);
   };
-  m["logical_and"] = [](const Array &a, const Array &b) {
-    return logical_and(a, b);
+  m["div"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::div(a, b);
   };
-  m["logical_or"] = [](const Array &a, const Array &b) {
-    return logical_or(a, b);
+  m["pow"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::pow(a, b);
   };
-  m["logical_xor"] = [](const Array &a, const Array &b) {
-    return logical_xor(a, b);
+  m["mod"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::mod(a, b);
   };
-  m["logical_not"] = [](const Array &x) { return logical_not(x); };
+  m["maximum"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::maximum(a, b);
+  };
+  m["minimum"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::minimum(a, b);
+  };
+  m["equal"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::equal(a, b);
+  };
+  m["not_equal"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::not_equal(a, b);
+  };
+  m["greater"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::greater(a, b);
+  };
+  m["less"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::less(a, b);
+  };
+  m["greater_equal"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::greater_equal(a, b);
+  };
+  m["less_equal"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::less_equal(a, b);
+  };
+  m["logical_and"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::logical_and(a, b);
+  };
+  m["logical_or"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::logical_or(a, b);
+  };
+  m["logical_xor"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::logical_xor(a, b);
+  };
+  m["logical_not"] = [](const ins::Array &x) { return ins::logical_not(x); };
 
   // ====================================================================
   // Unary math
   // ====================================================================
-  m["abs"] = [](const Array &x) { return ins::abs(x); };
-  m["negative"] = [](const Array &x) { return negative(x); };
-  m["square"] = [](const Array &x) { return square(x); };
-  m["sqrt"] = [](const Array &x) { return sqrt(x); };
-  m["exp"] = [](const Array &x) { return exp(x); };
-  m["log"] = [](const Array &x) { return log(x); };
-  m["log2"] = [](const Array &x) { return log2(x); };
-  m["log10"] = [](const Array &x) { return log10(x); };
-  m["sin"] = [](const Array &x) { return sin(x); };
-  m["cos"] = [](const Array &x) { return cos(x); };
-  m["tan"] = [](const Array &x) { return tan(x); };
-  m["asin"] = [](const Array &x) { return asin(x); };
-  m["acos"] = [](const Array &x) { return acos(x); };
-  m["atan"] = [](const Array &x) { return atan(x); };
-  m["sinh"] = [](const Array &x) { return sinh(x); };
-  m["cosh"] = [](const Array &x) { return cosh(x); };
-  m["tanh"] = [](const Array &x) { return tanh(x); };
-  m["floor"] = [](const Array &x) { return floor(x); };
-  m["ceil"] = [](const Array &x) { return ceil(x); };
-  m["round"] = [](const Array &x) { return rint(x); };
-  m["sign"] = [](const Array &x) { return sign(x); };
-  m["conj"] = &conj;
-  m["angle"] = &angle;
-  m["isnan"] = [](const Array &x) { return isnan(x); };
-  m["isinf"] = [](const Array &x) { return isinf(x); };
-  m["isfinite"] = [](const Array &x) { return isfinite(x); };
-  m["where"] = [](const Array &cond, const Array &x, const Array &y) {
-    return where(cond, x, y);
-  };
-  m["exp2"] = [](const Array &x) { return exp2(x); };
-  m["expm1"] = [](const Array &x) { return expm1(x); };
-  m["log1p"] = [](const Array &x) { return log1p(x); };
-  m["cbrt"] = [](const Array &x) { return cbrt(x); };
-  m["reciprocal"] = [](const Array &x) { return reciprocal(x); };
-  m["asinh"] = [](const Array &x) { return asinh(x); };
-  m["acosh"] = [](const Array &x) { return acosh(x); };
-  m["atanh"] = [](const Array &x) { return atanh(x); };
-  m["trunc"] = [](const Array &x) { return trunc(x); };
-  m["deg2rad"] = [](const Array &x) { return deg2rad(x); };
-  m["rad2deg"] = [](const Array &x) { return rad2deg(x); };
+  m["abs"] = [](const ins::Array &x) { return ins::abs(x); };
+  m["negative"] = [](const ins::Array &x) { return ins::negative(x); };
+  m["square"] = [](const ins::Array &x) { return ins::square(x); };
+  m["sqrt"] = [](const ins::Array &x) { return ins::sqrt(x); };
+  m["exp"] = [](const ins::Array &x) { return ins::exp(x); };
+  m["log"] = [](const ins::Array &x) { return ins::log(x); };
+  m["log2"] = [](const ins::Array &x) { return ins::log2(x); };
+  m["log10"] = [](const ins::Array &x) { return ins::log10(x); };
+  m["sin"] = [](const ins::Array &x) { return ins::sin(x); };
+  m["cos"] = [](const ins::Array &x) { return ins::cos(x); };
+  m["tan"] = [](const ins::Array &x) { return ins::tan(x); };
+  m["asin"] = [](const ins::Array &x) { return ins::asin(x); };
+  m["acos"] = [](const ins::Array &x) { return ins::acos(x); };
+  m["atan"] = [](const ins::Array &x) { return ins::atan(x); };
+  m["sinh"] = [](const ins::Array &x) { return ins::sinh(x); };
+  m["cosh"] = [](const ins::Array &x) { return ins::cosh(x); };
+  m["tanh"] = [](const ins::Array &x) { return ins::tanh(x); };
+  m["floor"] = [](const ins::Array &x) { return ins::floor(x); };
+  m["ceil"] = [](const ins::Array &x) { return ins::ceil(x); };
+  m["round"] = [](const ins::Array &x) { return ins::rint(x); };
+  m["sign"] = [](const ins::Array &x) { return ins::sign(x); };
+  m["conj"] = &ins::conj;
+  m["angle"] = &ins::angle;
+  m["isnan"] = [](const ins::Array &x) { return ins::isnan(x); };
+  m["isinf"] = [](const ins::Array &x) { return ins::isinf(x); };
+  m["isfinite"] = [](const ins::Array &x) { return ins::isfinite(x); };
+  m["where"] = [](const ins::Array &cond_arr, const ins::Array &x,
+                  const ins::Array &y) { return ins::where(cond_arr, x, y); };
+  m["exp2"] = [](const ins::Array &x) { return ins::exp2(x); };
+  m["expm1"] = [](const ins::Array &x) { return ins::expm1(x); };
+  m["log1p"] = [](const ins::Array &x) { return ins::log1p(x); };
+  m["cbrt"] = [](const ins::Array &x) { return ins::cbrt(x); };
+  m["reciprocal"] = [](const ins::Array &x) { return ins::reciprocal(x); };
+  m["asinh"] = [](const ins::Array &x) { return ins::asinh(x); };
+  m["acosh"] = [](const ins::Array &x) { return ins::acosh(x); };
+  m["atanh"] = [](const ins::Array &x) { return ins::atanh(x); };
+  m["trunc"] = [](const ins::Array &x) { return ins::trunc(x); };
+  m["deg2rad"] = [](const ins::Array &x) { return ins::deg2rad(x); };
+  m["rad2deg"] = [](const ins::Array &x) { return ins::rad2deg(x); };
 
   // ====================================================================
   // Complex
   // ====================================================================
-  m["is_complex"] = [](const Array &x) { return is_complex(x); };
-  m["has_complex_shape"] = [](const Array &x) { return has_complex_shape(x); };
-  m["to_complex"] =
-      sol::overload([](const Array &real) { return to_complex(real); },
-                    [](const Array &real, const Array &imag) {
-                      return to_complex(real, imag);
-                    });
-  m["as_complex"] = [](const Array &x) { return as_complex(x); };
-  m["as_real"] = [](const Array &x) { return as_real(x); };
-  m["real"] = [](const Array &z) { return real(z); };
-  m["imag"] = [](const Array &z) { return imag(z); };
+  m["is_complex"] = [](const ins::Array &x) { return ins::is_complex(x); };
+  m["has_complex_shape"] = [](const ins::Array &x) {
+    return ins::has_complex_shape(x);
+  };
+  m["to_complex"] = sol::overload(
+      [](const ins::Array &real) { return ins::to_complex(real); },
+      [](const ins::Array &real, const ins::Array &imag) {
+        return ins::to_complex(real, imag);
+      });
+  m["as_complex"] = [](const ins::Array &x) { return ins::as_complex(x); };
+  m["as_real"] = [](const ins::Array &x) { return ins::as_real(x); };
+  m["real"] = [](const ins::Array &z) { return ins::real(z); };
+  m["imag"] = [](const ins::Array &z) { return ins::imag(z); };
 
   // ====================================================================
   // Reduction
   // ====================================================================
-  m["sum"] = [](const Array &x, sol::optional<int> axis,
+  m["sum"] = [](const ins::Array &x, sol::optional<int> axis,
                 sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return sum(x, ax, keepdims.value_or(false));
+    return ins::sum(x, ax, keepdims.value_or(false));
   };
-  m["mean"] = [](const Array &x, sol::optional<int> axis,
+  m["mean"] = [](const ins::Array &x, sol::optional<int> axis,
                  sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return mean(x, ax, keepdims.value_or(false));
+    return ins::mean(x, ax, keepdims.value_or(false));
   };
-  m["max"] = [](const Array &x, sol::optional<int> axis,
+  m["max"] = [](const ins::Array &x, sol::optional<int> axis,
                 sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return max(x, ax, keepdims.value_or(false));
+    return ins::max(x, ax, keepdims.value_or(false));
   };
-  m["min"] = [](const Array &x, sol::optional<int> axis,
+  m["min"] = [](const ins::Array &x, sol::optional<int> axis,
                 sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return min(x, ax, keepdims.value_or(false));
+    return ins::min(x, ax, keepdims.value_or(false));
   };
-  m["prod"] = [](const Array &x, sol::optional<int> axis,
+  m["prod"] = [](const ins::Array &x, sol::optional<int> axis,
                  sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return prod(x, ax, keepdims.value_or(false));
+    return ins::prod(x, ax, keepdims.value_or(false));
   };
-  m["argmax"] = [](const Array &x, sol::optional<int> axis,
+  m["argmax"] = [](const ins::Array &x, sol::optional<int> axis,
                    sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return argmax(x, ax, keepdims.value_or(false));
+    return ins::argmax(x, ax, keepdims.value_or(false));
   };
-  m["argmin"] = [](const Array &x, sol::optional<int> axis,
+  m["argmin"] = [](const ins::Array &x, sol::optional<int> axis,
                    sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return argmin(x, ax, keepdims.value_or(false));
+    return ins::argmin(x, ax, keepdims.value_or(false));
   };
-  m["any"] = [](const Array &x, sol::optional<int> axis,
+  m["any"] = [](const ins::Array &x, sol::optional<int> axis,
                 sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return any(x, ax, keepdims.value_or(false));
+    return ins::any(x, ax, keepdims.value_or(false));
   };
-  m["all"] = [](const Array &x, sol::optional<int> axis,
+  m["all"] = [](const ins::Array &x, sol::optional<int> axis,
                 sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return all(x, ax, keepdims.value_or(false));
+    return ins::all(x, ax, keepdims.value_or(false));
   };
-  m["var"] = [](const Array &x, sol::optional<int> axis,
+  m["var"] = [](const ins::Array &x, sol::optional<int> axis,
                 sol::optional<bool> keepdims, sol::optional<int> ddof) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return var(x, ax, keepdims.value_or(false), ddof.value_or(0));
+    return ins::var(x, ax, keepdims.value_or(false), ddof.value_or(0));
   };
-  m["std"] = [](const Array &x, sol::optional<int> axis,
+  m["std"] = [](const ins::Array &x, sol::optional<int> axis,
                 sol::optional<bool> keepdims, sol::optional<int> ddof) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
     return ins::std(x, ax, keepdims.value_or(false), ddof.value_or(0));
   };
-  m["cumsum"] = [](const Array &x, int axis) { return cumsum(x, axis); };
-  m["cumprod"] = [](const Array &x, int axis) { return cumprod(x, axis); };
-  m["cummax"] = [](const Array &x, int axis) { return cummax(x, axis); };
-  m["cummin"] = [](const Array &x, int axis) { return cummin(x, axis); };
-  m["sem"] = [](const Array &x, sol::optional<int> axis,
+  m["cumsum"] = [](const ins::Array &x, int axis) {
+    return ins::cumsum(x, axis);
+  };
+  m["cumprod"] = [](const ins::Array &x, int axis) {
+    return ins::cumprod(x, axis);
+  };
+  m["cummax"] = [](const ins::Array &x, int axis) {
+    return ins::cummax(x, axis);
+  };
+  m["cummin"] = [](const ins::Array &x, int axis) {
+    return ins::cummin(x, axis);
+  };
+  m["sem"] = [](const ins::Array &x, sol::optional<int> axis,
                 sol::optional<bool> keepdims, sol::optional<int> ddof) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return sem(x, ax, keepdims.value_or(false), ddof.value_or(0));
+    return ins::sem(x, ax, keepdims.value_or(false), ddof.value_or(0));
   };
-  m["count_nonzero"] = [](const Array &x, sol::optional<int> axis,
+  m["count_nonzero"] = [](const ins::Array &x, sol::optional<int> axis,
                           sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return count_nonzero(x, ax, keepdims.value_or(false));
+    return ins::count_nonzero(x, ax, keepdims.value_or(false));
   };
-  m["median"] = [](const Array &x, sol::optional<int> axis,
+  m["median"] = [](const ins::Array &x, sol::optional<int> axis,
                    sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return median(x, ax, keepdims.value_or(false));
+    return ins::median(x, ax, keepdims.value_or(false));
   };
   m["quantile"] = sol::overload(
-      [](const Array &x, double q, sol::optional<int> axis,
+      [](const ins::Array &x, double q, sol::optional<int> axis,
          sol::optional<bool> keepdims) {
         std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-        return quantile(x, q, ax, keepdims.value_or(false));
+        return ins::quantile(x, q, ax, keepdims.value_or(false));
       },
-      [](const Array &x, const Array &q, sol::optional<int> axis,
+      [](const ins::Array &x, const ins::Array &q, sol::optional<int> axis,
          sol::optional<bool> keepdims) {
         std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-        return quantile(x, q, ax, keepdims.value_or(false));
+        return ins::quantile(x, q, ax, keepdims.value_or(false));
       });
-  m["percentile"] = [](const Array &x, double q, sol::optional<int> axis,
+  m["percentile"] = [](const ins::Array &x, double q, sol::optional<int> axis,
                        sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return percentile(x, q, ax, keepdims.value_or(false));
+    return ins::percentile(x, q, ax, keepdims.value_or(false));
   };
-  m["nansum"] = [](const Array &x, sol::optional<int> axis,
+  m["nansum"] = [](const ins::Array &x, sol::optional<int> axis,
                    sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return nansum(x, ax, keepdims.value_or(false));
+    return ins::nansum(x, ax, keepdims.value_or(false));
   };
-  m["nanmean"] = [](const Array &x, sol::optional<int> axis,
+  m["nanmean"] = [](const ins::Array &x, sol::optional<int> axis,
                     sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return nanmean(x, ax, keepdims.value_or(false));
+    return ins::nanmean(x, ax, keepdims.value_or(false));
   };
-  m["nanmax"] = [](const Array &x, sol::optional<int> axis,
+  m["nanmax"] = [](const ins::Array &x, sol::optional<int> axis,
                    sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return nanmax(x, ax, keepdims.value_or(false));
+    return ins::nanmax(x, ax, keepdims.value_or(false));
   };
-  m["nanmin"] = [](const Array &x, sol::optional<int> axis,
+  m["nanmin"] = [](const ins::Array &x, sol::optional<int> axis,
                    sol::optional<bool> keepdims) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return nanmin(x, ax, keepdims.value_or(false));
+    return ins::nanmin(x, ax, keepdims.value_or(false));
   };
-  m["nanstd"] = [](const Array &x, sol::optional<int> axis,
+  m["nanstd"] = [](const ins::Array &x, sol::optional<int> axis,
                    sol::optional<bool> keepdims, sol::optional<int> ddof) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return nanstd(x, ax, keepdims.value_or(false), ddof.value_or(0));
+    return ins::nanstd(x, ax, keepdims.value_or(false), ddof.value_or(0));
   };
-  m["nanvar"] = [](const Array &x, sol::optional<int> axis,
+  m["nanvar"] = [](const ins::Array &x, sol::optional<int> axis,
                    sol::optional<bool> keepdims, sol::optional<int> ddof) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return nanvar(x, ax, keepdims.value_or(false), ddof.value_or(0));
+    return ins::nanvar(x, ax, keepdims.value_or(false), ddof.value_or(0));
   };
 
   // ====================================================================
   // Manipulation
   // ====================================================================
   m["concat"] = [](sol::table arrays, sol::optional<int> axis) {
-    return concat(table_to_arrays(arrays), axis.value_or(0));
+    return ins::concat(table_to_arrays(arrays), axis.value_or(0));
   };
   m["stack"] = [](sol::table arrays, sol::optional<int> axis) {
-    return stack(table_to_arrays(arrays), axis.value_or(0));
+    return ins::stack(table_to_arrays(arrays), axis.value_or(0));
   };
-  m["split"] = [](const Array &x, int sections, sol::optional<int> axis) {
-    return split(x, sections, axis.value_or(0));
+  m["split"] = [](const ins::Array &x, int sections, sol::optional<int> axis) {
+    return ins::split(x, sections, axis.value_or(0));
   };
-  m["tile"] = [](const Array &x, const Shape &reps) { return tile(x, reps); };
-  m["repeat"] = [](const Array &x, int repeats, sol::optional<int> axis) {
+  m["tile"] = [](const ins::Array &x, const ins::Shape &reps) {
+    return ins::tile(x, reps);
+  };
+  m["repeat"] = [](const ins::Array &x, int repeats, sol::optional<int> axis) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return repeat(x, repeats, ax);
+    return ins::repeat(x, repeats, ax);
   };
-  m["flip"] = [](const Array &x, sol::optional<int> axis) {
+  m["flip"] = [](const ins::Array &x, sol::optional<int> axis) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return flip(x, ax);
+    return ins::flip(x, ax);
   };
-  m["pad"] = [](const Array &x, std::vector<int64_t> pad_width,
+  m["pad"] = [](const ins::Array &x, std::vector<int64_t> pad_width,
                 sol::optional<double> val) {
-    return pad(x, pad_width, val.value_or(0.0));
+    return ins::pad(x, pad_width, val.value_or(0.0));
   };
-  m["flatten"] = [](const Array &x) { return flatten(x); };
-  m["ravel"] = [](const Array &x) { return ravel(x); };
-  m["roll"] = [](const Array &x, int shift, sol::optional<int> axis) {
+  m["flatten"] = [](const ins::Array &x) { return ins::flatten(x); };
+  m["ravel"] = [](const ins::Array &x) { return ins::ravel(x); };
+  m["roll"] = [](const ins::Array &x, int shift, sol::optional<int> axis) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
-    return roll(x, shift, ax);
+    return ins::roll(x, shift, ax);
   };
-  m["permute"] = [](const Array &x, std::vector<int> axes) {
-    return permute(x, axes);
+  m["permute"] = [](const ins::Array &x, std::vector<int> axes) {
+    return ins::permute(x, axes);
   };
-  m["swapaxes"] = [](const Array &x, int axis1, int axis2) {
-    return swapaxes(x, axis1, axis2);
+  m["swapaxes"] = [](const ins::Array &x, int axis1, int axis2) {
+    return ins::swapaxes(x, axis1, axis2);
   };
-  m["moveaxis"] = [](const Array &x, int source, int destination) {
-    return moveaxis(x, source, destination);
+  m["moveaxis"] = [](const ins::Array &x, int source, int destination) {
+    return ins::moveaxis(x, source, destination);
   };
-  m["fliplr"] = [](const Array &x) { return fliplr(x); };
-  m["flipud"] = [](const Array &x) { return flipud(x); };
-  m["rot90"] = [](const Array &x, sol::optional<int> k,
+  m["fliplr"] = [](const ins::Array &x) { return ins::fliplr(x); };
+  m["flipud"] = [](const ins::Array &x) { return ins::flipud(x); };
+  m["rot90"] = [](const ins::Array &x, sol::optional<int> k,
                   sol::optional<std::vector<int>> axes) {
-    return rot90(x, k.value_or(1), axes.value_or(std::vector<int>{0, 1}));
+    return ins::rot90(x, k.value_or(1), axes.value_or(std::vector<int>{0, 1}));
   };
-  m["diag"] = [](const Array &x, sol::optional<int> k) {
-    return diag(x, k.value_or(0));
+  m["diag"] = [](const ins::Array &x, sol::optional<int> k) {
+    return ins::diag(x, k.value_or(0));
   };
-  m["diagonal"] = [](const Array &x, sol::optional<int> offset,
+  m["diagonal"] = [](const ins::Array &x, sol::optional<int> offset,
                      sol::optional<int> axis1, sol::optional<int> axis2) {
-    return diagonal(x, offset.value_or(0), axis1.value_or(0),
-                    axis2.value_or(1));
+    return ins::diagonal(x, offset.value_or(0), axis1.value_or(0),
+                         axis2.value_or(1));
   };
-  m["tril"] = [](const Array &x, sol::optional<int> k) {
-    return tril(x, k.value_or(0));
+  m["tril"] = [](const ins::Array &x, sol::optional<int> k) {
+    return ins::tril(x, k.value_or(0));
   };
-  m["triu"] = [](const Array &x, sol::optional<int> k) {
-    return triu(x, k.value_or(0));
+  m["triu"] = [](const ins::Array &x, sol::optional<int> k) {
+    return ins::triu(x, k.value_or(0));
   };
-  m["diff"] = [](const Array &x, sol::optional<int> n,
+  m["diff"] = [](const ins::Array &x, sol::optional<int> n,
                  sol::optional<int> axis) {
-    return diff(x, n.value_or(1), axis.value_or(-1));
+    return ins::diff(x, n.value_or(1), axis.value_or(-1));
   };
 
   // ====================================================================
   // Linear Algebra
   // ====================================================================
-  m["matmul"] = [](const Array &a, const Array &b) { return matmul(a, b); };
-  m["dot"] = [](const Array &a, const Array &b) { return dot(a, b); };
-  m["outer"] = [](const Array &a, const Array &b) { return outer(a, b); };
-  m["det"] = [](const Array &x) { return det(x); };
-  m["inv"] = [](const Array &x) { return inv(x); };
-  m["solve"] = [](const Array &a, const Array &b) { return solve(a, b); };
-  m["svd"] = [](const Array &x) { return svd(x); };
-  m["eigh"] = [](const Array &x) { return eigh(x); };
-  m["cholesky"] = [](const Array &x, sol::optional<bool> lower) {
-    return cholesky(x, lower.value_or(true));
+  m["matmul"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::matmul(a, b);
   };
-  m["qr"] = [](const Array &x) { return qr(x); };
-  m["norm"] = [](const Array &x, sol::optional<double> ord) {
+  m["dot"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::dot(a, b);
+  };
+  m["outer"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::outer(a, b);
+  };
+  m["det"] = [](const ins::Array &x) { return ins::det(x); };
+  m["inv"] = [](const ins::Array &x) { return ins::inv(x); };
+  m["solve"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::solve(a, b);
+  };
+  m["svd"] = [](const ins::Array &x) { return ins::svd(x); };
+  m["eigh"] = [](const ins::Array &x) { return ins::eigh(x); };
+  m["cholesky"] = [](const ins::Array &x, sol::optional<bool> lower) {
+    return ins::cholesky(x, lower.value_or(true));
+  };
+  m["qr"] = [](const ins::Array &x) { return ins::qr(x); };
+  m["norm"] = [](const ins::Array &x, sol::optional<double> ord) {
     return ins::norm(x, ord.value_or(2.0));
   };
-  m["trace"] = [](const Array &x) { return trace(x); };
-  m["lstsq"] = [](const Array &a, const Array &b) { return lstsq(a, b); };
-  m["cond"] = [](const Array &x, sol::optional<double> p) {
-    return cond(x, p.value_or(2.0));
+  m["trace"] = [](const ins::Array &x) { return ins::trace(x); };
+  m["lstsq"] = [](const ins::Array &a, const ins::Array &b) {
+    return ins::lstsq(a, b);
   };
-  m["matrix_rank"] = [](const Array &x) { return matrix_rank(x); };
-  m["matrix_power"] = [](const Array &x, int n) { return matrix_power(x, n); };
-  m["slogdet"] = [](const Array &x) { return slogdet(x); };
-  m["eigvalsh"] = [](const Array &x, sol::optional<std::string> uplo) {
-    return eigvalsh(x, uplo.value_or("L"));
+  m["cond"] = [](const ins::Array &x, sol::optional<double> p) {
+    return ins::cond(x, p.value_or(2.0));
+  };
+  m["matrix_rank"] = [](const ins::Array &x) { return ins::matrix_rank(x); };
+  m["matrix_power"] = [](const ins::Array &x, int n) {
+    return ins::matrix_power(x, n);
+  };
+  m["slogdet"] = [](const ins::Array &x) { return ins::slogdet(x); };
+  m["eigvalsh"] = [](const ins::Array &x, sol::optional<std::string> uplo) {
+    return ins::eigvalsh(x, uplo.value_or("L"));
   };
 
   // ====================================================================
   // FFT
   // ====================================================================
-  m["fft"] = [](const Array &x, sol::optional<int> n, sol::optional<int> axis,
-                sol::optional<std::string> norm) {
-    return fft::fft(x, n.value_or(-1), axis.value_or(-1),
-                    norm.value_or("backward"));
+  m["fft"] = [](const ins::Array &x, sol::optional<int> n,
+                sol::optional<int> axis, sol::optional<std::string> norm_mode) {
+    return ins::fft::fft(x, n.value_or(-1), axis.value_or(-1),
+                         norm_mode.value_or("backward"));
   };
-  m["ifft"] = [](const Array &x, sol::optional<int> n, sol::optional<int> axis,
-                 sol::optional<std::string> norm) {
-    return fft::ifft(x, n.value_or(-1), axis.value_or(-1),
-                     norm.value_or("backward"));
+  m["ifft"] = [](const ins::Array &x, sol::optional<int> n,
+                 sol::optional<int> axis,
+                 sol::optional<std::string> norm_mode) {
+    return ins::fft::ifft(x, n.value_or(-1), axis.value_or(-1),
+                          norm_mode.value_or("backward"));
   };
-  m["rfft"] = [](const Array &x, sol::optional<int> n, sol::optional<int> axis,
-                 sol::optional<std::string> norm) {
-    return fft::rfft(x, n.value_or(-1), axis.value_or(-1),
-                     norm.value_or("backward"));
+  m["rfft"] = [](const ins::Array &x, sol::optional<int> n,
+                 sol::optional<int> axis,
+                 sol::optional<std::string> norm_mode) {
+    return ins::fft::rfft(x, n.value_or(-1), axis.value_or(-1),
+                          norm_mode.value_or("backward"));
   };
-  m["irfft"] = [](const Array &x, sol::optional<int> n, sol::optional<int> axis,
-                  sol::optional<std::string> norm) {
-    return fft::irfft(x, n.value_or(-1), axis.value_or(-1),
-                      norm.value_or("backward"));
+  m["irfft"] = [](const ins::Array &x, sol::optional<int> n,
+                  sol::optional<int> axis,
+                  sol::optional<std::string> norm_mode) {
+    return ins::fft::irfft(x, n.value_or(-1), axis.value_or(-1),
+                           norm_mode.value_or("backward"));
   };
   m["fftfreq"] = [](int64_t n, sol::optional<double> d) {
-    return fft::fftfreq(n, d.value_or(1.0));
+    return ins::fft::fftfreq(n, d.value_or(1.0));
   };
   m["rfftfreq"] = [](int64_t n, sol::optional<double> d) {
-    return fft::rfftfreq(n, d.value_or(1.0));
+    return ins::fft::rfftfreq(n, d.value_or(1.0));
   };
-  m["fftshift"] = [](const Array &x, sol::optional<int> axis) {
-    return fft::fftshift(x, axis.value_or(-1));
+  m["fftshift"] = [](const ins::Array &x, sol::optional<int> axis) {
+    return ins::fft::fftshift(x, axis.value_or(-1));
   };
-  m["ifftshift"] = [](const Array &x, sol::optional<int> axis) {
-    return fft::ifftshift(x, axis.value_or(-1));
+  m["ifftshift"] = [](const ins::Array &x, sol::optional<int> axis) {
+    return ins::fft::ifftshift(x, axis.value_or(-1));
   };
-  m["next_fast_len"] = [](int target) { return fft::next_fast_len(target); };
-  m["hfft"] = [](const Array &x, sol::optional<int> n, sol::optional<int> axis,
-                 sol::optional<std::string> norm) {
-    return fft::hfft(x, n.value_or(-1), axis.value_or(-1),
-                     norm.value_or("backward"));
+  m["next_fast_len"] = [](int target) {
+    return ins::fft::next_fast_len(target);
   };
-  m["ihfft"] = [](const Array &x, sol::optional<int> n, sol::optional<int> axis,
-                  sol::optional<std::string> norm) {
-    return fft::ihfft(x, n.value_or(-1), axis.value_or(-1),
-                      norm.value_or("backward"));
+  m["hfft"] = [](const ins::Array &x, sol::optional<int> n,
+                 sol::optional<int> axis,
+                 sol::optional<std::string> norm_mode) {
+    return ins::fft::hfft(x, n.value_or(-1), axis.value_or(-1),
+                          norm_mode.value_or("backward"));
   };
-  m["rfft2"] = [](const Array &x, sol::optional<std::vector<int64_t>> s,
+  m["ihfft"] = [](const ins::Array &x, sol::optional<int> n,
+                  sol::optional<int> axis,
+                  sol::optional<std::string> norm_mode) {
+    return ins::fft::ihfft(x, n.value_or(-1), axis.value_or(-1),
+                           norm_mode.value_or("backward"));
+  };
+  m["rfft2"] = [](const ins::Array &x, sol::optional<std::vector<int64_t>> s,
                   sol::optional<std::vector<int>> axes,
-                  sol::optional<std::string> norm) {
-    return fft::rfft2(x, s.value_or(std::vector<int64_t>{}),
-                      axes.value_or(std::vector<int>{-2, -1}),
-                      norm.value_or("backward"));
+                  sol::optional<std::string> norm_mode) {
+    return ins::fft::rfft2(x, s.value_or(std::vector<int64_t>{}),
+                           axes.value_or(std::vector<int>{-2, -1}),
+                           norm_mode.value_or("backward"));
   };
-  m["irfft2"] = [](const Array &x, sol::optional<std::vector<int64_t>> s,
+  m["irfft2"] = [](const ins::Array &x, sol::optional<std::vector<int64_t>> s,
                    sol::optional<std::vector<int>> axes,
-                   sol::optional<std::string> norm) {
-    return fft::irfft2(x, s.value_or(std::vector<int64_t>{}),
-                       axes.value_or(std::vector<int>{-2, -1}),
-                       norm.value_or("backward"));
+                   sol::optional<std::string> norm_mode) {
+    return ins::fft::irfft2(x, s.value_or(std::vector<int64_t>{}),
+                            axes.value_or(std::vector<int>{-2, -1}),
+                            norm_mode.value_or("backward"));
   };
-  m["fft2"] = [](const Array &x, sol::optional<sol::table> s,
+  m["fft2"] = [](const ins::Array &x, sol::optional<sol::table> s,
                  sol::optional<sol::table> axes,
-                 sol::optional<std::string> norm) {
+                 sol::optional<std::string> norm_mode) {
     std::vector<int64_t> s_vec;
     if (s) {
       for (auto &kv : *s)
@@ -1004,11 +1076,11 @@ extern "C" int luaopen__insight(lua_State *L) {
       for (auto &kv : *axes)
         axes_vec.push_back(kv.second.as<int>());
     }
-    return fft::fft2(x, s_vec, axes_vec, norm.value_or("backward"));
+    return ins::fft::fft2(x, s_vec, axes_vec, norm_mode.value_or("backward"));
   };
-  m["ifft2"] = [](const Array &x, sol::optional<sol::table> s,
+  m["ifft2"] = [](const ins::Array &x, sol::optional<sol::table> s,
                   sol::optional<sol::table> axes,
-                  sol::optional<std::string> norm) {
+                  sol::optional<std::string> norm_mode) {
     std::vector<int64_t> s_vec;
     if (s) {
       for (auto &kv : *s)
@@ -1020,21 +1092,21 @@ extern "C" int luaopen__insight(lua_State *L) {
       for (auto &kv : *axes)
         axes_vec.push_back(kv.second.as<int>());
     }
-    return fft::ifft2(x, s_vec, axes_vec, norm.value_or("backward"));
+    return ins::fft::ifft2(x, s_vec, axes_vec, norm_mode.value_or("backward"));
   };
-  m["rfftn"] = [](const Array &x, sol::optional<std::vector<int64_t>> s,
+  m["rfftn"] = [](const ins::Array &x, sol::optional<std::vector<int64_t>> s,
                   sol::optional<std::vector<int>> axes,
-                  sol::optional<std::string> norm) {
-    return fft::rfftn(x, s.value_or(std::vector<int64_t>{}),
-                      axes.value_or(std::vector<int>{}),
-                      norm.value_or("backward"));
+                  sol::optional<std::string> norm_mode) {
+    return ins::fft::rfftn(x, s.value_or(std::vector<int64_t>{}),
+                           axes.value_or(std::vector<int>{}),
+                           norm_mode.value_or("backward"));
   };
-  m["irfftn"] = [](const Array &x, sol::optional<std::vector<int64_t>> s,
+  m["irfftn"] = [](const ins::Array &x, sol::optional<std::vector<int64_t>> s,
                    sol::optional<std::vector<int>> axes,
-                   sol::optional<std::string> norm) {
-    return fft::irfftn(x, s.value_or(std::vector<int64_t>{}),
-                       axes.value_or(std::vector<int>{}),
-                       norm.value_or("backward"));
+                   sol::optional<std::string> norm_mode) {
+    return ins::fft::irfftn(x, s.value_or(std::vector<int64_t>{}),
+                            axes.value_or(std::vector<int>{}),
+                            norm_mode.value_or("backward"));
   };
 
   // ====================================================================
@@ -1045,273 +1117,277 @@ extern "C" int luaopen__insight(lua_State *L) {
 
     // --- ChirpMethod enum ---
     sol::table cm = sig.create_named("ChirpMethod");
-    cm["linear"] = signal::ChirpMethod::Linear;
-    cm["quadratic"] = signal::ChirpMethod::Quadratic;
-    cm["logarithmic"] = signal::ChirpMethod::Logarithmic;
-    cm["hyperbolic"] = signal::ChirpMethod::Hyperbolic;
+    cm["linear"] = ins::signal::ChirpMethod::Linear;
+    cm["quadratic"] = ins::signal::ChirpMethod::Quadratic;
+    cm["logarithmic"] = ins::signal::ChirpMethod::Logarithmic;
+    cm["hyperbolic"] = ins::signal::ChirpMethod::Hyperbolic;
 
     // --- Windows ---
     sig["general_cosine"] = [](int64_t M, std::vector<double> a,
                                sol::optional<bool> sym) {
-      return signal::general_cosine(M, a, sym.value_or(true));
+      return ins::signal::general_cosine(M, a, sym.value_or(true));
     };
     sig["get_window"] = sol::overload(
         [](const std::string &w, int64_t Nx, sol::optional<bool> fftbins) {
-          return signal::get_window(w, Nx, fftbins.value_or(true));
+          return ins::signal::get_window(w, Nx, fftbins.value_or(true));
         },
         [](const std::string &w, double param, int64_t Nx,
            sol::optional<bool> fftbins) {
-          return signal::get_window(w, param, Nx, fftbins.value_or(true));
+          return ins::signal::get_window(w, param, Nx, fftbins.value_or(true));
         });
     sig["boxcar"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::boxcar(M, sym.value_or(true));
+      return ins::signal::boxcar(M, sym.value_or(true));
     };
     sig["triang"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::triang(M, sym.value_or(true));
+      return ins::signal::triang(M, sym.value_or(true));
     };
     sig["parzen"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::parzen(M, sym.value_or(true));
+      return ins::signal::parzen(M, sym.value_or(true));
     };
     sig["bohman"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::bohman(M, sym.value_or(true));
+      return ins::signal::bohman(M, sym.value_or(true));
     };
     sig["bartlett"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::bartlett(M, sym.value_or(true));
+      return ins::signal::bartlett(M, sym.value_or(true));
     };
     sig["cosine"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::cosine(M, sym.value_or(true));
+      return ins::signal::cosine(M, sym.value_or(true));
     };
     sig["exponential"] = [](int64_t M, sol::optional<double> center,
                             sol::optional<double> tau,
                             sol::optional<bool> sym) {
-      return signal::exponential(M, center.value_or(-1.0), tau.value_or(1.0),
-                                 sym.value_or(true));
+      return ins::signal::exponential(M, center.value_or(-1.0),
+                                      tau.value_or(1.0), sym.value_or(true));
     };
     sig["blackman"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::blackman(M, sym.value_or(true));
+      return ins::signal::blackman(M, sym.value_or(true));
     };
     sig["nuttall"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::nuttall(M, sym.value_or(true));
+      return ins::signal::nuttall(M, sym.value_or(true));
     };
     sig["blackmanharris"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::blackmanharris(M, sym.value_or(true));
+      return ins::signal::blackmanharris(M, sym.value_or(true));
     };
     sig["flattop"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::flattop(M, sym.value_or(true));
+      return ins::signal::flattop(M, sym.value_or(true));
     };
     sig["hann"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::hann(M, sym.value_or(true));
+      return ins::signal::hann(M, sym.value_or(true));
     };
     sig["general_hamming"] = [](int64_t M, double alpha,
                                 sol::optional<bool> sym) {
-      return signal::general_hamming(M, alpha, sym.value_or(true));
+      return ins::signal::general_hamming(M, alpha, sym.value_or(true));
     };
     sig["hamming"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::hamming(M, sym.value_or(true));
+      return ins::signal::hamming(M, sym.value_or(true));
     };
     sig["tukey"] = [](int64_t M, sol::optional<double> alpha,
                       sol::optional<bool> sym) {
-      return signal::tukey(M, alpha.value_or(0.5), sym.value_or(true));
+      return ins::signal::tukey(M, alpha.value_or(0.5), sym.value_or(true));
     };
     sig["barthann"] = [](int64_t M, sol::optional<bool> sym) {
-      return signal::barthann(M, sym.value_or(true));
+      return ins::signal::barthann(M, sym.value_or(true));
     };
-    sig["kaiser"] = [](int64_t M, double beta, sol::optional<bool> sym) {
-      return signal::kaiser(M, beta, sym.value_or(true));
+    sig["kaiser"] = [](int64_t M, double beta_val, sol::optional<bool> sym) {
+      return ins::signal::kaiser(M, beta_val, sym.value_or(true));
     };
     sig["gaussian"] = [](int64_t M, double std_val, sol::optional<bool> sym) {
-      return signal::gaussian(M, std_val, sym.value_or(true));
+      return ins::signal::gaussian(M, std_val, sym.value_or(true));
     };
     sig["general_gaussian"] = [](int64_t M, double p, double sig_val,
                                  sol::optional<bool> sym) {
-      return signal::general_gaussian(M, p, sig_val, sym.value_or(true));
+      return ins::signal::general_gaussian(M, p, sig_val, sym.value_or(true));
     };
     sig["chebwin"] = [](int64_t M, double at, sol::optional<bool> sym) {
-      return signal::chebwin(M, at, sym.value_or(true));
+      return ins::signal::chebwin(M, at, sym.value_or(true));
     };
     sig["taylor"] = [](int64_t M, sol::optional<int64_t> nbar,
-                       sol::optional<double> sll, sol::optional<bool> norm,
+                       sol::optional<double> sll, sol::optional<bool> norm_mode,
                        sol::optional<bool> sym) {
-      return signal::taylor(M, nbar.value_or(4), sll.value_or(-30.0),
-                            norm.value_or(true), sym.value_or(true));
+      return ins::signal::taylor(M, nbar.value_or(4), sll.value_or(-30.0),
+                                 norm_mode.value_or(true), sym.value_or(true));
     };
 
     // --- Waveforms ---
-    sig["sawtooth"] = [](const Array &t, sol::optional<double> width) {
-      return signal::sawtooth(t, width.value_or(1.0));
+    sig["sawtooth"] = [](const ins::Array &t, sol::optional<double> width) {
+      return ins::signal::sawtooth(t, width.value_or(1.0));
     };
-    sig["square_wf"] = [](const Array &t, sol::optional<double> duty) {
-      return signal::square(t, duty.value_or(0.5));
+    sig["square_wf"] = [](const ins::Array &t, sol::optional<double> duty) {
+      return ins::signal::square(t, duty.value_or(0.5));
     };
-    sig["square"] = sig["square_wf"]; // alias for signal::square wave
-    sig["gausspulse"] = [](const Array &t, sol::optional<double> fc,
+    sig["square"] = sig["square_wf"]; // alias for ins::signal::square wave
+    sig["gausspulse"] = [](const ins::Array &t, sol::optional<double> fc,
                            sol::optional<double> bw, sol::optional<double> bwr,
                            sol::optional<double> tpr) {
-      return signal::gausspulse(t, fc.value_or(1000), bw.value_or(0.5),
-                                bwr.value_or(-6), tpr.value_or(-60));
+      return ins::signal::gausspulse(t, fc.value_or(1000), bw.value_or(0.5),
+                                     bwr.value_or(-6), tpr.value_or(-60));
     };
-    sig["chirp"] = [](const Array &t, double f0, double t1, double f1,
-                      sol::optional<signal::ChirpMethod> method,
+    sig["chirp"] = [](const ins::Array &t, double f0, double t1, double f1,
+                      sol::optional<ins::signal::ChirpMethod> method,
                       sol::optional<double> phi,
                       sol::optional<bool> vertex_zero) {
-      return signal::chirp(t, f0, t1, f1,
-                           method.value_or(signal::ChirpMethod::Linear),
-                           phi.value_or(0.0), vertex_zero.value_or(true));
+      return ins::signal::chirp(
+          t, f0, t1, f1, method.value_or(ins::signal::ChirpMethod::Linear),
+          phi.value_or(0.0), vertex_zero.value_or(true));
     };
     sig["unit_impulse"] = [](sol::table shape, sol::optional<int64_t> idx,
-                             sol::optional<DType> dtype,
-                             sol::optional<Place> place) {
-      return signal::unit_impulse(Shape(table_to_shape(shape)),
-                                  idx.value_or(-1), dtype.value_or(DType::F64),
-                                  place.value_or(get_device()));
+                             sol::optional<ins::DType> dtype,
+                             sol::optional<ins::Place> place) {
+      return ins::signal::unit_impulse(
+          ins::Shape(table_to_shape(shape)), idx.value_or(-1),
+          dtype.value_or(ins::DType::F64), place.value_or(ins::get_device()));
     };
 
     // --- B-Splines ---
-    sig["gauss_spline"] = &signal::gauss_spline;
-    sig["cubic"] = &signal::cubic;
-    sig["quadratic"] = &signal::quadratic;
+    sig["gauss_spline"] = &ins::signal::gauss_spline;
+    sig["cubic"] = &ins::signal::cubic;
+    sig["quadratic"] = &ins::signal::quadratic;
 
     // --- Filter Design ---
-    sig["kaiser_beta"] = &signal::kaiser_beta;
-    sig["kaiser_atten"] = &signal::kaiser_atten;
+    sig["kaiser_beta"] = &ins::signal::kaiser_beta;
+    sig["kaiser_atten"] = &ins::signal::kaiser_atten;
     sig["firwin"] = [](int64_t numtaps, std::vector<double> cutoff,
                        sol::optional<std::string> window,
                        sol::optional<std::string> pass_zero,
                        sol::optional<bool> scale) {
-      return signal::firwin(numtaps, cutoff, window.value_or("hamming"),
-                            pass_zero.value_or("lowpass"),
-                            scale.value_or(true));
+      return ins::signal::firwin(numtaps, cutoff, window.value_or("hamming"),
+                                 pass_zero.value_or("lowpass"),
+                                 scale.value_or(true));
     };
     sig["firwin2"] = [](int64_t numtaps, std::vector<double> freq,
                         std::vector<double> gain, sol::optional<int64_t> nfreqs,
                         sol::optional<std::string> window,
                         sol::optional<bool> antisymmetric) {
-      return signal::firwin2(numtaps, freq, gain, nfreqs.value_or(0),
-                             window.value_or("hamming"),
-                             antisymmetric.value_or(false));
+      return ins::signal::firwin2(numtaps, freq, gain, nfreqs.value_or(0),
+                                  window.value_or("hamming"),
+                                  antisymmetric.value_or(false));
     };
-    sig["cmplx_sort"] = &signal::cmplx_sort;
+    sig["cmplx_sort"] = &ins::signal::cmplx_sort;
 
     // --- Convolution ---
-    sig["fftconvolve"] = [](const Array &in1, const Array &in2,
+    sig["fftconvolve"] = [](const ins::Array &in1, const ins::Array &in2,
                             sol::optional<std::string> mode) {
-      return signal::fftconvolve(in1, in2, mode.value_or("full"));
+      return ins::signal::fftconvolve(in1, in2, mode.value_or("full"));
     };
-    sig["correlate"] = [](const Array &in1, const Array &in2,
+    sig["correlate"] = [](const ins::Array &in1, const ins::Array &in2,
                           sol::optional<std::string> mode) {
-      return signal::correlate(in1, in2, mode.value_or("full"));
+      return ins::signal::correlate(in1, in2, mode.value_or("full"));
     };
-    sig["convolve2d"] = [](const Array &in1, const Array &in2,
+    sig["convolve2d"] = [](const ins::Array &in1, const ins::Array &in2,
                            sol::optional<std::string> mode) {
-      return signal::convolve2d(in1, in2, mode.value_or("full"));
+      return ins::signal::convolve2d(in1, in2, mode.value_or("full"));
     };
-    sig["correlate2d"] = [](const Array &in1, const Array &in2,
+    sig["correlate2d"] = [](const ins::Array &in1, const ins::Array &in2,
                             sol::optional<std::string> mode) {
-      return signal::correlate2d(in1, in2, mode.value_or("full"));
+      return ins::signal::correlate2d(in1, in2, mode.value_or("full"));
     };
-    sig["choose_conv_method"] = [](const Array &in1, const Array &in2,
+    sig["choose_conv_method"] = [](const ins::Array &in1, const ins::Array &in2,
                                    sol::optional<std::string> mode) {
-      return signal::choose_conv_method(in1, in2, mode.value_or("full"));
+      return ins::signal::choose_conv_method(in1, in2, mode.value_or("full"));
     };
     sig["correlation_lags"] = [](int64_t in1_len, int64_t in2_len,
                                  sol::optional<std::string> mode) {
-      return signal::correlation_lags(in1_len, in2_len, mode.value_or("full"));
+      return ins::signal::correlation_lags(in1_len, in2_len,
+                                           mode.value_or("full"));
     };
 
     // --- Filtering ---
-    sig["hilbert"] = [](const Array &x, sol::optional<int64_t> N) {
-      return signal::hilbert(x, N.value_or(-1));
+    sig["hilbert"] = [](const ins::Array &x, sol::optional<int64_t> N) {
+      return ins::signal::hilbert(x, N.value_or(-1));
     };
-    sig["hilbert2"] = [](const Array &x, sol::optional<int64_t> N) {
-      return signal::hilbert2(x, N.value_or(-1));
+    sig["hilbert2"] = [](const ins::Array &x, sol::optional<int64_t> N) {
+      return ins::signal::hilbert2(x, N.value_or(-1));
     };
-    sig["detrend"] = [](const Array &data, sol::optional<int> axis,
+    sig["detrend"] = [](const ins::Array &data, sol::optional<int> axis,
                         sol::optional<std::string> type) {
-      return signal::detrend(data, axis.value_or(-1), type.value_or("linear"));
+      return ins::signal::detrend(data, axis.value_or(-1),
+                                  type.value_or("linear"));
     };
-    sig["wiener"] = [](const Array &im,
+    sig["wiener"] = [](const ins::Array &im,
                        sol::optional<std::vector<int64_t>> mysize,
                        sol::optional<double> noise) {
-      return signal::wiener(im, mysize.value_or(std::vector<int64_t>{}),
-                            noise.value_or(-1.0));
+      return ins::signal::wiener(im, mysize.value_or(std::vector<int64_t>{}),
+                                 noise.value_or(-1.0));
     };
-    sig["firfilter"] = [](const Array &b, const Array &x,
+    sig["firfilter"] = [](const ins::Array &b, const ins::Array &x,
                           sol::optional<int> axis) {
-      return signal::firfilter(b, x, axis.value_or(-1));
+      return ins::signal::firfilter(b, x, axis.value_or(-1));
     };
-    sig["lfilter"] = [](const Array &b, const Array &a, const Array &x,
-                        sol::optional<int> axis) {
-      return signal::lfilter(b, a, x, axis.value_or(-1));
+    sig["lfilter"] = [](const ins::Array &b, const ins::Array &a,
+                        const ins::Array &x, sol::optional<int> axis) {
+      return ins::signal::lfilter(b, a, x, axis.value_or(-1));
     };
-    sig["lfilter_zi"] = &signal::lfilter_zi;
-    sig["filtfilt"] = [](const Array &b, const Array &a, const Array &x,
-                         sol::optional<int> axis) {
-      return signal::filtfilt(b, a, x, axis.value_or(-1));
+    sig["lfilter_zi"] = &ins::signal::lfilter_zi;
+    sig["filtfilt"] = [](const ins::Array &b, const ins::Array &a,
+                         const ins::Array &x, sol::optional<int> axis) {
+      return ins::signal::filtfilt(b, a, x, axis.value_or(-1));
     };
-    sig["decimate"] = [](const Array &x, int64_t q, sol::optional<int> axis,
+    sig["decimate"] = [](const ins::Array &x, int64_t q,
+                         sol::optional<int> axis,
                          sol::optional<bool> zero_phase) {
-      return signal::decimate(x, q, axis.value_or(-1),
-                              zero_phase.value_or(true));
+      return ins::signal::decimate(x, q, axis.value_or(-1),
+                                   zero_phase.value_or(true));
     };
-    sig["resample"] = [](const Array &x, int64_t num, sol::optional<int> axis) {
-      return signal::resample(x, num, axis.value_or(-1));
+    sig["resample"] = [](const ins::Array &x, int64_t num,
+                         sol::optional<int> axis) {
+      return ins::signal::resample(x, num, axis.value_or(-1));
     };
-    sig["resample_poly"] = [](const Array &x, int64_t up, int64_t down,
+    sig["resample_poly"] = [](const ins::Array &x, int64_t up, int64_t down,
                               sol::optional<int> axis) {
-      return signal::resample_poly(x, up, down, axis.value_or(-1));
+      return ins::signal::resample_poly(x, up, down, axis.value_or(-1));
     };
-    sig["freq_shift"] = &signal::freq_shift;
+    sig["freq_shift"] = &ins::signal::freq_shift;
 
     // --- Spectral Analysis ---
-    sig["welch"] =
-        [](const Array &x, sol::optional<double> fs,
-           sol::optional<std::string> window, sol::optional<int64_t> nperseg,
-           sol::optional<int64_t> noverlap, sol::optional<int64_t> nfft,
-           sol::optional<std::string> detrend,
-           sol::optional<bool> return_onesided,
-           sol::optional<std::string> scaling) {
-          return signal::welch(x, fs.value_or(1.0), window.value_or("hann"),
-                               nperseg.value_or(256), noverlap.value_or(0),
-                               nfft.value_or(0), detrend.value_or("constant"),
-                               return_onesided.value_or(true),
-                               scaling.value_or("density"));
-        };
-    sig["periodogram"] = [](const Array &x, sol::optional<double> fs,
+    sig["welch"] = [](const ins::Array &x, sol::optional<double> fs,
+                      sol::optional<std::string> window,
+                      sol::optional<int64_t> nperseg,
+                      sol::optional<int64_t> noverlap,
+                      sol::optional<int64_t> nfft,
+                      sol::optional<std::string> detrend,
+                      sol::optional<bool> return_onesided,
+                      sol::optional<std::string> scaling) {
+      return ins::signal::welch(
+          x, fs.value_or(1.0), window.value_or("hann"), nperseg.value_or(256),
+          noverlap.value_or(0), nfft.value_or(0), detrend.value_or("constant"),
+          return_onesided.value_or(true), scaling.value_or("density"));
+    };
+    sig["periodogram"] = [](const ins::Array &x, sol::optional<double> fs,
                             sol::optional<std::string> window,
                             sol::optional<int64_t> nfft,
                             sol::optional<std::string> detrend,
                             sol::optional<bool> return_onesided,
                             sol::optional<std::string> scaling) {
-      return signal::periodogram(x, fs.value_or(1.0), window.value_or("boxcar"),
-                                 nfft.value_or(0), detrend.value_or("constant"),
-                                 return_onesided.value_or(true),
-                                 scaling.value_or("density"));
+      return ins::signal::periodogram(
+          x, fs.value_or(1.0), window.value_or("boxcar"), nfft.value_or(0),
+          detrend.value_or("constant"), return_onesided.value_or(true),
+          scaling.value_or("density"));
     };
-    sig["csd"] =
-        [](const Array &x, const Array &y, sol::optional<double> fs,
+    sig["csd"] = [](const ins::Array &x, const ins::Array &y,
+                    sol::optional<double> fs, sol::optional<std::string> window,
+                    sol::optional<int64_t> nperseg,
+                    sol::optional<int64_t> noverlap,
+                    sol::optional<int64_t> nfft,
+                    sol::optional<std::string> detrend,
+                    sol::optional<bool> return_onesided,
+                    sol::optional<std::string> scaling) {
+      return ins::signal::csd(x, y, fs.value_or(1.0), window.value_or("hann"),
+                              nperseg.value_or(256), noverlap.value_or(0),
+                              nfft.value_or(0), detrend.value_or("constant"),
+                              return_onesided.value_or(true),
+                              scaling.value_or("density"));
+    };
+    sig["coherence"] =
+        [](const ins::Array &x, const ins::Array &y, sol::optional<double> fs,
            sol::optional<std::string> window, sol::optional<int64_t> nperseg,
            sol::optional<int64_t> noverlap, sol::optional<int64_t> nfft,
-           sol::optional<std::string> detrend,
-           sol::optional<bool> return_onesided,
-           sol::optional<std::string> scaling) {
-          return signal::csd(x, y, fs.value_or(1.0), window.value_or("hann"),
-                             nperseg.value_or(256), noverlap.value_or(0),
-                             nfft.value_or(0), detrend.value_or("constant"),
-                             return_onesided.value_or(true),
-                             scaling.value_or("density"));
+           sol::optional<std::string> detrend) {
+          return ins::signal::coherence(
+              x, y, fs.value_or(1.0), window.value_or("hann"),
+              nperseg.value_or(256), noverlap.value_or(0), nfft.value_or(0),
+              detrend.value_or("constant"));
         };
-    sig["coherence"] = [](const Array &x, const Array &y,
-                          sol::optional<double> fs,
-                          sol::optional<std::string> window,
-                          sol::optional<int64_t> nperseg,
-                          sol::optional<int64_t> noverlap,
-                          sol::optional<int64_t> nfft,
-                          sol::optional<std::string> detrend) {
-      return signal::coherence(x, y, fs.value_or(1.0), window.value_or("hann"),
-                               nperseg.value_or(256), noverlap.value_or(0),
-                               nfft.value_or(0), detrend.value_or("constant"));
-    };
-    sig["spectrogram"] = [](const Array &x, sol::optional<double> fs,
+    sig["spectrogram"] = [](const ins::Array &x, sol::optional<double> fs,
                             sol::optional<std::string> window,
                             sol::optional<int64_t> nperseg,
                             sol::optional<int64_t> noverlap,
@@ -1319,65 +1395,66 @@ extern "C" int luaopen__insight(lua_State *L) {
                             sol::optional<std::string> detrend,
                             sol::optional<bool> return_onesided,
                             sol::optional<std::string> mode) {
-      return signal::spectrogram(
+      return ins::signal::spectrogram(
           x, fs.value_or(1.0), window.value_or("hann"), nperseg.value_or(256),
           noverlap.value_or(0), nfft.value_or(0), detrend.value_or("constant"),
           return_onesided.value_or(true), mode.value_or("psd"));
     };
     sig["stft"] =
-        [](const Array &x, sol::optional<double> fs,
+        [](const ins::Array &x, sol::optional<double> fs,
            sol::optional<std::string> window, sol::optional<int64_t> nperseg,
            sol::optional<int64_t> noverlap, sol::optional<int64_t> nfft) {
-          return signal::stft(x, fs.value_or(1.0), window.value_or("hann"),
-                              nperseg.value_or(256), noverlap.value_or(0),
-                              nfft.value_or(0));
+          return ins::signal::stft(x, fs.value_or(1.0), window.value_or("hann"),
+                                   nperseg.value_or(256), noverlap.value_or(0),
+                                   nfft.value_or(0));
         };
-    sig["vectorstrength"] = &signal::vectorstrength;
+    sig["vectorstrength"] = &ins::signal::vectorstrength;
 
     // --- Wavelets ---
     sig["morlet"] = [](int64_t M, sol::optional<double> w,
                        sol::optional<double> s, sol::optional<bool> complete) {
-      return signal::morlet(M, w.value_or(5.0), s.value_or(1.0),
-                            complete.value_or(true));
+      return ins::signal::morlet(M, w.value_or(5.0), s.value_or(1.0),
+                                 complete.value_or(true));
     };
-    sig["ricker"] = &signal::ricker;
+    sig["ricker"] = &ins::signal::ricker;
     sig["morlet2"] = [](int64_t M, double s, sol::optional<double> w) {
-      return signal::morlet2(M, s, w.value_or(5.0));
+      return ins::signal::morlet2(M, s, w.value_or(5.0));
     };
     // Note: cwt takes std::function — not easily bindable from Lua
 
     // --- Acoustics ---
-    sig["mel2hz"] = &signal::mel2hz;
-    sig["hz2mel"] = &signal::hz2mel;
+    sig["mel2hz"] = &ins::signal::mel2hz;
+    sig["hz2mel"] = &ins::signal::hz2mel;
     sig["mel_frequencies"] = [](int64_t n_mels, sol::optional<double> f_low,
                                 sol::optional<double> f_high) {
-      return signal::mel_frequencies(n_mels, f_low.value_or(0.0),
-                                     f_high.value_or(11000.0));
+      return ins::signal::mel_frequencies(n_mels, f_low.value_or(0.0),
+                                          f_high.value_or(11000.0));
     };
-    sig["hz2bark"] = &signal::hz2bark;
-    sig["bark2hz"] = &signal::bark2hz;
+    sig["hz2bark"] = &ins::signal::hz2bark;
+    sig["bark2hz"] = &ins::signal::bark2hz;
 
     // --- Demod ---
-    sig["fm_demod"] = [](const Array &x, sol::optional<int> axis) {
-      return signal::fm_demod(x, axis.value_or(-1));
+    sig["fm_demod"] = [](const ins::Array &x, sol::optional<int> axis) {
+      return ins::signal::fm_demod(x, axis.value_or(-1));
     };
 
     // --- Peak Finding ---
-    sig["argrelextrema"] = &signal::argrelextrema;
-    sig["argrelmax"] = &signal::argrelmax;
-    sig["argrelmin"] = &signal::argrelmin;
+    sig["argrelextrema"] = &ins::signal::argrelextrema;
+    sig["argrelmax"] = &ins::signal::argrelmax;
+    sig["argrelmin"] = &ins::signal::argrelmin;
 
     // --- Radar ---
-    sig["pulse_compression"] = [](const Array &x, const Array &tpl,
+    sig["pulse_compression"] = [](const ins::Array &x, const ins::Array &tpl,
                                   sol::optional<bool> normalize,
                                   sol::optional<std::string> window,
                                   sol::optional<int64_t> nfft) {
-      return signal::pulse_compression(x, tpl, normalize.value_or(false),
-                                       window.value_or(""), nfft.value_or(0));
+      return ins::signal::pulse_compression(x, tpl, normalize.value_or(false),
+                                            window.value_or(""),
+                                            nfft.value_or(0));
     };
-    sig["pulse_doppler"] = &signal::pulse_doppler;
-    sig["cfar_alpha"] = &signal::cfar_alpha;
-    sig["ca_cfar"] = [](sol::this_state L, const Array &data,
+    sig["pulse_doppler"] = &ins::signal::pulse_doppler;
+    sig["cfar_alpha"] = &ins::signal::cfar_alpha;
+    sig["ca_cfar"] = [](sol::this_state L, const ins::Array &data,
                         sol::table guard_tbl, sol::table ref_tbl,
                         sol::optional<double> pfa) {
       std::vector<int> guard, ref;
@@ -1385,71 +1462,71 @@ extern "C" int luaopen__insight(lua_State *L) {
         guard.push_back(kv.second.as<int>());
       for (auto &kv : ref_tbl)
         ref.push_back(kv.second.as<int>());
-      auto result = signal::ca_cfar(data, guard, ref, pfa.value_or(1e-3));
+      auto result = ins::signal::ca_cfar(data, guard, ref, pfa.value_or(1e-3));
       sol::state_view lua(L);
       sol::table ret = lua.create_table();
       ret[1] = result.first;
       ret[2] = result.second;
       return ret;
     };
-    sig["mvdr"] = [](const Array &x, const Array &sv,
+    sig["mvdr"] = [](const ins::Array &x, const ins::Array &sv,
                      sol::optional<bool> calc_cov) {
-      return signal::mvdr(x, sv, calc_cov.value_or(true));
+      return ins::signal::mvdr(x, sv, calc_cov.value_or(true));
     };
-    sig["ambgfun"] = &signal::ambgfun;
+    sig["ambgfun"] = &ins::signal::ambgfun;
 
     // --- Signal I/O ---
     sig["read_bin"] = &lua_read_bin;
     sig["write_bin"] = &lua_write_bin;
     sig["unpack_bin"] = &lua_unpack_bin;
-    sig["pack_bin"] = &signal::pack_bin;
-    sig["read_sigmf"] = &signal::read_sigmf;
+    sig["pack_bin"] = &ins::signal::pack_bin;
+    sig["read_sigmf"] = &ins::signal::read_sigmf;
     sig["write_sigmf"] = &lua_write_sigmf;
 
     // --- Estimation (KalmanFilter) ---
-    sol::usertype<signal::KalmanFilter> kf_type =
-        sig.new_usertype<signal::KalmanFilter>("KalmanFilter");
-    kf_type["x"] = &signal::KalmanFilter::x;
-    kf_type["P"] = &signal::KalmanFilter::P;
-    kf_type["z"] = &signal::KalmanFilter::z;
-    kf_type["R"] = &signal::KalmanFilter::R;
-    kf_type["Q"] = &signal::KalmanFilter::Q;
-    kf_type["F"] = &signal::KalmanFilter::F;
-    kf_type["H"] = &signal::KalmanFilter::H;
-    kf_type["dim_x"] = &signal::KalmanFilter::dim_x;
-    kf_type["dim_z"] = &signal::KalmanFilter::dim_z;
-    kf_type["points"] = &signal::KalmanFilter::points;
-    kf_type["predict"] = &signal::KalmanFilter::predict;
-    kf_type["update"] = &signal::KalmanFilter::update;
+    sol::usertype<ins::signal::KalmanFilter> kf_type =
+        sig.new_usertype<ins::signal::KalmanFilter>("KalmanFilter");
+    kf_type["x"] = &ins::signal::KalmanFilter::x;
+    kf_type["P"] = &ins::signal::KalmanFilter::P;
+    kf_type["z"] = &ins::signal::KalmanFilter::z;
+    kf_type["R"] = &ins::signal::KalmanFilter::R;
+    kf_type["Q"] = &ins::signal::KalmanFilter::Q;
+    kf_type["F"] = &ins::signal::KalmanFilter::F;
+    kf_type["H"] = &ins::signal::KalmanFilter::H;
+    kf_type["dim_x"] = &ins::signal::KalmanFilter::dim_x;
+    kf_type["dim_z"] = &ins::signal::KalmanFilter::dim_z;
+    kf_type["points"] = &ins::signal::KalmanFilter::points;
+    kf_type["predict"] = &ins::signal::KalmanFilter::predict;
+    kf_type["update"] = &ins::signal::KalmanFilter::update;
     // Factory function for constructing KalmanFilter with optional args
     sig["KalmanFilter_new"] = [](int dim_x, int dim_z, sol::optional<int> dim_u,
                                  sol::optional<int> points,
-                                 sol::optional<DType> dtype) {
-      return signal::KalmanFilter(dim_x, dim_z, dim_u.value_or(0),
-                                  points.value_or(1),
-                                  dtype.value_or(DType::F64));
+                                 sol::optional<ins::DType> dtype) {
+      return ins::signal::KalmanFilter(dim_x, dim_z, dim_u.value_or(0),
+                                       points.value_or(1),
+                                       dtype.value_or(ins::DType::F64));
     };
 
     // Top-level aliases
-    sig["convolve"] = &convolve;
-    sig["unwrap"] = [](const Array &p, sol::optional<int> axis,
+    sig["convolve"] = &ins::convolve;
+    sig["unwrap"] = [](const ins::Array &p, sol::optional<int> axis,
                        sol::optional<double> discont,
                        sol::optional<double> period) {
-      return unwrap(p, axis.value_or(-1), discont.value_or(M_PI),
-                    period.value_or(2 * M_PI));
+      return ins::unwrap(p, axis.value_or(-1), discont.value_or(M_PI),
+                         period.value_or(2 * M_PI));
     };
-    sig["sinc"] = &sinc;
+    sig["sinc"] = &ins::sinc;
   }
 
   // Top-level aliases (scipy-compatible)
-  m["convolve"] = &convolve;
-  m["unwrap"] = [](const Array &p, sol::optional<int> axis,
+  m["convolve"] = &ins::convolve;
+  m["unwrap"] = [](const ins::Array &p, sol::optional<int> axis,
                    sol::optional<double> discont,
                    sol::optional<double> period) {
-    return unwrap(p, axis.value_or(-1), discont.value_or(M_PI),
-                  period.value_or(2 * M_PI));
+    return ins::unwrap(p, axis.value_or(-1), discont.value_or(M_PI),
+                       period.value_or(2 * M_PI));
   };
-  m["sinc"] = &sinc;
+  m["sinc"] = &ins::sinc;
 
   // ====================================================================
   // Plot (ins.plot.*, requires INSIGHT_USE_MATPLOT)
@@ -1465,501 +1542,519 @@ extern "C" int luaopen__insight(lua_State *L) {
 
     plt["figure"] = [](sol::optional<int> number) {
       try {
-        plot::figure(number.value_or(-1));
+        ins::plot::figure(number.value_or(-1));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["subplot"] = [](int r, int c, int i) {
       try {
-        plot::subplot(r, c, i);
+        ins::plot::subplot(r, c, i);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["hold"] = [](bool on) {
       try {
-        plot::hold(on);
+        ins::plot::hold(on);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["clf"] = []() {
       try {
-        plot::clf();
+        ins::plot::clf();
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["show"] = []() {
       try {
-        plot::show();
+        ins::plot::show();
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["save"] = [](const std::string &fn) {
       try {
-        plot::save(fn);
+        ins::plot::save(fn);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
     plt["plot"] = sol::overload(
-        [](const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &y, sol::optional<std::string> fmt) {
           try {
-            plot::plot(y, fmt.value_or(""));
+            ins::plot::plot(y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &x, const ins::Array &y,
+           sol::optional<std::string> fmt) {
           try {
-            plot::plot(x, y, fmt.value_or(""));
+            ins::plot::plot(x, y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
-    plt["plot3"] = [](const Array &x, const Array &y, const Array &z,
-                      sol::optional<std::string> fmt) {
+    plt["plot3"] = [](const ins::Array &x, const ins::Array &y,
+                      const ins::Array &z, sol::optional<std::string> fmt) {
       try {
-        plot::plot3(x, y, z, fmt.value_or(""));
+        ins::plot::plot3(x, y, z, fmt.value_or(""));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["stairs"] = sol::overload(
-        [](const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &y, sol::optional<std::string> fmt) {
           try {
-            plot::stairs(y, fmt.value_or(""));
+            ins::plot::stairs(y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &x, const ins::Array &y,
+           sol::optional<std::string> fmt) {
           try {
-            plot::stairs(x, y, fmt.value_or(""));
+            ins::plot::stairs(x, y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
-    plt["errorbar"] = [](const Array &x, const Array &y, const Array &err,
+    plt["errorbar"] = [](const ins::Array &x, const ins::Array &y,
+                         const ins::Array &err,
                          sol::optional<std::string> fmt) {
       try {
-        plot::errorbar(x, y, err, fmt.value_or(""));
+        ins::plot::errorbar(x, y, err, fmt.value_or(""));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["area"] = sol::overload(
-        [](const Array &y) {
+        [](const ins::Array &y) {
           try {
-            plot::area(y);
+            ins::plot::area(y);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y) {
+        [](const ins::Array &x, const ins::Array &y) {
           try {
-            plot::area(x, y);
+            ins::plot::area(x, y);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
-    plt["fill"] = [](const Array &x, const Array &y,
+    plt["fill"] = [](const ins::Array &x, const ins::Array &y,
                      sol::optional<std::string> color) {
       try {
-        plot::fill(x, y, color.value_or("b"));
+        ins::plot::fill(x, y, color.value_or("b"));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["line"] = [](const Array &x, const Array &y,
+    plt["line"] = [](const ins::Array &x, const ins::Array &y,
                      sol::optional<std::string> fmt) {
       try {
-        plot::line(x, y, fmt.value_or(""));
+        ins::plot::line(x, y, fmt.value_or(""));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
     plt["semilogx"] = sol::overload(
-        [](const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &y, sol::optional<std::string> fmt) {
           try {
-            plot::semilogx(y, fmt.value_or(""));
+            ins::plot::semilogx(y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &x, const ins::Array &y,
+           sol::optional<std::string> fmt) {
           try {
-            plot::semilogx(x, y, fmt.value_or(""));
+            ins::plot::semilogx(x, y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
     plt["semilogy"] = sol::overload(
-        [](const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &y, sol::optional<std::string> fmt) {
           try {
-            plot::semilogy(y, fmt.value_or(""));
+            ins::plot::semilogy(y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &x, const ins::Array &y,
+           sol::optional<std::string> fmt) {
           try {
-            plot::semilogy(x, y, fmt.value_or(""));
+            ins::plot::semilogy(x, y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
     plt["loglog"] = sol::overload(
-        [](const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &y, sol::optional<std::string> fmt) {
           try {
-            plot::loglog(y, fmt.value_or(""));
+            ins::plot::loglog(y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &x, const ins::Array &y,
+           sol::optional<std::string> fmt) {
           try {
-            plot::loglog(x, y, fmt.value_or(""));
+            ins::plot::loglog(x, y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
 
-    plt["scatter"] = [](const Array &x, const Array &y,
+    plt["scatter"] = [](const ins::Array &x, const ins::Array &y,
                         sol::optional<double> size) {
       try {
-        plot::scatter(x, y, size.value_or(20.0));
+        ins::plot::scatter(x, y, size.value_or(20.0));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["scatter3"] = [](const Array &x, const Array &y, const Array &z,
-                         sol::optional<double> size) {
+    plt["scatter3"] = [](const ins::Array &x, const ins::Array &y,
+                         const ins::Array &z, sol::optional<double> size) {
       try {
-        plot::scatter3(x, y, z, size.value_or(20.0));
+        ins::plot::scatter3(x, y, z, size.value_or(20.0));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["binscatter"] = [](const Array &x, const Array &y) {
+    plt["binscatter"] = [](const ins::Array &x, const ins::Array &y) {
       try {
-        plot::binscatter(x, y);
+        ins::plot::binscatter(x, y);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
     plt["bar"] = sol::overload(
-        [](const Array &y, sol::optional<double> w) {
+        [](const ins::Array &y, sol::optional<double> w) {
           try {
-            plot::bar(y, w.value_or(0.8));
+            ins::plot::bar(y, w.value_or(0.8));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y, sol::optional<double> w) {
+        [](const ins::Array &x, const ins::Array &y, sol::optional<double> w) {
           try {
-            plot::bar(x, y, w.value_or(0.8));
+            ins::plot::bar(x, y, w.value_or(0.8));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
     plt["barh"] = sol::overload(
-        [](const Array &y, sol::optional<double> w) {
+        [](const ins::Array &y, sol::optional<double> w) {
           try {
-            plot::barh(y, w.value_or(0.8));
+            ins::plot::barh(y, w.value_or(0.8));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y, sol::optional<double> w) {
+        [](const ins::Array &x, const ins::Array &y, sol::optional<double> w) {
           try {
-            plot::barh(x, y, w.value_or(0.8));
+            ins::plot::barh(x, y, w.value_or(0.8));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
     plt["barstacked"] = sol::overload(
-        [](const Array &Y) {
+        [](const ins::Array &Y) {
           try {
-            plot::barstacked(Y);
+            ins::plot::barstacked(Y);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &Y) {
+        [](const ins::Array &x, const ins::Array &Y) {
           try {
-            plot::barstacked(x, Y);
+            ins::plot::barstacked(x, Y);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
     plt["pareto"] = sol::overload(
-        [](const Array &y) {
+        [](const ins::Array &y) {
           try {
-            plot::pareto(y);
+            ins::plot::pareto(y);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y) {
+        [](const ins::Array &x, const ins::Array &y) {
           try {
-            plot::pareto(x, y);
+            ins::plot::pareto(x, y);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
 
-    plt["hist"] = [](const Array &data, sol::optional<int> bins) {
+    plt["hist"] = [](const ins::Array &data, sol::optional<int> bins) {
       try {
-        plot::hist(data, bins.value_or(10));
+        ins::plot::hist(data, bins.value_or(10));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["hist2"] = [](const Array &x, const Array &y, sol::optional<int> bins) {
+    plt["hist2"] = [](const ins::Array &x, const ins::Array &y,
+                      sol::optional<int> bins) {
       try {
-        plot::hist2(x, y, bins.value_or(10));
+        ins::plot::hist2(x, y, bins.value_or(10));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["boxplot"] = sol::overload(
-        [](const Array &data) {
+        [](const ins::Array &data) {
           try {
-            plot::boxplot(data);
+            ins::plot::boxplot(data);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &data, std::vector<std::string> groups) {
+        [](const ins::Array &data, std::vector<std::string> groups) {
           try {
-            plot::boxplot(data, groups);
+            ins::plot::boxplot(data, groups);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
-    plt["heatmap"] = [](const Array &data) {
+    plt["heatmap"] = [](const ins::Array &data) {
       try {
-        plot::heatmap(data);
+        ins::plot::heatmap(data);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
     plt["stem"] = sol::overload(
-        [](const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &y, sol::optional<std::string> fmt) {
           try {
-            plot::stem(y, fmt.value_or(""));
+            ins::plot::stem(y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y, sol::optional<std::string> fmt) {
+        [](const ins::Array &x, const ins::Array &y,
+           sol::optional<std::string> fmt) {
           try {
-            plot::stem(x, y, fmt.value_or(""));
+            ins::plot::stem(x, y, fmt.value_or(""));
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
-    plt["stem3"] = [](const Array &x, const Array &y, const Array &z,
-                      sol::optional<std::string> fmt) {
+    plt["stem3"] = [](const ins::Array &x, const ins::Array &y,
+                      const ins::Array &z, sol::optional<std::string> fmt) {
       try {
-        plot::stem3(x, y, z, fmt.value_or(""));
+        ins::plot::stem3(x, y, z, fmt.value_or(""));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
-    plt["contour"] = [](const Array &X, const Array &Y, const Array &Z,
-                        sol::optional<int> levels) {
+    plt["contour"] = [](const ins::Array &X, const ins::Array &Y,
+                        const ins::Array &Z, sol::optional<int> levels) {
       try {
-        plot::contour(X, Y, Z, levels.value_or(10));
+        ins::plot::contour(X, Y, Z, levels.value_or(10));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["contourf"] = [](const Array &X, const Array &Y, const Array &Z,
-                         sol::optional<int> levels) {
+    plt["contourf"] = [](const ins::Array &X, const ins::Array &Y,
+                         const ins::Array &Z, sol::optional<int> levels) {
       try {
-        plot::contourf(X, Y, Z, levels.value_or(10));
+        ins::plot::contourf(X, Y, Z, levels.value_or(10));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["pcolor"] = [](const Array &C) {
+    plt["pcolor"] = [](const ins::Array &C) {
       try {
-        plot::pcolor(C);
+        ins::plot::pcolor(C);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
-    plt["surf"] = [](const Array &X, const Array &Y, const Array &Z) {
+    plt["surf"] = [](const ins::Array &X, const ins::Array &Y,
+                     const ins::Array &Z) {
       try {
-        plot::surf(X, Y, Z);
+        ins::plot::surf(X, Y, Z);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["surfc"] = [](const Array &X, const Array &Y, const Array &Z) {
+    plt["surfc"] = [](const ins::Array &X, const ins::Array &Y,
+                      const ins::Array &Z) {
       try {
-        plot::surfc(X, Y, Z);
+        ins::plot::surfc(X, Y, Z);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["mesh"] = [](const Array &X, const Array &Y, const Array &Z) {
+    plt["mesh"] = [](const ins::Array &X, const ins::Array &Y,
+                     const ins::Array &Z) {
       try {
-        plot::mesh(X, Y, Z);
+        ins::plot::mesh(X, Y, Z);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["meshc"] = [](const Array &X, const Array &Y, const Array &Z) {
+    plt["meshc"] = [](const ins::Array &X, const ins::Array &Y,
+                      const ins::Array &Z) {
       try {
-        plot::meshc(X, Y, Z);
+        ins::plot::meshc(X, Y, Z);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["meshz"] = [](const Array &X, const Array &Y, const Array &Z) {
+    plt["meshz"] = [](const ins::Array &X, const ins::Array &Y,
+                      const ins::Array &Z) {
       try {
-        plot::meshz(X, Y, Z);
+        ins::plot::meshz(X, Y, Z);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["waterfall"] = [](const Array &X, const Array &Y, const Array &Z) {
+    plt["waterfall"] = [](const ins::Array &X, const ins::Array &Y,
+                          const ins::Array &Z) {
       try {
-        plot::waterfall(X, Y, Z);
+        ins::plot::waterfall(X, Y, Z);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["ribbon"] = sol::overload(
-        [](const Array &y) {
+        [](const ins::Array &y) {
           try {
-            plot::ribbon(y);
+            ins::plot::ribbon(y);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, const Array &y) {
+        [](const ins::Array &x, const ins::Array &y) {
           try {
-            plot::ribbon(x, y);
+            ins::plot::ribbon(x, y);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
-    plt["fence"] = [](const Array &X, const Array &Y, const Array &Z) {
+    plt["fence"] = [](const ins::Array &X, const ins::Array &Y,
+                      const ins::Array &Z) {
       try {
-        plot::fence(X, Y, Z);
+        ins::plot::fence(X, Y, Z);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
-    plt["quiver"] = [](const Array &X, const Array &Y, const Array &U,
-                       const Array &V, sol::optional<double> scale) {
+    plt["quiver"] = [](const ins::Array &X, const ins::Array &Y,
+                       const ins::Array &U, const ins::Array &V,
+                       sol::optional<double> scale) {
       try {
-        plot::quiver(X, Y, U, V, scale.value_or(1.0));
+        ins::plot::quiver(X, Y, U, V, scale.value_or(1.0));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["quiver3"] = [](const Array &X, const Array &Y, const Array &Z,
-                        const Array &U, const Array &V, const Array &W) {
+    plt["quiver3"] = [](const ins::Array &X, const ins::Array &Y,
+                        const ins::Array &Z, const ins::Array &U,
+                        const ins::Array &V, const ins::Array &W) {
       try {
-        plot::quiver3(X, Y, Z, U, V, W);
+        ins::plot::quiver3(X, Y, Z, U, V, W);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["feather"] = [](const Array &u, const Array &v) {
+    plt["feather"] = [](const ins::Array &u, const ins::Array &v) {
       try {
-        plot::feather(u, v);
+        ins::plot::feather(u, v);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
-    plt["polarplot"] = [](const Array &theta, const Array &rho,
+    plt["polarplot"] = [](const ins::Array &theta, const ins::Array &rho,
                           sol::optional<std::string> fmt) {
       try {
-        plot::polarplot(theta, rho, fmt.value_or(""));
+        ins::plot::polarplot(theta, rho, fmt.value_or(""));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["polarscatter"] = [](const Array &theta, const Array &rho,
+    plt["polarscatter"] = [](const ins::Array &theta, const ins::Array &rho,
                              sol::optional<double> size) {
       try {
-        plot::polarscatter(theta, rho, size.value_or(20.0));
+        ins::plot::polarscatter(theta, rho, size.value_or(20.0));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["polarhistogram"] = [](const Array &data, sol::optional<int> bins) {
+    plt["polarhistogram"] = [](const ins::Array &data,
+                               sol::optional<int> bins) {
       try {
-        plot::polarhistogram(data, bins.value_or(10));
+        ins::plot::polarhistogram(data, bins.value_or(10));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["compass"] = [](const Array &u, const Array &v) {
+    plt["compass"] = [](const ins::Array &u, const ins::Array &v) {
       try {
-        plot::compass(u, v);
+        ins::plot::compass(u, v);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["ezpolar"] = [](const std::string &expr) {
       try {
-        plot::ezpolar(expr);
+        ins::plot::ezpolar(expr);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
     plt["pie"] = sol::overload(
-        [](const Array &x) {
+        [](const ins::Array &x) {
           try {
-            plot::pie(x);
+            ins::plot::pie(x);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         },
-        [](const Array &x, std::vector<std::string> labels) {
+        [](const ins::Array &x, std::vector<std::string> labels) {
           try {
-            plot::pie(x, labels);
+            ins::plot::pie(x, labels);
           } catch (const std::exception &e) {
             throw sol::error(e.what());
           }
         });
 
-    plt["imshow"] = [](const Array &data) {
+    plt["imshow"] = [](const ins::Array &data) {
       try {
-        plot::imshow(data);
+        ins::plot::imshow(data);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["image"] = [](const Array &data) {
+    plt["image"] = [](const ins::Array &data) {
       try {
-        plot::image(data);
+        ins::plot::image(data);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["imagesc"] = [](const Array &data) {
+    plt["imagesc"] = [](const ins::Array &data) {
       try {
-        plot::imagesc(data);
+        ins::plot::imagesc(data);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
@@ -1967,28 +2062,28 @@ extern "C" int luaopen__insight(lua_State *L) {
 
     plt["graph"] = [](const std::vector<int> &s, const std::vector<int> &t) {
       try {
-        plot::graph(s, t);
+        ins::plot::graph(s, t);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["digraph"] = [](const std::vector<int> &s, const std::vector<int> &t) {
       try {
-        plot::digraph(s, t);
+        ins::plot::digraph(s, t);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["parallelplot"] = [](const Array &data) {
+    plt["parallelplot"] = [](const ins::Array &data) {
       try {
-        plot::parallelplot(data);
+        ins::plot::parallelplot(data);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["plotmatrix"] = [](const Array &X) {
+    plt["plotmatrix"] = [](const ins::Array &X) {
       try {
-        plot::plotmatrix(X);
+        ins::plot::plotmatrix(X);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
@@ -1996,14 +2091,14 @@ extern "C" int luaopen__insight(lua_State *L) {
     plt["wordcloud"] = [](const std::vector<std::string> &w,
                           const std::vector<double> &s) {
       try {
-        plot::wordcloud(w, s);
+        ins::plot::wordcloud(w, s);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["rgbplot"] = [](const Array &data) {
+    plt["rgbplot"] = [](const ins::Array &data) {
       try {
-        plot::rgbplot(data);
+        ins::plot::rgbplot(data);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
@@ -2011,42 +2106,42 @@ extern "C" int luaopen__insight(lua_State *L) {
 
     plt["title"] = [](const std::string &text) {
       try {
-        plot::title(text);
+        ins::plot::title(text);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["subtitle"] = [](const std::string &text) {
       try {
-        plot::subtitle(text);
+        ins::plot::subtitle(text);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["xlabel"] = [](const std::string &text) {
       try {
-        plot::xlabel(text);
+        ins::plot::xlabel(text);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["ylabel"] = [](const std::string &text) {
       try {
-        plot::ylabel(text);
+        ins::plot::ylabel(text);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["zlabel"] = [](const std::string &text) {
       try {
-        plot::zlabel(text);
+        ins::plot::zlabel(text);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["legend"] = [](const std::vector<std::string> &labels) {
       try {
-        plot::legend(labels);
+        ins::plot::legend(labels);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
@@ -2054,56 +2149,56 @@ extern "C" int luaopen__insight(lua_State *L) {
 
     plt["xlim"] = [](double xmin, double xmax) {
       try {
-        plot::xlim(xmin, xmax);
+        ins::plot::xlim(xmin, xmax);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["ylim"] = [](double ymin, double ymax) {
       try {
-        plot::ylim(ymin, ymax);
+        ins::plot::ylim(ymin, ymax);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["zlim"] = [](double zmin, double zmax) {
       try {
-        plot::zlim(zmin, zmax);
+        ins::plot::zlim(zmin, zmax);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["axis_equal"] = []() {
       try {
-        plot::axis_equal();
+        ins::plot::axis_equal();
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["axis_tight"] = []() {
       try {
-        plot::axis_tight();
+        ins::plot::axis_tight();
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["axis_off"] = []() {
       try {
-        plot::axis_off();
+        ins::plot::axis_off();
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["axis_ij"] = []() {
       try {
-        plot::axis_ij();
+        ins::plot::axis_ij();
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["grid"] = [](bool on) {
       try {
-        plot::grid(on);
+        ins::plot::grid(on);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
@@ -2111,64 +2206,64 @@ extern "C" int luaopen__insight(lua_State *L) {
 
     plt["xticks"] = [](const std::vector<double> &t) {
       try {
-        plot::xticks(t);
+        ins::plot::xticks(t);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["yticks"] = [](const std::vector<double> &t) {
       try {
-        plot::yticks(t);
+        ins::plot::yticks(t);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["zticks"] = [](const std::vector<double> &t) {
       try {
-        plot::zticks(t);
+        ins::plot::zticks(t);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["xticklabels"] = [](const std::vector<std::string> &l) {
       try {
-        plot::xticklabels(l);
+        ins::plot::xticklabels(l);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["yticklabels"] = [](const std::vector<std::string> &l) {
       try {
-        plot::yticklabels(l);
+        ins::plot::yticklabels(l);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["xtickangle"] = [](double angle) {
+    plt["xtickangle"] = [](double angle_val) {
       try {
-        plot::xtickangle(angle);
+        ins::plot::xtickangle(angle_val);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
-    plt["ytickangle"] = [](double angle) {
+    plt["ytickangle"] = [](double angle_val) {
       try {
-        plot::ytickangle(angle);
+        ins::plot::ytickangle(angle_val);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
 
-    plt["colormap"] = [](plot::Colormap cmap) {
+    plt["colormap"] = [](ins::plot::Colormap cmap) {
       try {
-        plot::colormap(cmap);
+        ins::plot::colormap(cmap);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["colorbar"] = [](sol::optional<bool> on) {
       try {
-        plot::colorbar(on.value_or(true));
+        ins::plot::colorbar(on.value_or(true));
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
@@ -2176,35 +2271,35 @@ extern "C" int luaopen__insight(lua_State *L) {
 
     plt["text"] = [](double x, double y, const std::string &s) {
       try {
-        plot::text(x, y, s);
+        ins::plot::text(x, y, s);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["arrow"] = [](double x1, double y1, double x2, double y2) {
       try {
-        plot::arrow(x1, y1, x2, y2);
+        ins::plot::arrow(x1, y1, x2, y2);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["rectangle"] = [](double x, double y, double w, double h) {
       try {
-        plot::rectangle(x, y, w, h);
+        ins::plot::rectangle(x, y, w, h);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["ellipse"] = [](double cx, double cy, double rx, double ry) {
       try {
-        plot::ellipse(cx, cy, rx, ry);
+        ins::plot::ellipse(cx, cy, rx, ry);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
     };
     plt["view"] = [](double az, double el) {
       try {
-        plot::view(az, el);
+        ins::plot::view(az, el);
       } catch (const std::exception &e) {
         throw sol::error(e.what());
       }
@@ -2215,130 +2310,147 @@ extern "C" int luaopen__insight(lua_State *L) {
   // ====================================================================
   // Random
   // ====================================================================
-  m["rand"] = [](sol::table shape, sol::optional<DType> dtype,
-                 sol::optional<Place> place) {
-    return rand(Shape(table_to_shape(shape)), dtype.value_or(DType::F32),
-                place.value_or(get_device()));
+  m["rand"] = [](sol::table shape, sol::optional<ins::DType> dtype,
+                 sol::optional<ins::Place> place) {
+    return ins::rand(ins::Shape(table_to_shape(shape)),
+                     dtype.value_or(ins::DType::F32),
+                     place.value_or(ins::get_device()));
   };
-  m["randn"] = [](sol::table shape, sol::optional<DType> dtype,
-                  sol::optional<Place> place) {
-    return randn(Shape(table_to_shape(shape)), dtype.value_or(DType::F32),
-                 place.value_or(get_device()));
+  m["randn"] = [](sol::table shape, sol::optional<ins::DType> dtype,
+                  sol::optional<ins::Place> place) {
+    return ins::randn(ins::Shape(table_to_shape(shape)),
+                      dtype.value_or(ins::DType::F32),
+                      place.value_or(ins::get_device()));
   };
   m["randint"] = [](int64_t low, int64_t high, sol::table shape,
-                    sol::optional<DType> dtype, sol::optional<Place> place) {
-    return randint(low, high, Shape(table_to_shape(shape)),
-                   dtype.value_or(DType::I64), place.value_or(get_device()));
+                    sol::optional<ins::DType> dtype,
+                    sol::optional<ins::Place> place) {
+    return ins::randint(low, high, ins::Shape(table_to_shape(shape)),
+                        dtype.value_or(ins::DType::I64),
+                        place.value_or(ins::get_device()));
   };
-  m["randperm"] = [](int64_t n, sol::optional<DType> dtype,
-                     sol::optional<Place> place) {
-    return randperm(n, dtype.value_or(DType::I64),
-                    place.value_or(get_device()));
+  m["randperm"] = [](int64_t n, sol::optional<ins::DType> dtype,
+                     sol::optional<ins::Place> place) {
+    return ins::randperm(n, dtype.value_or(ins::DType::I64),
+                         place.value_or(ins::get_device()));
   };
-  m["seed"] = [](uint64_t s) { return seed(s); };
-  m["get_seed"] = []() { return get_seed(); };
-  m["rand_like"] = [](const Array &x) { return rand_like(x); };
-  m["randn_like"] = [](const Array &x) { return randn_like(x); };
+  m["seed"] = [](uint64_t s) { return ins::seed(s); };
+  m["get_seed"] = []() { return ins::get_seed(); };
+  m["rand_like"] = [](const ins::Array &x) { return ins::rand_like(x); };
+  m["randn_like"] = [](const ins::Array &x) { return ins::randn_like(x); };
   m["exponential"] = [](double scale, sol::table shape,
-                        sol::optional<DType> dtype,
-                        sol::optional<Place> place) {
-    return exponential(scale, Shape(table_to_shape(shape)),
-                       dtype.value_or(DType::F32),
-                       place.value_or(get_device()));
+                        sol::optional<ins::DType> dtype,
+                        sol::optional<ins::Place> place) {
+    return ins::exponential(scale, ins::Shape(table_to_shape(shape)),
+                            dtype.value_or(ins::DType::F32),
+                            place.value_or(ins::get_device()));
   };
   m["gamma"] = [](double shape_param, double rate, sol::table shape,
-                  sol::optional<DType> dtype, sol::optional<Place> place) {
-    return gamma(shape_param, rate, Shape(table_to_shape(shape)),
-                 dtype.value_or(DType::F32), place.value_or(get_device()));
+                  sol::optional<ins::DType> dtype,
+                  sol::optional<ins::Place> place) {
+    return ins::gamma(shape_param, rate, ins::Shape(table_to_shape(shape)),
+                      dtype.value_or(ins::DType::F32),
+                      place.value_or(ins::get_device()));
   };
   m["beta"] = [](double a, double b, sol::table shape,
-                 sol::optional<DType> dtype, sol::optional<Place> place) {
-    return beta(a, b, Shape(table_to_shape(shape)), dtype.value_or(DType::F32),
-                place.value_or(get_device()));
+                 sol::optional<ins::DType> dtype,
+                 sol::optional<ins::Place> place) {
+    return ins::beta(a, b, ins::Shape(table_to_shape(shape)),
+                     dtype.value_or(ins::DType::F32),
+                     place.value_or(ins::get_device()));
   };
   m["binomial"] = [](int64_t n, double p, sol::table shape,
-                     sol::optional<DType> dtype, sol::optional<Place> place) {
-    return binomial(n, p, Shape(table_to_shape(shape)),
-                    dtype.value_or(DType::I64), place.value_or(get_device()));
+                     sol::optional<ins::DType> dtype,
+                     sol::optional<ins::Place> place) {
+    return ins::binomial(n, p, ins::Shape(table_to_shape(shape)),
+                         dtype.value_or(ins::DType::I64),
+                         place.value_or(ins::get_device()));
   };
-  m["poisson"] = [](double lam, sol::table shape, sol::optional<DType> dtype,
-                    sol::optional<Place> place) {
-    return poisson(lam, Shape(table_to_shape(shape)),
-                   dtype.value_or(DType::I64), place.value_or(get_device()));
+  m["poisson"] = [](double lam, sol::table shape,
+                    sol::optional<ins::DType> dtype,
+                    sol::optional<ins::Place> place) {
+    return ins::poisson(lam, ins::Shape(table_to_shape(shape)),
+                        dtype.value_or(ins::DType::I64),
+                        place.value_or(ins::get_device()));
   };
 
   // ====================================================================
   // Cast
   // ====================================================================
-  m["cast"] = [](const Array &input, DType target_dtype,
+  m["cast"] = [](const ins::Array &input, ins::DType target_dtype,
                  sol::optional<bool> copy) {
-    return cast(input, target_dtype, copy.value_or(true));
+    return ins::cast(input, target_dtype, copy.value_or(true));
   };
 
   // ====================================================================
   // Indexing
   // ====================================================================
-  sol::usertype<UniqueResult> ur_type = m.new_usertype<UniqueResult>(
-      "UniqueResult", sol::constructors<UniqueResult()>());
-  ur_type["unique"] = &UniqueResult::unique;
-  ur_type["indices"] = &UniqueResult::indices;
-  ur_type["inverse"] = &UniqueResult::inverse;
-  ur_type["counts"] = &UniqueResult::counts;
+  sol::usertype<ins::UniqueResult> ur_type = m.new_usertype<ins::UniqueResult>(
+      "UniqueResult", sol::constructors<ins::UniqueResult()>());
+  ur_type["unique"] = &ins::UniqueResult::unique;
+  ur_type["indices"] = &ins::UniqueResult::indices;
+  ur_type["inverse"] = &ins::UniqueResult::inverse;
+  ur_type["counts"] = &ins::UniqueResult::counts;
 
-  m["take"] = &take;
-  m["nonzero"] = &nonzero;
-  m["flatnonzero"] = &flatnonzero;
-  m["masked_select"] = &masked_select;
-  m["argsort"] = [](const Array &x, sol::optional<int> axis,
+  m["take"] = &ins::take;
+  m["nonzero"] = &ins::nonzero;
+  m["flatnonzero"] = &ins::flatnonzero;
+  m["masked_select"] = &ins::masked_select;
+  m["argsort"] = [](const ins::Array &x, sol::optional<int> axis,
                     sol::optional<bool> descending) {
-    return argsort(x, axis.value_or(-1), descending.value_or(false));
+    return ins::argsort(x, axis.value_or(-1), descending.value_or(false));
   };
-  m["searchsorted"] = [](const Array &x, const Array &v,
+  m["searchsorted"] = [](const ins::Array &x, const ins::Array &v,
                          sol::optional<std::string> side) {
-    return searchsorted(x, v, side.value_or("left"));
+    return ins::searchsorted(x, v, side.value_or("left"));
   };
-  m["sort"] = [](const Array &x, sol::optional<int> axis,
+  m["sort"] = [](const ins::Array &x, sol::optional<int> axis,
                  sol::optional<bool> descending) {
-    return sort(x, axis.value_or(-1), descending.value_or(false));
+    return ins::sort(x, axis.value_or(-1), descending.value_or(false));
   };
-  m["unique"] = [](const Array &x, sol::optional<bool> return_indices,
+  m["unique"] = [](const ins::Array &x, sol::optional<bool> return_indices,
                    sol::optional<bool> return_inverse,
                    sol::optional<bool> return_counts) {
-    return unique(x, return_indices.value_or(false),
-                  return_inverse.value_or(false),
-                  return_counts.value_or(false));
+    return ins::unique(x, return_indices.value_or(false),
+                       return_inverse.value_or(false),
+                       return_counts.value_or(false));
   };
-  m["topk"] = [](const Array &x, int64_t k, sol::optional<int> axis,
+  m["topk"] = [](const ins::Array &x, int64_t k, sol::optional<int> axis,
                  sol::optional<bool> largest, sol::optional<bool> sorted) {
-    return topk(x, k, axis.value_or(-1), largest.value_or(true),
-                sorted.value_or(true));
+    return ins::topk(x, k, axis.value_or(-1), largest.value_or(true),
+                     sorted.value_or(true));
   };
-  m["gather"] = [](const Array &x, int dim, const Array &index) {
-    return gather(x, dim, index);
+  m["gather"] = [](const ins::Array &x, int dim, const ins::Array &index) {
+    return ins::gather(x, dim, index);
   };
-  m["scatter"] = [](const Array &x, int dim, const Array &index,
-                    const Array &src) { return scatter(x, dim, index, src); };
-  m["scatter_add"] = [](const Array &x, int dim, const Array &index,
-                        const Array &src) {
-    return scatter_add(x, dim, index, src);
+  m["scatter"] = [](const ins::Array &x, int dim, const ins::Array &index,
+                    const ins::Array &src) {
+    return ins::scatter(x, dim, index, src);
   };
-  m["scatter_reduce"] = [](const Array &x, int dim, const Array &index,
-                           const Array &src,
+  m["scatter_add"] = [](const ins::Array &x, int dim, const ins::Array &index,
+                        const ins::Array &src) {
+    return ins::scatter_add(x, dim, index, src);
+  };
+  m["scatter_reduce"] = [](const ins::Array &x, int dim,
+                           const ins::Array &index, const ins::Array &src,
                            sol::optional<std::string> reduce) {
-    return scatter_reduce(x, dim, index, src, reduce.value_or("replace"));
+    return ins::scatter_reduce(x, dim, index, src, reduce.value_or("replace"));
   };
-  m["interp"] = [](const Array &x, const Array &xp, const Array &fp,
-                   sol::optional<double> left, sol::optional<double> right) {
+  m["interp"] = [](const ins::Array &x, const ins::Array &xp,
+                   const ins::Array &fp, sol::optional<double> left,
+                   sol::optional<double> right) {
     std::optional<double> l =
         left ? std::optional<double>(*left) : std::nullopt;
     std::optional<double> r =
         right ? std::optional<double>(*right) : std::nullopt;
-    return interp(x, xp, fp, l, r);
+    return ins::interp(x, xp, fp, l, r);
   };
-  m["indices"] = [](const Shape &shape, sol::optional<bool> sparse) {
-    return indices(shape, sparse.value_or(false));
+  m["indices"] = [](const ins::Shape &shape, sol::optional<bool> sparse) {
+    return ins::indices(shape, sparse.value_or(false));
   };
-  m["ix_"] = [](sol::table arrays) { return ix_(table_to_arrays(arrays)); };
+  m["ix_"] = [](sol::table arrays) {
+    return ins::ix_(table_to_arrays(arrays));
+  };
 
   // Push module table onto stack
   sol::stack::push(lua, m);

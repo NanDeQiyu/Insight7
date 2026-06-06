@@ -209,8 +209,8 @@ def topk(
 
 def gather(
     x: "Array",
-    dim: int,
     index: "Array",
+    dim: int,
 ) -> "Array":
     """Gather values along an axis using indices.
 
@@ -219,9 +219,9 @@ def gather(
 
     Args:
         x: Input array.
-        dim: Axis along which to gather.
         index: Array of indices (must have the same number of
             dimensions as ``x``).
+        dim: Axis along which to gather.
 
     Returns:
         Array with the same shape as ``index``, containing the
@@ -232,9 +232,9 @@ def gather(
 
 def scatter(
     x: "Array",
-    dim: int,
     index: "Array",
     src: "Array",
+    dim: int,
 ) -> "Array":
     """Scatter values into an array at the given indices.
 
@@ -243,9 +243,9 @@ def scatter(
 
     Args:
         x: Input array (defines the output shape).
-        dim: Axis along which to scatter.
         index: Array of indices.
         src: Source values to scatter.
+        dim: Axis along which to scatter.
 
     Returns:
         Array with the same shape as ``x``, with values from ``src``
@@ -256,9 +256,9 @@ def scatter(
 
 def scatter_add(
     x: "Array",
-    dim: int,
     index: "Array",
     src: "Array",
+    dim: int,
 ) -> "Array":
     """Scatter-add values into an array at the given indices.
 
@@ -267,9 +267,9 @@ def scatter_add(
 
     Args:
         x: Input array (defines the output shape).
-        dim: Axis along which to scatter.
         index: Array of indices.
         src: Source values to add.
+        dim: Axis along which to scatter.
 
     Returns:
         Array with the same shape as ``x``, with values from ``src``
@@ -280,20 +280,20 @@ def scatter_add(
 
 def scatter_reduce(
     x: "Array",
-    dim: int,
     index: "Array",
     src: "Array",
     reduce: str = "replace",
+    dim: int = 0,
 ) -> "Array":
     """Scatter values into an array with a reduction operation.
 
     Args:
         x: Input array (defines the output shape).
-        dim: Axis along which to scatter.
         index: Array of indices.
         src: Source values.
         reduce: Reduction mode. One of ``'replace'``, ``'add'``,
             ``'mul'``, ``'max'``, ``'min'``.
+        dim: Axis along which to scatter.
 
     Returns:
         Array with the same shape as ``x``, with values from ``src``

@@ -64,7 +64,7 @@ class TestCastCPU:
     def test_cast_preserves_shape(self):
         a = ins.from_numpy(np.array([[1, 2], [3, 4]], dtype=np.float64))
         b = ins.cast(a, ins.float32)
-        assert b.numel() == 4
+        assert b.numel == 4
 
     def test_cast_idempotent(self):
         a = ins.from_numpy(np.array([1.5, 2.5], dtype=np.float64))

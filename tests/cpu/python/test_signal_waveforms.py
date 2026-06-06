@@ -108,7 +108,7 @@ class TestUnitImpulse:
 
     def test_unit_impulse_center(self):
         y = ins.signal.unit_impulse(ins.Shape([11]))
-        assert y.numel() == 11
+        assert y.numel == 11
         d = y.numpy()
         for i in range(11):
             if i == 5:

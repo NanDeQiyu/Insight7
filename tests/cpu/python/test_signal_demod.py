@@ -29,7 +29,7 @@ class TestSignalDemodCPU:
         x = ins.from_numpy(x_np)
         result = ins.signal.fm_demod(x)
         assert result is not None
-        assert result.numel() > 0
+        assert result.numel > 0
 
     def test_fm_demod_output_length(self):
         x_np = self._make_fm_signal(n=256)
@@ -37,7 +37,7 @@ class TestSignalDemodCPU:
         result = ins.signal.fm_demod(x)
         assert result is not None
         # diff reduces length by 1: 256 -> 255
-        assert result.numel() == 255
+        assert result.numel == 255
 
     def test_fm_demod_bounded(self):
         x_np = self._make_fm_signal(n=1024, deviation=10.0)

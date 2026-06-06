@@ -40,13 +40,13 @@ class TestSignalAcousticsCUDA:
         mel = to_gpu(np.array([0.0, 1000.0, 2000.0]))
         hz = ins.signal.mel2hz(mel)
         assert hz is not None
-        assert hz.numel() == 3
+        assert hz.numel == 3
 
     def test_hz2mel(self):
         hz = to_gpu(np.array([0.0, 1000.0, 4000.0]))
         mel = ins.signal.hz2mel(hz)
         assert mel is not None
-        assert mel.numel() == 3
+        assert mel.numel == 3
 
     def test_mel_roundtrip(self):
         hz_orig = np.array([100.0, 500.0, 1000.0, 4000.0, 8000.0])
@@ -58,25 +58,25 @@ class TestSignalAcousticsCUDA:
         freqs = ins.signal.mel_frequencies(128, fmin=0.0, fmax=11025.0)
         freqs_gpu = freqs.to(GPU)
         assert freqs_gpu is not None
-        assert freqs_gpu.numel() == 128
+        assert freqs_gpu.numel == 128
 
     def test_mel_frequencies_custom(self):
         freqs = ins.signal.mel_frequencies(64, fmin=20.0, fmax=8000.0)
         freqs_gpu = freqs.to(GPU)
         assert freqs_gpu is not None
-        assert freqs_gpu.numel() == 64
+        assert freqs_gpu.numel == 64
 
     def test_hz2bark(self):
         hz = to_gpu(np.array([100.0, 500.0, 2000.0]))
         bark = ins.signal.hz2bark(hz)
         assert bark is not None
-        assert bark.numel() == 3
+        assert bark.numel == 3
 
     def test_bark2hz(self):
         bark = to_gpu(np.array([1.0, 5.0, 15.0]))
         hz = ins.signal.bark2hz(bark)
         assert hz is not None
-        assert hz.numel() == 3
+        assert hz.numel == 3
 
     def test_bark_roundtrip(self):
         hz_orig = np.array([100.0, 500.0, 2000.0, 6000.0])

@@ -38,17 +38,21 @@ Array unwrap(const Array &p, int axis, double discont, double period) {
   // Calculate the difference
   Array diff_p = diff(p, 1, ax);
 
+  // All intermediate arrays must be on the same device as the input
+  const Place &dev = p.place();
+
   // Detect transitions
-  Array jumps =
-      greater_than(abs(diff_p), full(diff_p.shape(), discont, diff_p.dtype()));
+  Array jumps = greater_than(
+      abs(diff_p), full(diff_p.shape(), discont, diff_p.dtype(), dev));
 
   // correction sign
-  Array correction_step = where(
-      jumps,
-      where(greater_than(diff_p, full(diff_p.shape(), discont, diff_p.dtype())),
-            full(diff_p.shape(), -period, diff_p.dtype()),
-            full(diff_p.shape(), period, diff_p.dtype())),
-      zeros_like(diff_p));
+  Array correction_step =
+      where(jumps,
+            where(greater_than(diff_p, full(diff_p.shape(), discont,
+                                            diff_p.dtype(), dev)),
+                  full(diff_p.shape(), -period, diff_p.dtype(), dev),
+                  full(diff_p.shape(), period, diff_p.dtype(), dev)),
+            zeros_like(diff_p));
 
   // Cumulative correction amount
   Array cumulative = cumsum(correction_step, ax);

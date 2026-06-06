@@ -37,7 +37,7 @@ def run_fft_cpu():
 
     # RFFT -> IRFFT roundtrip
     X = ins.rfft(x)
-    print(f"RFFT output length: {X.numel()} (complex)")
+    print(f"RFFT output length: {X.numel} (complex)")
 
     x_recon = ins.irfft(X, n=n)
     print(f"Reconstructed signal (first 8): {x_recon[:8]}")

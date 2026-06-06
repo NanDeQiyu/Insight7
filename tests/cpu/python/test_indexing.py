@@ -25,12 +25,12 @@ class TestIndexingCPU:
     def test_nonzero(self):
         a = ins.from_numpy(np.array([0, 1, 0, 3, 0], dtype=np.float64))
         result = ins.nonzero(a)
-        assert result.numel() > 0
+        assert result.numel > 0
 
     def test_flatnonzero(self):
         a = ins.from_numpy(np.array([[0, 1], [2, 0]], dtype=np.float64))
         result = ins.flatnonzero(a)
-        assert result.numel() == 2
+        assert result.numel == 2
 
     def test_unique_1d(self):
         a = ins.from_numpy(np.array([3, 1, 2, 1, 3, 2], dtype=np.float64))
@@ -66,22 +66,22 @@ class TestIndexingCPU:
     def test_gather(self):
         a = ins.from_numpy(np.array([[10, 20], [30, 40]], dtype=np.float64))
         idx = ins.from_numpy(np.array([[0, 1], [1, 0]], dtype=np.int64))
-        result = ins.gather(a, 0, idx)
-        assert result.numel() == 4
+        result = ins.gather(a, idx, 0)
+        assert result.numel == 4
 
     def test_scatter(self):
         a = ins.from_numpy(np.zeros([4], dtype=np.float64))
         idx = ins.from_numpy(np.array([0, 2], dtype=np.int64))
         src = ins.from_numpy(np.array([10, 20], dtype=np.float64))
-        result = ins.scatter(a, 0, idx, src)
-        assert result.numel() == 4
+        result = ins.scatter(a, idx, src, 0)
+        assert result.numel == 4
 
     def test_scatter_add(self):
         a = ins.from_numpy(np.zeros([4], dtype=np.float64))
         idx = ins.from_numpy(np.array([0, 0, 2], dtype=np.int64))
         src = ins.from_numpy(np.array([1, 2, 3], dtype=np.float64))
-        result = ins.scatter_add(a, 0, idx, src)
-        assert result.numel() == 4
+        result = ins.scatter_add(a, idx, src, 0)
+        assert result.numel == 4
         data = result.numpy()
         assert data[0] == pytest.approx(3.0)
 
@@ -104,7 +104,7 @@ class TestIndexingCPU:
         a = ins.from_numpy(np.array([1, 2, 3, 4, 5], dtype=np.float64))
         mask = ins.from_numpy(np.array([True, False, True, False, True], dtype=np.bool_))
         result = ins.masked_select(a, mask)
-        assert result.numel() == 3
+        assert result.numel == 3
 
     def test_where(self):
         cond = ins.from_numpy(np.array([True, False, True], dtype=np.bool_))
@@ -115,17 +115,17 @@ class TestIndexingCPU:
 
     def test_indices(self):
         result = ins.indices(ins.Shape([2, 3]))
-        assert result.numel() > 0
+        assert result.numel > 0
 
     def test_sort_2d(self):
         a = ins.from_numpy(np.array([[3, 1], [2, 4]], dtype=np.float64))
         result = ins.sort(a)
-        assert result.numel() == 4
+        assert result.numel == 4
 
     def test_argsort_2d(self):
         a = ins.from_numpy(np.array([[3, 1], [2, 4]], dtype=np.float64))
         result = ins.argsort(a)
-        assert result.numel() == 4
+        assert result.numel == 4
 
     def test_topk_smallest(self):
         a = ins.from_numpy(np.array([1, 5, 3, 2, 4], dtype=np.float64))

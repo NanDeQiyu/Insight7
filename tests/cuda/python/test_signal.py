@@ -53,7 +53,7 @@ class TestUnwrap:
         data = [0.0, math.pi / 2, math.pi, 3 * math.pi / 2, 0.1, math.pi / 2, 3.2, 3.3]
         a = ins.from_numpy(np.array(data, dtype=np.float64).reshape(2, 4))
         u = ins.unwrap(a, axis=1)
-        assert u.numel() == 8
+        assert u.numel == 8
         u_np = u.numpy()
         np.testing.assert_allclose(u_np[0], [0.0, math.pi / 2, math.pi, 3 * math.pi / 2], atol=1e-6)
 
@@ -126,7 +126,7 @@ class TestCorrelate:
         b = ins.from_numpy(b_np)
         try:
             c = ins.signal.correlate(a, b, "full")
-            assert c.numel() == 4
+            assert c.numel == 4
         except RuntimeError:
             pytest.skip("correlate requires FFTW3")
 

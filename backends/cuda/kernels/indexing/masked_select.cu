@@ -4,12 +4,11 @@
  * @brief CUDA kernel for masked_select operation.
  *
  * Returns elements selected by a boolean mask.
- * Uses CPU fallback.
+ * Uses CPU fallback with dtype-aware byte copy.
  */
 
 #include "../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
-#include <cstdlib>
 #include <cstring>
 #include <cuda_runtime.h>
 
@@ -26,11 +25,16 @@ C_Status masked_select_kernel_gpu(void **inputs, void **outputs) {
   }
 
   int64_t n = x->numel;
+  size_t elem_size = insight_dtype_size(x->dtype);
+  if (elem_size == 0) {
+    gpu_set_last_error("masked_select: unknown dtype");
+    return C_FAILED;
+  }
 
   // Copy inputs to CPU
-  float *x_data = new float[n];
+  char *x_data = new char[n * elem_size];
   bool *mask_data = new bool[n];
-  cudaMemcpy(x_data, x->data, n * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaMemcpy(x_data, x->data, n * elem_size, cudaMemcpyDeviceToHost);
   cudaMemcpy(mask_data, mask->data, n * sizeof(bool), cudaMemcpyDeviceToHost);
 
   // Select elements where mask is true
@@ -41,18 +45,18 @@ C_Status masked_select_kernel_gpu(void **inputs, void **outputs) {
     }
   }
 
-  float *result = new float[count];
+  char *result = new char[count * elem_size];
   int64_t idx = 0;
   for (int64_t i = 0; i < n; ++i) {
     if (mask_data[i]) {
-      result[idx++] = x_data[i];
+      std::memcpy(result + idx * elem_size, x_data + i * elem_size, elem_size);
+      ++idx;
     }
   }
 
   // Copy result back to GPU
   if (count > 0) {
-    cudaMemcpy(out->data, result, count * sizeof(float),
-               cudaMemcpyHostToDevice);
+    cudaMemcpy(out->data, result, count * elem_size, cudaMemcpyHostToDevice);
   }
 
   delete[] result;
@@ -64,4 +68,20 @@ C_Status masked_select_kernel_gpu(void **inputs, void **outputs) {
 
 } // extern "C"
 
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_BOOL,
+                    masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_U8, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_I8, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_I16, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_I32, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_I64, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_U16, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_U32, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_U64, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_F16, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_BF16,
+                    masked_select_kernel_gpu);
 REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_F32, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_F64, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_C32, masked_select_kernel_gpu);
+REGISTER_GPU_KERNEL(masked_select, INSIGHT_DTYPE_C64, masked_select_kernel_gpu);

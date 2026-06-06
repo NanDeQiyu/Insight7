@@ -57,6 +57,8 @@ insight/
 
 ### Build from Source
 
+**Linux / macOS:**
+
 ```bash
 git clone https://github.com/PlumBlossomMaid/Insight7.git
 cd Insight7
@@ -68,6 +70,32 @@ cmake .. \
     -DINSIGHT_USE_OPENBLAS=ON
 cmake --build . -j$(nproc)
 ```
+
+**Windows (MSVC):**
+
+```powershell
+# Prerequisites: Visual Studio 2022+ (C++ workload), CMake 3.15+, Ninja
+# Install dependencies via vcpkg (recommended):
+#   vcpkg install fftw3:x64-windows openblas:x64-windows
+# Or download OpenBLAS from https://github.com/OpenMathLib/OpenBLAS/releases
+#   and extract to e.g. C:\deps\OpenBLAS-0.3.33-x64
+
+# Open VS Developer Command Prompt (x64)
+# Adjust path to match your Visual Studio installation:
+call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
+
+git clone https://github.com/PlumBlossomMaid/Insight7.git
+cd Insight7
+cmake -S . -B build -G Ninja ^
+    -DCMAKE_C_COMPILER=cl.exe ^
+    -DCMAKE_CXX_COMPILER=cl.exe ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DINSIGHT_WITH_CUDA=ON ^
+    -DCMAKE_PREFIX_PATH="C:/deps/OpenBLAS-0.3.33-x64;E:/vcpkg/installed/x64-windows"
+cmake --build build -j %NUMBER_OF_PROCESSORS%
+```
+
+> **Note:** For plot functionality, install [gnuplot](http://www.gnuplot.info/) and ensure it is in your `PATH`.
 
 ### Install Language Bindings
 

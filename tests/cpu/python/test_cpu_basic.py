@@ -29,38 +29,38 @@ class TestCreation:
 
     def test_zeros(self):
         a = ins.zeros([2, 3], ins.float32)
-        assert a.numel() == 6
+        assert a.numel == 6
         assert np.allclose(a.numpy(), 0)
 
     def test_ones(self):
         a = ins.ones([2, 3], ins.float32)
-        assert a.numel() == 6
+        assert a.numel == 6
         np.testing.assert_allclose(a.numpy(), np.ones([2, 3]))
 
     def test_full(self):
         a = ins.full([2, 3], 7.0, ins.float32)
-        assert a.numel() == 6
+        assert a.numel == 6
         np.testing.assert_allclose(a.numpy(), np.full([2, 3], 7.0))
 
     def test_eye(self):
         a = ins.eye(3)
-        assert a.numel() == 9
+        assert a.numel == 9
         np.testing.assert_allclose(a.numpy(), np.eye(3))
 
     def test_arange(self):
         a = ins.arange(10, ins.float32)
-        assert a.numel() == 10
+        assert a.numel == 10
         np.testing.assert_allclose(a.numpy(), np.arange(10, dtype=np.float32))
 
     def test_linspace(self):
         a = ins.linspace(0.0, 1.0, 5, ins.float64)
-        assert a.numel() == 5
+        assert a.numel == 5
         np.testing.assert_allclose(a.numpy(), np.linspace(0, 1, 5), rtol=1e-6)
 
     def test_from_numpy(self):
         data = np.array([1.5, 2.5, 3.5], dtype=np.float64)
         a = ins.from_numpy(data)
-        assert a.numel() == 3
+        assert a.numel == 3
         np.testing.assert_allclose(a.numpy(), data)
 
 
@@ -214,7 +214,7 @@ class TestManipulation:
     def test_reshape(self):
         a = ins.from_numpy(np.arange(6, dtype=np.float64))
         b = ins.reshape(a, [2, 3])
-        assert b.numel() == 6
+        assert b.numel == 6
 
     def test_transpose(self):
         a = ins.from_numpy(np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float64))
@@ -224,7 +224,7 @@ class TestManipulation:
     def test_squeeze(self):
         a = ins.from_numpy(np.zeros([1, 3, 1], dtype=np.float64))
         b = ins.squeeze(a)
-        assert b.numel() == 3
+        assert b.numel == 3
 
 
 # ============================================================================
@@ -290,7 +290,7 @@ class TestSignal:
 
     def test_hann(self):
         w = ins.signal.hann(16)
-        assert w.numel() == 16
+        assert w.numel == 16
         assert w.numpy()[0] == pytest.approx(0.0, abs=1e-5)
         assert w.numpy()[8] == pytest.approx(1.0, abs=1e-1)
 

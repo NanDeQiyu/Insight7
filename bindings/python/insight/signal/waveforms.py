@@ -5,6 +5,7 @@ Gaussian pulse, chirp, and unit impulse.
 """
 
 from insight._insight import signal as _signal
+from insight._insight import Shape
 
 __all__ = [
     "sawtooth",
@@ -135,6 +136,10 @@ def unit_impulse(shape, idx=None, dtype=None, place=None):
     Returns:
         Impulse array of the specified shape.
     """
+    if isinstance(shape, int):
+        shape = Shape([shape])
+    elif isinstance(shape, (list, tuple)):
+        shape = Shape(list(shape))
     kwargs = {}
     if idx is not None:
         kwargs["idx"] = idx

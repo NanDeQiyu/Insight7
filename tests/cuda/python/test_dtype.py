@@ -58,30 +58,30 @@ class TestDTypeCUDA:
     def test_cast_f32_to_f64(self):
         a = ins.ones([3], ins.float32).to(GPU)
         b = ins.cast(a, ins.float64)
-        assert b.dtype() == ins.float64
+        assert b.dtype == ins.float64
         np.testing.assert_allclose(to_numpy(b), np.ones(3, dtype=np.float64))
 
     def test_cast_f64_to_i32(self):
         a_np = np.array([1.9, 2.5, 3.1], dtype=np.float64)
         a = to_gpu(a_np)
         b = ins.cast(a, ins.int32)
-        assert b.dtype() == ins.int32
+        assert b.dtype == ins.int32
 
     def test_cast_i32_to_f32(self):
         a = to_gpu(np.array([1, 2, 3], dtype=np.int32))
         b = ins.cast(a, ins.float32)
-        assert b.dtype() == ins.float32
+        assert b.dtype == ins.float32
         np.testing.assert_allclose(to_numpy(b), [1.0, 2.0, 3.0])
 
     def test_cast_to_bool(self):
         a = to_gpu(np.array([0, 1, 2], dtype=np.float64))
         b = ins.cast(a, ins.bool)
-        assert b.dtype() == ins.bool
+        assert b.dtype == ins.bool
 
     def test_cast_i64_to_f64(self):
         a = to_gpu(np.array([100, 200, 300], dtype=np.int64))
         b = ins.cast(a, ins.float64)
-        assert b.dtype() == ins.float64
+        assert b.dtype == ins.float64
         np.testing.assert_allclose(to_numpy(b), [100.0, 200.0, 300.0])
 
     def test_cast_preserves_values(self):
@@ -93,9 +93,9 @@ class TestDTypeCUDA:
 
     def test_array_dtype_property(self):
         a = ins.zeros([3], ins.float32).to(GPU)
-        assert a.dtype() == ins.float32
+        assert a.dtype == ins.float32
         b = ins.zeros([3], ins.int64).to(GPU)
-        assert b.dtype() == ins.int64
+        assert b.dtype == ins.int64
 
 
 if __name__ == "__main__":

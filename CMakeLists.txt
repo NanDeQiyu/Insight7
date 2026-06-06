@@ -16,6 +16,8 @@ project(insight VERSION 1.0.0 LANGUAGES CXX)
 # ========== Options ==========
 option(INSIGHT_BUILD_TESTS "Build unit tests" ON)
 option(INSIGHT_WITH_CUDA "Enable CUDA backend" ON)
+option(INSIGHT_DYNAMIC_CPU_BACKEND "CPU backend is dynamically loaded" ON)
+option(INSIGHT_DYNAMIC_GPU_BACKEND "GPU backend is dynamically loaded" ON)
 
 # ========== CUDA language support (optional) ==========
 if(INSIGHT_WITH_CUDA)
@@ -39,6 +41,13 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# MSVC: enable M_PI, M_E, etc. from <cmath>
+if(MSVC)
+    add_compile_definitions(_USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
+    # /utf-8 only for CXX (not nvcc, which doesn't understand it)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/utf-8>)
+endif()
 
 # ========== Add custom CMake module path ==========
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -117,6 +126,11 @@ if(INSIGHT_USE_FFTW3)
     endif()
 else()
     message(STATUS "FFTW3 support disabled")
+endif()
+
+# FFTW3 include dir needs to be visible to consumers (CPU backend kernels)
+if(FFTW3_FOUND AND FFTW3_INCLUDE_DIRS)
+    target_include_directories(insight_core PUBLIC ${FFTW3_INCLUDE_DIRS})
 endif()
 
 # ========== libsndfile (audio I/O) ==========
@@ -294,9 +308,13 @@ if(INSIGHT_USE_SNDFILE)
         # The _resolve_dep macro already called MakeAvailable for non-local deps
         set(CMAKE_SKIP_INSTALL_RULES ${_saved_skip_install})
 
-        # Opus header symlink
+        # Opus header symlink (Windows: copy dir, Unix: symlink)
         if(NOT EXISTS "${_opus_src}/include/opus")
-            file(CREATE_LINK "${_opus_src}/include" "${_opus_src}/include/opus" SYMBOLIC)
+            if(WIN32)
+                file(COPY "${_opus_src}/include/" DESTINATION "${_opus_src}/include/opus")
+            else()
+                file(CREATE_LINK "${_opus_src}/include" "${_opus_src}/include/opus" SYMBOLIC)
+            endif()
         endif()
 
         # libsndfile

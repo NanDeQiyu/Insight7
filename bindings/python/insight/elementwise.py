@@ -31,6 +31,9 @@ from insight._insight import (
     logical_or as _native_logical_or,
     logical_xor as _native_logical_xor,
     logical_not as _native_logical_not,
+    bitwise_and as _native_bitwise_and,
+    bitwise_or as _native_bitwise_or,
+    bitwise_xor as _native_bitwise_xor,
 )
 
 
@@ -313,6 +316,54 @@ def logical_not(x: "Array") -> "Array":
         Boolean array containing the element-wise logical NOT result.
     """
     return _native_logical_not(x)
+
+
+def bitwise_and(a: "Array", b: "Array") -> "Array":
+    """Element-wise bitwise AND.
+
+    Computes ``a & b`` with broadcasting support. Both inputs must be
+    integer or boolean arrays.
+
+    Args:
+        a: First input array.
+        b: Second input array.
+
+    Returns:
+        Array containing the element-wise bitwise AND result.
+    """
+    return _native_bitwise_and(a, b)
+
+
+def bitwise_or(a: "Array", b: "Array") -> "Array":
+    """Element-wise bitwise OR.
+
+    Computes ``a | b`` with broadcasting support. Both inputs must be
+    integer or boolean arrays.
+
+    Args:
+        a: First input array.
+        b: Second input array.
+
+    Returns:
+        Array containing the element-wise bitwise OR result.
+    """
+    return _native_bitwise_or(a, b)
+
+
+def bitwise_xor(a: "Array", b: "Array") -> "Array":
+    """Element-wise bitwise XOR.
+
+    Computes ``a ^ b`` with broadcasting support. Both inputs must be
+    integer or boolean arrays.
+
+    Args:
+        a: First input array.
+        b: Second input array.
+
+    Returns:
+        Array containing the element-wise bitwise XOR result.
+    """
+    return _native_bitwise_xor(a, b)
 
 
 __all__ = [

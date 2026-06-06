@@ -59,7 +59,7 @@ class TestFirwin:
 
     def test_firwin_lowpass_basic(self):
         h = ins.signal.firwin(11, [0.3], window="hamming", pass_zero="lowpass")
-        assert h.numel() == 11
+        assert h.numel == 11
         d = h.numpy()
         # Symmetric (Type I: odd numtaps)
         for i in range(5):
@@ -72,7 +72,7 @@ class TestFirwin:
 
     def test_firwin_highpass_basic(self):
         h = ins.signal.firwin(11, [0.3], window="hamming", pass_zero="highpass")
-        assert h.numel() == 11
+        assert h.numel == 11
         d = h.numpy()
         for i in range(5):
             assert abs(d[i] - d[10 - i]) < 1e-10
@@ -85,15 +85,15 @@ class TestFirwin:
 
     def test_firwin_bandpass(self):
         h = ins.signal.firwin(21, [0.2, 0.5], window="hamming", pass_zero="bandpass")
-        assert h.numel() == 21
+        assert h.numel == 21
         dc = float(np.sum(h.numpy()))
         assert abs(dc) < 0.1  # DC gain ~0 for bandpass (relaxed tolerance)
 
     def test_firwin_different_windows(self):
         h1 = ins.signal.firwin(11, [0.3], window="hann", pass_zero="lowpass")
         h2 = ins.signal.firwin(11, [0.3], window="blackman", pass_zero="lowpass")
-        assert h1.numel() == 11
-        assert h2.numel() == 11
+        assert h1.numel == 11
+        assert h2.numel == 11
         assert h1.numpy()[0] != h2.numpy()[0]
 
     def test_firwin_unscaled(self):
@@ -109,7 +109,7 @@ class TestFirwin2:
         freq = [0.0, 0.5, 0.5, 1.0]
         gain = [1.0, 1.0, 0.0, 0.0]
         h = ins.signal.firwin2(15, freq, gain)
-        assert h.numel() == 15
+        assert h.numel == 15
         dc = float(np.sum(h.numpy()))
         assert abs(dc - 1.0) < 0.1
 
@@ -118,8 +118,8 @@ class TestFirwin2:
         gain = [1.0, 1.0, 0.0]
         h_short = ins.signal.firwin2(7, freq, gain)
         h_long = ins.signal.firwin2(31, freq, gain)
-        assert h_short.numel() == 7
-        assert h_long.numel() == 31
+        assert h_short.numel == 7
+        assert h_long.numel == 31
 
 
 class TestCmplxSort:
