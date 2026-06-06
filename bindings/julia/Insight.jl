@@ -285,6 +285,24 @@ end
 Base.unsafe_convert(::Type{Ptr{Cvoid}}, arr::InsightArray) = arr.ptr
 
 # ============================================================================
+# In-place mutation
+# ============================================================================
+
+"""Fill all elements with a scalar value (in-place)."""
+function fill_!(arr::InsightArray, value::Float64)
+    ccall((:insight_jl_fill, LIB_INSIGHT), Cvoid, (Ptr{Cvoid}, Float64),
+          arr, value)
+    arr
+end
+
+"""Copy data from src into dst (in-place). Shapes must match."""
+function copy_from_!(dst::InsightArray, src::InsightArray)
+    ccall((:insight_jl_copy_from, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Ptr{Cvoid}), dst, src)
+    dst
+end
+
+# ============================================================================
 # Metadata
 # ============================================================================
 

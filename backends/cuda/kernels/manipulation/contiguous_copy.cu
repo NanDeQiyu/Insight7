@@ -4,33 +4,42 @@
 #include <cuda_runtime.h>
 
 /**
- * @brief GPU kernel for copying a non-contiguous array to a contiguous one.
+ * @brief GPU kernel for copying between arrays with arbitrary strides.
  *
- * Each thread copies one element, computing the source offset from
- * the input array's strides.
+ * Each thread copies one element, computing both source and destination
+ * offsets from their respective strides.
  */
-__global__ void contiguous_copy_kernel(char *__restrict__ dst,
-                                       const char *__restrict__ src,
-                                       const int64_t *__restrict__ dims,
-                                       const int64_t *__restrict__ strides,
-                                       int64_t total, int ndim,
-                                       size_t elem_size) {
+__global__ void contiguous_copy_kernel(
+    char *__restrict__ dst, const char *__restrict__ src,
+    const int64_t *__restrict__ in_dims, const int64_t *__restrict__ in_strides,
+    int64_t in_offset, const int64_t *__restrict__ out_dims,
+    const int64_t *__restrict__ out_strides, int64_t out_offset, int64_t total,
+    int in_ndim, int out_ndim, size_t elem_size) {
   int64_t linear = blockIdx.x * blockDim.x + threadIdx.x;
   if (linear >= total)
     return;
 
-  int64_t src_offset = 0;
+  // Compute source offset
+  int64_t src_off = in_offset;
   int64_t tmp = linear;
-  for (int d = ndim - 1; d >= 0; --d) {
-    int64_t idx = tmp % dims[d];
-    src_offset += idx * strides[d];
-    tmp /= dims[d];
+  for (int d = in_ndim - 1; d >= 0; --d) {
+    int64_t idx = tmp % in_dims[d];
+    src_off += idx * in_strides[d];
+    tmp /= in_dims[d];
   }
 
-  const char *src_ptr = src + src_offset * elem_size;
-  char *dst_ptr = dst + linear * elem_size;
+  // Compute destination offset
+  int64_t dst_off = out_offset;
+  tmp = linear;
+  for (int d = out_ndim - 1; d >= 0; --d) {
+    int64_t idx = tmp % out_dims[d];
+    dst_off += idx * out_strides[d];
+    tmp /= out_dims[d];
+  }
 
-  // Element-wise copy
+  const char *src_ptr = src + src_off * elem_size;
+  char *dst_ptr = dst + dst_off * elem_size;
+
   for (size_t b = 0; b < elem_size; ++b) {
     dst_ptr[b] = src_ptr[b];
   }
@@ -61,8 +70,8 @@ C_Status contiguous_copy_gpu(void **inputs, void **outputs) {
   if (total == 0)
     return C_SUCCESS;
 
-  // Fast path: if input is already contiguous, do direct device copy
-  if (insight_array_is_contiguous(in)) {
+  // Fast path: if BOTH input and output are contiguous, do direct device copy
+  if (insight_array_is_contiguous(in) && insight_array_is_contiguous(out)) {
     size_t bytes = total * elem_size;
     cudaError_t err =
         cudaMemcpy(out->data, in->data, bytes, cudaMemcpyDeviceToDevice);
@@ -73,26 +82,35 @@ C_Status contiguous_copy_gpu(void **inputs, void **outputs) {
     return C_SUCCESS;
   }
 
-  // Prepare dims and strides on device
-  int ndim = in->ndim;
-  int64_t *d_dims;
-  int64_t *d_strides;
-  cudaMalloc(&d_dims, ndim * sizeof(int64_t));
-  cudaMalloc(&d_strides, ndim * sizeof(int64_t));
-  cudaMemcpy(d_dims, in->dims, ndim * sizeof(int64_t), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_strides, in->strides, ndim * sizeof(int64_t),
+  // Prepare dims and strides on device for both input and output
+  int in_ndim = in->ndim;
+  int out_ndim = out->ndim;
+  int64_t *d_in_dims, *d_in_strides, *d_out_dims, *d_out_strides;
+  cudaMalloc(&d_in_dims, in_ndim * sizeof(int64_t));
+  cudaMalloc(&d_in_strides, in_ndim * sizeof(int64_t));
+  cudaMalloc(&d_out_dims, out_ndim * sizeof(int64_t));
+  cudaMalloc(&d_out_strides, out_ndim * sizeof(int64_t));
+  cudaMemcpy(d_in_dims, in->dims, in_ndim * sizeof(int64_t),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(d_in_strides, in->strides, in_ndim * sizeof(int64_t),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(d_out_dims, out->dims, out_ndim * sizeof(int64_t),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy(d_out_strides, out->strides, out_ndim * sizeof(int64_t),
              cudaMemcpyHostToDevice);
 
   int threads = 256;
   int blocks = (total + threads - 1) / threads;
 
   contiguous_copy_kernel<<<blocks, threads>>>(
-      static_cast<char *>(out->data),
-      static_cast<const char *>(in->data) + in->offset * elem_size, d_dims,
-      d_strides, total, ndim, elem_size);
+      static_cast<char *>(out->data), static_cast<const char *>(in->data),
+      d_in_dims, d_in_strides, in->offset, d_out_dims, d_out_strides,
+      out->offset, total, in_ndim, out_ndim, elem_size);
 
-  cudaFree(d_dims);
-  cudaFree(d_strides);
+  cudaFree(d_in_dims);
+  cudaFree(d_in_strides);
+  cudaFree(d_out_dims);
+  cudaFree(d_out_strides);
 
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {

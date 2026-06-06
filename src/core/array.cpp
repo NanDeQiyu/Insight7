@@ -12,6 +12,7 @@
 #include "insight/core/strides.h"
 #include "insight/io/print.h"
 #include "insight/ops/cast.h"
+#include "insight/ops/creation.h"
 #include "insight/ops/manipulation.h"
 #include "insight/ops/reduction.h"
 #include <complex>
@@ -337,30 +338,38 @@ Array::~Array() {
 // ========== Assignment ==========
 
 Array &Array::operator=(const Array &other) {
-  if (this != &other) {
-    // Increment other's ref_count first, since other may share data
-    // with this (e.g. broadcast views). Must happen before releasing old data.
-    if (other.layout_.ref_count) {
-      ++(*other.layout_.ref_count);
-    }
+  if (this == &other)
+    return *this;
 
-    // Release old shared data (without destroying C++ members,
-    // since we'll overwrite them in the copy below).
-    if (layout_.ref_count) {
-      bool is_last = (*layout_.ref_count == 1);
-      void *data = layout_.data;
-      size_t bytes = layout_.numel * insight_dtype_size(layout_.dtype);
-      insight_array_destroy(&layout_);
-      if (is_last && data) {
-        place_.deallocate(data, bytes);
-      }
-    }
-
-    layout_ = other.layout_;
-    shape_ = other.shape_;
-    place_ = other.place_;
-    strides_ = other.strides_;
+  // View with matching shape/dtype: write through shared memory
+  if (layout_.is_view && defined() && other.defined() &&
+      shape_ == other.shape_ && dtype() == other.dtype()) {
+    copy_from_(other);
+    return *this;
   }
+
+  // Rebind (non-view, different shape/dtype, or uninitialized)
+  if (other.layout_.ref_count) {
+    ++(*other.layout_.ref_count);
+  }
+  if (layout_.ref_count) {
+    bool is_last = (*layout_.ref_count == 1);
+    void *data = layout_.data;
+    size_t bytes = layout_.numel * insight_dtype_size(layout_.dtype);
+    insight_array_destroy(&layout_);
+    if (is_last && data) {
+      place_.deallocate(data, bytes);
+    }
+  }
+  layout_ = other.layout_;
+  shape_ = other.shape_;
+  place_ = other.place_;
+  strides_ = other.strides_;
+  return *this;
+}
+
+Array &Array::operator=(double value) {
+  fill_(value);
   return *this;
 }
 
@@ -682,6 +691,17 @@ Array Array::operator[](const std::string &spec) const {
   return result;
 }
 
+// Non-const operator[] (returns view for assignment-through)
+Array Array::operator[](int64_t index) {
+  return static_cast<const Array &>(*this)[index];
+}
+Array Array::operator[](const std::string &spec) {
+  return static_cast<const Array &>(*this)[spec];
+}
+Array Array::operator[](const Slice &slice) {
+  return static_cast<const Array &>(*this)[slice];
+}
+
 // ========== View Operations ==========
 
 Array Array::reshape(const Shape &new_shape) const {
@@ -971,6 +991,45 @@ bool Array::any() const {
 bool Array::all() const {
   Array result = ins::all(*this, std::nullopt, false);
   return result.item<bool>();
+}
+
+// ========== In-place Mutation ==========
+
+void Array::fill_(double value) {
+  INS_CHECK(defined(), "Array is not initialized");
+  if (numel() == 0)
+    return;
+  if (is_contiguous()) {
+    // Contiguous: use the "full" backend kernel directly
+    double val = value;
+    ops().launch("full", place(), dtype(), {layout_ptr(), &val},
+                 {layout_ptr()});
+  } else {
+    // Non-contiguous view: create a contiguous filled array, then copy
+    Array filled = full(shape(), value, dtype(), place());
+    copy_from_(filled);
+  }
+}
+
+void Array::copy_from_(const Array &src) {
+  INS_CHECK(defined(), "Array is not initialized");
+  INS_CHECK(src.defined(), "copy_from_(): source is not initialized");
+  INS_CHECK(shape() == src.shape(), "copy_from_(): shape mismatch, got ",
+            src.shape(), " expected ", shape());
+  if (numel() == 0)
+    return;
+
+  if (dtype() == src.dtype()) {
+    // Same dtype: use contiguous_copy backend kernel (CPU + GPU)
+    Array src_dev = src.to(place());
+    ops().launch("contiguous_copy", place(), dtype(),
+                 {(void *)src_dev.layout_ptr()}, {layout_ptr()});
+  } else {
+    // Different dtype: cast first, then copy
+    Array converted = src.to(dtype()).to(place());
+    ops().launch("contiguous_copy", place(), dtype(),
+                 {(void *)converted.layout_ptr()}, {layout_ptr()});
+  }
 }
 
 // ========== Helper ==========

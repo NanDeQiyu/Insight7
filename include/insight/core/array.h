@@ -89,8 +89,11 @@ public:
 
   // ========== Assignment ==========
 
-  /// Deep copy assignment
+  /// Deep copy assignment (view: writes through shared memory)
   Array &operator=(const Array &other);
+
+  /// Scalar fill assignment (in-place, works on views)
+  Array &operator=(double value);
 
   /// Move assignment
   Array &operator=(Array &&other) noexcept;
@@ -179,10 +182,15 @@ public:
   /// Multi-dimensional slice with Slice objects
   Array slice(const std::vector<Slice> &slices) const;
 
-  // Python-style syntactic sugar
+  // Python-style syntactic sugar (read)
   Array operator[](int64_t index) const;
   Array operator[](const std::string &spec) const;
   Array operator[](const Slice &slice) const;
+
+  // Non-const indexing (returns view; assignment writes through shared memory)
+  Array operator[](int64_t index);
+  Array operator[](const std::string &spec);
+  Array operator[](const Slice &slice);
 
   // ========== View Operations (Zero-Copy) ==========
 
@@ -235,6 +243,26 @@ public:
    * @return View array with new shape and reinterpreted dtype.
    */
   Array view(const Shape &new_shape, DType new_dtype) const;
+
+  // ========== In-place Mutation ==========
+
+  /**
+   * @brief Fill all elements with a scalar value (in-place).
+   *
+   * Works on both contiguous and non-contiguous (view) arrays.
+   * Writing through a view modifies the parent array's storage.
+   */
+  void fill_(double value);
+
+  /**
+   * @brief Copy data from src into this array (in-place).
+   *
+   * This array and src must have the same shape.
+   * Dtype conversion is performed if needed.
+   * Works on non-contiguous views (uses stride-aware copy).
+   * Writing through a view modifies the parent array's storage.
+   */
+  void copy_from_(const Array &src);
 
   // ========== Device/Type Conversion ==========
 

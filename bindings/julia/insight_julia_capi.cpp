@@ -203,6 +203,16 @@ void insight_jl_shape_reversed(const Array *arr, int64_t *out,
 
 void insight_jl_array_free(Array *arr) { delete arr; }
 
+// In-place mutation
+void insight_jl_fill(Array *arr, double value) {
+  if (arr)
+    arr->fill_(value);
+}
+void insight_jl_copy_from(Array *dst, const Array *src) {
+  if (dst && src)
+    dst->copy_from_(*src);
+}
+
 // Metadata queries
 int32_t insight_jl_ndim(const Array *arr) { return arr->shape().ndim(); }
 int64_t insight_jl_numel(const Array *arr) { return arr->numel(); }

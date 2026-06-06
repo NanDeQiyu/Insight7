@@ -36,25 +36,39 @@ C_Status contiguous_copy_cpu(void **inputs, void **outputs) {
   int64_t total = in->numel;
   int ndim = in->ndim;
 
-  // One-dimensional arrays and scalars directly memcpy
-  if (ndim <= 1 || in->offset == 0) {
-    bool is_contiguous_in = true;
+  // Fast path: BOTH input and output must be contiguous
+  if (ndim <= 1 || (in->offset == 0 && out->offset == 0)) {
+    bool is_contiguous = true;
     int64_t expected_stride = 1;
     for (int d = ndim - 1; d >= 0; --d) {
       if (in->strides[d] != expected_stride) {
-        is_contiguous_in = false;
+        is_contiguous = false;
         break;
       }
       expected_stride *= in->dims[d];
     }
-    if (is_contiguous_in) {
-      std::memcpy(out->data, in->data, total * elem_size);
-      return C_SUCCESS;
+    if (is_contiguous) {
+      // Also check output contiguity
+      bool out_contiguous = true;
+      int out_ndim = out->ndim;
+      expected_stride = 1;
+      for (int d = out_ndim - 1; d >= 0; --d) {
+        if (out->strides[d] != expected_stride) {
+          out_contiguous = false;
+          break;
+        }
+        expected_stride *= out->dims[d];
+      }
+      if (out_contiguous) {
+        std::memcpy(out->data, in->data, total * elem_size);
+        return C_SUCCESS;
+      }
     }
   }
 
   // Copy non-contiguous array element by element
   for (int64_t linear = 0; linear < total; ++linear) {
+    // Compute input offset using input's strides
     int64_t in_offset = in->offset;
     int64_t tmp = linear;
     for (int d = ndim - 1; d >= 0; --d) {
@@ -63,8 +77,17 @@ C_Status contiguous_copy_cpu(void **inputs, void **outputs) {
       tmp /= in->dims[d];
     }
 
+    // Compute output offset using output's strides
+    int64_t out_offset = out->offset;
+    tmp = linear;
+    for (int d = out->ndim - 1; d >= 0; --d) {
+      int64_t idx = tmp % out->dims[d];
+      out_offset += idx * out->strides[d];
+      tmp /= out->dims[d];
+    }
+
     char *in_ptr = static_cast<char *>(in->data) + in_offset * elem_size;
-    char *out_ptr = static_cast<char *>(out->data) + linear * elem_size;
+    char *out_ptr = static_cast<char *>(out->data) + out_offset * elem_size;
     std::memcpy(out_ptr, in_ptr, elem_size);
   }
 

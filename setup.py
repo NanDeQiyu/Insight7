@@ -8,6 +8,7 @@ The C++ backend (.so files) must be built with CMake first:
 Then install:
     pip install .
 """
+
 from setuptools import setup, find_packages
 
 setup(
