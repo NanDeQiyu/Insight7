@@ -40,11 +40,13 @@ jobs:
           arch: x64
 
       - name: Install dependencies
-        shell: bash
+        shell: pwsh
         run: |
           vcpkg install fftw3:x64-windows
-          curl -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
-          unzip -q openblas.zip -d C:/deps/
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps\ -Force
+          Test-Path C:\deps\OpenBLAS-0.3.33-x64\bin\libopenblas.dll
 
       - name: Configure & Build
         shell: bash
@@ -91,12 +93,13 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        shell: bash
+        shell: pwsh
         run: |
           pip install numpy pytest
           vcpkg install fftw3:x64-windows
-          curl -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
-          unzip -q openblas.zip -d C:/deps/
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps\ -Force
 
       - name: Configure & Build
         shell: bash
@@ -143,8 +146,9 @@ jobs:
         shell: bash
         run: |
           choco install lua51 luarocks -y
-          # Refresh PATH for luarocks
-          export PATH="/c/ProgramData/chocolatey/bin:/c/Program Files (x86)/Lua/5.1:$PATH"
+          # Add MSVC link.exe to PATH so luarocks finds it instead of MSYS2 link
+          MSVC_BIN="$VCToolsInstallDir/bin/HostX86/x86"
+          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$MSVC_BIN:$PATH"
           luarocks install busted
 
       - name: Install vcpkg dependencies
@@ -201,11 +205,12 @@ jobs:
           version: '1.11'
 
       - name: Install dependencies
-        shell: bash
+        shell: pwsh
         run: |
           vcpkg install fftw3:x64-windows
-          curl -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip"
-          unzip -q openblas.zip -d C:/deps/
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip" -OutFile openblas.zip
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps\ -Force
 
       - name: Configure & Build
         shell: bash
@@ -232,10 +237,12 @@ jobs:
         shell: bash
         run: |
           export PATH="/c/deps/OpenBLAS-0.3.33-x64/bin:/c/vcpkg/installed/x64-windows/bin:$PATH"
+          # Use forward-slash paths to avoid Julia backslash escape issues
+          JLDIR="$(cygpath -m "$GITHUB_WORKSPACE")"
           total_pass=0; total_fail=0; fail_list=""
-          for f in $GITHUB_WORKSPACE/tests/cpu/julia/test_*.jl; do
+          for f in tests/cpu/julia/test_*.jl; do
             echo "=== Running $f ==="
-            if julia -e "push!(LOAD_PATH, \"$GITHUB_WORKSPACE/bindings/julia\"); include(\"$f\")"; then
+            if julia -e "push!(LOAD_PATH, raw\"$JLDIR/bindings/julia\"); include(raw\"$JLDIR/$f\")"; then
               total_pass=$((total_pass + 1))
             else
               total_fail=$((total_fail + 1))
