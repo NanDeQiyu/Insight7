@@ -52,13 +52,6 @@
 #include <string>
 #include <vector>
 
-// Wrapper to avoid MSVC ambiguity between ins::std (function) and
-// ::std (namespace) in sol2 template code.
-static inline ins::Array ins_std(const ins::Array &x, std::optional<int> axis,
-                                 bool keepdims = false, int ddof = 0) {
-  return ins::std(x, axis, keepdims, ddof);
-}
-
 // Helper: convert Lua table {1,2,3} to std::vector<int64_t>
 static std::vector<int64_t> table_to_shape(sol::table t) {
   std::vector<int64_t> v;
@@ -814,7 +807,11 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
     return ins::var(x, ax, keepdims.value_or(false), ddof.value_or(0));
   };
-  m["std"] = ins_std;
+  m["std"] = [](const ins::Array &x, sol::optional<int> axis,
+                sol::optional<bool> keepdims, sol::optional<int> ddof) {
+    std::optional<int> ax = axis ? std::optional<int>(*axis) : std::nullopt;
+    return ins::std(x, ax, keepdims.value_or(false), ddof.value_or(0));
+  };
   m["cumsum"] = [](const ins::Array &x, int axis) {
     return ins::cumsum(x, axis);
   };
