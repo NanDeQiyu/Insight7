@@ -259,6 +259,26 @@ jobs:
             -DCMAKE_PREFIX_PATH="C:/deps_x86/OpenBLAS-0.3.33-x86;C:/vcpkg/installed/x86-windows"
           cmake --build build_x86 -j $(nproc)
 
+      - name: Diagnose build artifacts
+        shell: bash
+        run: |
+          echo "=== Searching for _insight.dll ==="
+          find "$GITHUB_WORKSPACE/build_x86" -name "_insight.dll" 2>/dev/null || echo "NOT FOUND in build_x86"
+          find "$GITHUB_WORKSPACE/bindings" -name "_insight.dll" 2>/dev/null || echo "NOT FOUND in bindings"
+          echo ""
+          echo "=== build_x86/bindings/lua/ contents ==="
+          ls -la "$GITHUB_WORKSPACE/build_x86/bindings/lua/" 2>/dev/null || echo "DIR NOT FOUND"
+          echo ""
+          echo "=== All DLLs in build_x86 ==="
+          find "$GITHUB_WORKSPACE/build_x86" -name "*.dll" 2>/dev/null | head -30
+          echo ""
+          echo "=== Check CPU backend DLL ==="
+          ls -la "$GITHUB_WORKSPACE/build_x86/backends/cpu/"*.dll 2>/dev/null || echo "NO DLLs"
+          echo ""
+          echo "=== Lua lib found by CMake ==="
+          grep -r "Lua binding:" "$GITHUB_WORKSPACE/build_x86/CMakeCache.txt" 2>/dev/null || echo "Not in cache"
+          grep -r "LUA_LIB" "$GITHUB_WORKSPACE/build_x86/CMakeCache.txt" 2>/dev/null | head -5
+
       - name: Run tests
         shell: bash
         run: |
@@ -268,6 +288,11 @@ jobs:
           export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/deps_x86/OpenBLAS-0.3.33-x86/bin:/c/vcpkg/installed/x86-windows/bin:$PATH"
           export LUA_CPATH="$BUILDDIR\\?.dll;$LROCKS\\systree\\lib\\lua\\5.1\\?.dll;$LROCKS\\systree\\lib\\lua\\5.1\\?\\init.dll;;"
           export LUA_PATH="$BINDIR\\?\\init.lua;$BINDIR\\?.lua;$LROCKS\\systree\\share\\lua\\5.1\\?.lua;$LROCKS\\systree\\share\\lua\\5.1\\?\\init.lua;;"
+          echo "LUA_CPATH=$LUA_CPATH"
+          echo "LUA_PATH=$LUA_PATH"
+          echo "=== Check if _insight.dll exists ==="
+          ls -la "$GITHUB_WORKSPACE/build_x86/bindings/lua/_insight.dll" 2>/dev/null || echo "MISSING: build_x86/bindings/lua/_insight.dll"
+          ls -la "$GITHUB_WORKSPACE/bindings/lua/_insight.dll" 2>/dev/null || echo "MISSING: bindings/lua/_insight.dll"
           busted.bat --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
 
   julia-binding:
