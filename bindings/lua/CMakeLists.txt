@@ -3,14 +3,7 @@
 # Lua/LuaJIT bindings via sol2 (header-only).
 #
 # Usage:
-#   # Auto-detect LuaJIT, then Lua 5.3, then Lua 5.1:
-#   cmake .. -DINSIGHT_BUILD_LUA=ON
-#
-#   # Explicit LuaJIT:
-#   cmake .. -DINSIGHT_BUILD_LUA=ON -DLUA_DIR=$HOME/public/luajit
-#
-#   # Explicit Lua 5.3:
-#   cmake .. -DINSIGHT_BUILD_LUA=ON -DLUA_DIR=/usr
+#   cmake .. -DINSIGHT_BUILD_LUA=ON -DLUA_DIR=/path/to/lua
 #
 # The built module is always _insight.so, loadable by require("_insight").
 
@@ -19,10 +12,15 @@ if(NOT INSIGHT_BUILD_LUA)
     return()
 endif()
 
+# Resolve LUA_DIR from CMake variable, environment variable, or auto-detect
+if(NOT LUA_DIR AND DEFINED ENV{LUA_DIR})
+    set(LUA_DIR "$ENV{LUA_DIR}")
+endif()
+
 if(LUA_DIR)
-    # User-specified Lua installation
+    # Explicit Lua installation path
     find_library(LUA_LIB
-        NAMES luajit-5.1 luajit lua5.3 lua-5.3 lua5.1 lua-5.1 lua
+        NAMES luajit-5.1 luajit lua5.3 lua-5.3 lua5.1 lua-5.1 lua lua51
         HINTS "${LUA_DIR}/lib" "${LUA_DIR}/lib/x86_64-linux-gnu"
               "${LUA_DIR}/lib/x64" "${LUA_DIR}"
         NO_DEFAULT_PATH
@@ -32,57 +30,19 @@ if(LUA_DIR)
         HINTS "${LUA_DIR}/include/luajit-2.1"
               "${LUA_DIR}/include/lua5.3"
               "${LUA_DIR}/include/lua5.1"
+              "${LUA_DIR}/include"
               "${LUA_DIR}"
         NO_DEFAULT_PATH
     )
 else()
     # Auto-detect: prefer LuaJIT, then Lua 5.3, then Lua 5.1
     find_library(LUA_LIB
-        NAMES luajit-5.1 luajit
-        HINTS "$ENV{HOME}/public/luajit/lib"
+        NAMES luajit-5.1 luajit lua5.3 lua-5.3 lua5.1 lua-5.1 lua lua51
     )
     find_path(LUA_INCLUDE_DIR
         NAMES lua.h
-        HINTS "$ENV{HOME}/public/luajit/include/luajit-2.1"
-        PATHS /usr/include/luajit-2.1 /usr/local/include/luajit-2.1
+        PATH_SUFFIXES luajit-2.1 luajit-2.0 lua5.3 lua5.1
     )
-    if(NOT LUA_LIB OR NOT LUA_INCLUDE_DIR)
-        find_library(LUA_LIB
-            NAMES lua5.3 lua-5.3 lua
-            PATHS /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib
-        )
-        find_path(LUA_INCLUDE_DIR
-            NAMES lua.h
-            PATHS /usr/include/lua5.3 /usr/local/include/lua5.3
-        )
-    endif()
-    # Windows: try common Lua installation paths
-    if(WIN32 AND (NOT LUA_LIB OR NOT LUA_INCLUDE_DIR))
-        find_library(LUA_LIB
-            NAMES lua51 lua5.1 lua53 lua5.3 lua luajit
-            PATHS
-                "C:/Program Files (x86)/Lua/5.1/lib"
-                "C:/Program Files/Lua/5.1/lib"
-                "C:/Lua/5.1/lib"
-                "C:/Program Files (x86)/Lua/5.3/lib"
-                "C:/Program Files/Lua/5.3/lib"
-                "C:/ProgramData/chocolatey/lib/lua51/tools"
-                "$ENV{LUA_DIR}/lib"
-                "$ENV{LUA_DIR}"
-        )
-        find_path(LUA_INCLUDE_DIR
-            NAMES lua.h
-            PATHS
-                "C:/Program Files (x86)/Lua/5.1/include"
-                "C:/Program Files/Lua/5.1/include"
-                "C:/Lua/5.1/include"
-                "C:/Program Files (x86)/Lua/5.3/include"
-                "C:/Program Files/Lua/5.3/include"
-                "C:/ProgramData/chocolatey/lib/lua51/tools"
-                "$ENV{LUA_DIR}/include"
-                "$ENV{LUA_DIR}"
-        )
-    endif()
 endif()
 
 if(NOT LUA_LIB OR NOT LUA_INCLUDE_DIR)
