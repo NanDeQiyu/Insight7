@@ -20,25 +20,27 @@ endif()
 if(LUA_DIR)
     # Explicit Lua installation path
     find_library(LUA_LIB
-        NAMES luajit-5.1 luajit lua5.4 lua5.3 lua5.2 lua5.1 lua
+        NAMES luajit-5.1 luajit lua5.4 lua5.3 lua5.2 lua5.1 lua51 lua
         HINTS "${LUA_DIR}/lib" "${LUA_DIR}/lib/x86_64-linux-gnu"
               "${LUA_DIR}/lib/x64" "${LUA_DIR}"
         NO_DEFAULT_PATH
     )
     find_path(LUA_INCLUDE_DIR
         NAMES lua.h
-        HINTS "${LUA_DIR}/include" "${LUA_DIR}"
-        PATH_SUFFIXES luajit-2.1 luajit-2.0
+        HINTS "${LUA_DIR}/include/luajit-2.1" "${LUA_DIR}/include/luajit-2.0"
+              "${LUA_DIR}/include/lua5.4" "${LUA_DIR}/include/lua5.3"
+              "${LUA_DIR}/include/lua5.2" "${LUA_DIR}/include/lua5.1"
+              "${LUA_DIR}/include" "${LUA_DIR}"
         NO_DEFAULT_PATH
     )
 else()
-    # Auto-detect
+    # Auto-detect (CMake searches platform default paths automatically)
     find_library(LUA_LIB
-        NAMES luajit-5.1 luajit lua5.4 lua5.3 lua5.2 lua5.1 lua
+        NAMES luajit-5.1 luajit lua5.4 lua5.3 lua5.2 lua5.1 lua51 lua
     )
     find_path(LUA_INCLUDE_DIR
         NAMES lua.h
-        PATH_SUFFIXES luajit-2.1 luajit-2.0
+        PATH_SUFFIXES luajit-2.1 luajit-2.0 lua5.4 lua5.3 lua5.2 lua5.1
     )
 endif()
 
