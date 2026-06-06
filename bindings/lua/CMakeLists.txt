@@ -33,6 +33,18 @@ if(LUA_DIR)
               "${LUA_DIR}/include" "${LUA_DIR}"
         NO_DEFAULT_PATH
     )
+    # MSVC fallback: if no .lib found but DLL exists, link the DLL directly
+    if(NOT LUA_LIB AND MSVC)
+        find_file(LUA_DLL
+            NAMES luajit-5.1.dll luajit.dll lua5.4.dll lua5.3.dll lua5.2.dll lua5.1.dll lua51.dll lua.dll
+            HINTS "${LUA_DIR}/lib" "${LUA_DIR}/lib/x64" "${LUA_DIR}"
+            NO_DEFAULT_PATH
+        )
+        if(LUA_DLL)
+            set(LUA_LIB "${LUA_DLL}")
+            message(STATUS "Lua import library not found, linking DLL directly: ${LUA_DLL}")
+        endif()
+    endif()
 else()
     # Auto-detect (CMake searches platform default paths automatically)
     find_library(LUA_LIB
