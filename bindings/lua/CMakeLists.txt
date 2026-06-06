@@ -24,7 +24,7 @@ if(LUA_DIR)
     find_library(LUA_LIB
         NAMES luajit-5.1 luajit lua5.3 lua-5.3 lua5.1 lua-5.1 lua
         HINTS "${LUA_DIR}/lib" "${LUA_DIR}/lib/x86_64-linux-gnu"
-              "${LUA_DIR}/lib/x64" "${LUA_DIR}/lib"
+              "${LUA_DIR}/lib/x64" "${LUA_DIR}"
         NO_DEFAULT_PATH
     )
     find_path(LUA_INCLUDE_DIR
@@ -32,7 +32,7 @@ if(LUA_DIR)
         HINTS "${LUA_DIR}/include/luajit-2.1"
               "${LUA_DIR}/include/lua5.3"
               "${LUA_DIR}/include/lua5.1"
-              "${LUA_DIR}/include"
+              "${LUA_DIR}"
         NO_DEFAULT_PATH
     )
 else()
@@ -66,7 +66,9 @@ else()
                 "C:/Lua/5.1/lib"
                 "C:/Program Files (x86)/Lua/5.3/lib"
                 "C:/Program Files/Lua/5.3/lib"
+                "C:/ProgramData/chocolatey/lib/lua51/tools"
                 "$ENV{LUA_DIR}/lib"
+                "$ENV{LUA_DIR}"
         )
         find_path(LUA_INCLUDE_DIR
             NAMES lua.h
@@ -76,7 +78,9 @@ else()
                 "C:/Lua/5.1/include"
                 "C:/Program Files (x86)/Lua/5.3/include"
                 "C:/Program Files/Lua/5.3/include"
+                "C:/ProgramData/chocolatey/lib/lua51/tools"
                 "$ENV{LUA_DIR}/include"
+                "$ENV{LUA_DIR}"
         )
     endif()
 endif()

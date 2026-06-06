@@ -256,6 +256,7 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=OFF \
             -DINSIGHT_USE_SNDFILE=OFF \
             -DINSIGHT_USE_MATPLOT=OFF \
+            -DLUA_DIR="C:/ProgramData/chocolatey/lib/lua51/tools" \
             -DCMAKE_PREFIX_PATH="C:/deps_x86/OpenBLAS-0.3.33-x86;C:/vcpkg/installed/x86-windows"
           cmake --build build_x86 -j $(nproc)
 
