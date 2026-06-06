@@ -7,8 +7,6 @@
 #
 # The built module is always _insight.so, loadable by require("_insight").
 
-include(FetchContent)
-
 option(INSIGHT_BUILD_LUA "Build Lua bindings" ON)
 if(NOT INSIGHT_BUILD_LUA)
     return()
@@ -46,54 +44,9 @@ else()
     )
 endif()
 
-# Fallback: build Lua 5.1.5 from source if not found
 if(NOT LUA_LIB OR NOT LUA_INCLUDE_DIR)
-    message(STATUS "Lua not found via find_library, building from source...")
-
-    FetchContent_Declare(
-        lua_src
-        URL https://www.lua.org/ftp/lua-5.1.5.tar.gz
-        URL_HASH MD5=2e115fe26e435e33b0d5c022e4490567
-    )
-    FetchContent_MakeAvailable(lua_src)
-
-    set(LUA_SOURCES
-        ${lua_src_SOURCE_DIR}/src/lapi.c ${lua_src_SOURCE_DIR}/src/lcode.c
-        ${lua_src_SOURCE_DIR}/src/ldebug.c ${lua_src_SOURCE_DIR}/src/ldo.c
-        ${lua_src_SOURCE_DIR}/src/ldump.c ${lua_src_SOURCE_DIR}/src/lfunc.c
-        ${lua_src_SOURCE_DIR}/src/lgc.c ${lua_src_SOURCE_DIR}/src/llex.c
-        ${lua_src_SOURCE_DIR}/src/lmem.c ${lua_src_SOURCE_DIR}/src/lobject.c
-        ${lua_src_SOURCE_DIR}/src/lopcodes.c ${lua_src_SOURCE_DIR}/src/lparser.c
-        ${lua_src_SOURCE_DIR}/src/lstate.c ${lua_src_SOURCE_DIR}/src/lstring.c
-        ${lua_src_SOURCE_DIR}/src/ltable.c ${lua_src_SOURCE_DIR}/src/ltm.c
-        ${lua_src_SOURCE_DIR}/src/lundump.c ${lua_src_SOURCE_DIR}/src/lvm.c
-        ${lua_src_SOURCE_DIR}/src/lzio.c ${lua_src_SOURCE_DIR}/src/lauxlib.c
-        ${lua_src_SOURCE_DIR}/src/lbaselib.c ${lua_src_SOURCE_DIR}/src/ldblib.c
-        ${lua_src_SOURCE_DIR}/src/liolib.c ${lua_src_SOURCE_DIR}/src/lmathlib.c
-        ${lua_src_SOURCE_DIR}/src/loslib.c ${lua_src_SOURCE_DIR}/src/ltablib.c
-        ${lua_src_SOURCE_DIR}/src/lstrlib.c ${lua_src_SOURCE_DIR}/src/loadlib.c
-        ${lua_src_SOURCE_DIR}/src/linit.c
-    )
-
-    add_library(lua_src_lib SHARED ${LUA_SOURCES})
-    target_include_directories(lua_src_lib PUBLIC ${lua_src_SOURCE_DIR}/src)
-    set_target_properties(lua_src_lib PROPERTIES
-        PREFIX ""
-        OUTPUT_NAME "lua5.1"
-    )
-    if(MSVC)
-        target_compile_definitions(lua_src_lib PRIVATE LUA_BUILD_AS_DLL)
-    endif()
-    if(UNIX)
-        target_link_libraries(lua_src_lib PRIVATE m dl)
-    endif()
-
-    add_executable(lua_interpreter ${lua_src_SOURCE_DIR}/src/lua.c)
-    target_link_libraries(lua_interpreter PRIVATE lua_src_lib)
-    set_target_properties(lua_interpreter PROPERTIES OUTPUT_NAME "lua")
-
-    set(LUA_LIB lua_src_lib)
-    set(LUA_INCLUDE_DIR "${lua_src_SOURCE_DIR}/src")
+    message(STATUS "Lua not found, skipping Lua bindings (set -DLUA_DIR=...)")
+    return()
 endif()
 
 message(STATUS "Lua binding: ${LUA_LIB}")

@@ -191,18 +191,48 @@ jobs:
         with:
           arch: x86
 
-      - name: Install Lua 5.1 and dependencies
+      - name: Build Lua 5.1 from source
         shell: bash
         run: |
-          choco install lua51 luarocks -y
-          # Create link.cmd wrapper in chocolatey bin (already in PATH)
-          # to redirect MSYS2 'link' to MSVC link.exe
+          curl -L -o lua-5.1.5.tar.gz https://www.lua.org/ftp/lua-5.1.5.tar.gz
+          tar xzf lua-5.1.5.tar.gz
+          cd lua-5.1.5
+          # Build Lua as DLL with MSVC (x86)
+          cl.exe /nologo /MD /O2 /W3 /c /D_CRT_SECURE_NO_DEPRECATE /DLUA_BUILD_AS_DLL \
+            src/lapi.c src/lcode.c src/ldebug.c src/ldo.c src/ldump.c src/lfunc.c \
+            src/lgc.c src/llex.c src/lmem.c src/lobject.c src/lopcodes.c src/lparser.c \
+            src/lstate.c src/lstring.c src/ltable.c src/ltm.c src/lundump.c src/lvm.c \
+            src/lzio.c src/lauxlib.c src/lbaselib.c src/ldblib.c src/liolib.c \
+            src/lmathlib.c src/loslib.c src/ltablib.c src/lstrlib.c src/loadlib.c src/linit.c
+          link.exe /nologo /DLL /OUT:lua51.dll /IMPLIB:lua51.lib \
+            lapi.obj lcode.obj ldebug.obj ldo.obj ldump.obj lfunc.obj \
+            lgc.obj llex.obj lmem.obj lobject.obj lopcodes.obj lparser.obj \
+            lstate.obj lstring.obj ltable.obj ltm.obj lundump.obj lvm.obj \
+            lzio.obj lauxlib.obj lbaselib.obj ldblib.obj liolib.obj \
+            lmathlib.obj loslib.obj ltablib.obj lstrlib.obj loadlib.obj linit.obj
+          # Build interpreter
+          cl.exe /nologo /MD /O2 /W3 /c /D_CRT_SECURE_NO_DEPRECATE src/lua.c
+          link.exe /nologo /OUT:lua.exe lua.obj lua51.lib
+          # Install to a known location
+          LUA_INSTALL="C:/lua51"
+          mkdir -p "$LUA_INSTALL/include" "$LUA_INSTALL/lib" "$LUA_INSTALL/bin"
+          cp src/*.h "$LUA_INSTALL/include/"
+          cp lua51.lib "$LUA_INSTALL/lib/"
+          cp lua51.dll lua.exe "$LUA_INSTALL/bin/"
+          echo "Lua installed to $LUA_INSTALL"
+          ls -la "$LUA_INSTALL/include/" | head -5
+          ls -la "$LUA_INSTALL/lib/"
+          ls -la "$LUA_INSTALL/bin/"
+          # Put interpreter in PATH for luarocks/busted
+          echo "$LUA_INSTALL/bin" >> $GITHUB_PATH
+          export PATH="$LUA_INSTALL/bin:$PATH"
+          # Install luarocks and busted
+          choco install luarocks -y
+          # Create link.cmd wrapper for MSVC link.exe
           MSVC_LINK="$(find "/c/Program Files/Microsoft Visual Studio" -path "*/HostX86/x86/link.exe" 2>/dev/null | head -1)"
-          echo "Found MSVC link.exe at: $MSVC_LINK"
           MSVC_LINK_WIN="$(cygpath -w "$MSVC_LINK")"
           printf '@"%s" %%*\r\n' "$MSVC_LINK_WIN" > "/c/ProgramData/chocolatey/bin/link.cmd"
-          cat "/c/ProgramData/chocolatey/bin/link.cmd"
-          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$PATH"
+          export PATH="/c/ProgramData/chocolatey/bin:$PATH"
           luarocks install busted
 
       - name: Install vcpkg dependencies
@@ -255,6 +285,7 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=OFF \
             -DINSIGHT_USE_SNDFILE=OFF \
             -DINSIGHT_USE_MATPLOT=OFF \
+            -DLUA_DIR="C:/lua51" \
             -DCMAKE_PREFIX_PATH="C:/deps_x86/OpenBLAS-0.3.33-x86;C:/vcpkg/installed/x86-windows"
           cmake --build build_x86 -j $(nproc)
 
@@ -284,7 +315,7 @@ jobs:
           LROCKS="C:\\ProgramData\\chocolatey\\lib\\luarocks\\luarocks-2.4.4-win32"
           BINDIR="$(cygpath -w "$GITHUB_WORKSPACE/bindings/lua")"
           BUILDDIR="$(cygpath -w "$GITHUB_WORKSPACE/build_x86/bindings/lua")"
-          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/deps_x86/OpenBLAS-0.3.33-x86/bin:/c/vcpkg/installed/x86-windows/bin:$PATH"
+          export PATH="/c/lua51/bin:/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/luarocks/luarocks-2.4.4-win32/systree/bin:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/deps_x86/OpenBLAS-0.3.33-x86/bin:/c/vcpkg/installed/x86-windows/bin:$PATH"
           export LUA_CPATH="$BUILDDIR\\?.dll;$LROCKS\\systree\\lib\\lua\\5.1\\?.dll;$LROCKS\\systree\\lib\\lua\\5.1\\?\\init.dll;;"
           export LUA_PATH="$BINDIR\\?\\init.lua;$BINDIR\\?.lua;$LROCKS\\systree\\share\\lua\\5.1\\?.lua;$LROCKS\\systree\\share\\lua\\5.1\\?\\init.lua;;"
           echo "LUA_CPATH=$LUA_CPATH"
@@ -292,7 +323,7 @@ jobs:
           echo "=== Check if _insight.dll exists ==="
           ls -la "$GITHUB_WORKSPACE/build_x86/bindings/lua/_insight.dll" 2>/dev/null || echo "MISSING: build_x86/bindings/lua/_insight.dll"
           ls -la "$GITHUB_WORKSPACE/bindings/lua/_insight.dll" 2>/dev/null || echo "MISSING: bindings/lua/_insight.dll"
-          busted.bat --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
+          busted.bat --lua=lua --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
 
   julia-binding:
     name: Julia Binding
