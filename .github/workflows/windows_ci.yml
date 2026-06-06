@@ -207,9 +207,35 @@ jobs:
           luarocks install busted
 
       - name: Install vcpkg dependencies
-        shell: bash
+        shell: pwsh
         run: |
-          vcpkg install fftw3:x86-windows openblas:x86-windows
+          vcpkg install fftw3:x86-windows
+          $ProgressPreference = 'SilentlyContinue'
+          Write-Host "Downloading OpenBLAS x86..."
+          try {
+            Invoke-WebRequest -Uri "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x86.zip" -OutFile openblas.zip -UseBasicParsing -ErrorAction Stop
+          } catch {
+            & curl.exe -L -o openblas.zip "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x86.zip"
+          }
+          $sz = (Get-Item openblas.zip).Length
+          Write-Host "Downloaded file size: $sz bytes"
+          if ($sz -lt 100000) { Write-Error "Download too small"; exit 1 }
+          New-Item -ItemType Directory -Force -Path C:\deps_x86 | Out-Null
+          Expand-Archive -Path openblas.zip -DestinationPath C:\deps_x86 -Force
+          $obDll = Get-ChildItem C:\deps_x86 -Recurse -Filter "libopenblas.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -eq $obDll) {
+            Get-ChildItem C:\deps_x86 -Recurse -Name | Select-Object -First 30
+            Write-Error "libopenblas.dll not found"; exit 1
+          }
+          $obRoot = Split-Path (Split-Path $obDll.FullName)
+          if ($obRoot -eq "C:\deps_x86") {
+            New-Item -ItemType Directory -Force -Path C:\deps_x86\OpenBLAS-0.3.33-x86 | Out-Null
+            Move-Item C:\deps_x86\bin C:\deps_x86\OpenBLAS-0.3.33-x86\bin -Force
+            Move-Item C:\deps_x86\include C:\deps_x86\OpenBLAS-0.3.33-x86\include -Force
+            Move-Item C:\deps_x86\lib C:\deps_x86\OpenBLAS-0.3.33-x86\lib -Force
+          } elseif ($obRoot -ne "C:\deps_x86\OpenBLAS-0.3.33-x86") {
+            Move-Item $obRoot "C:\deps_x86\OpenBLAS-0.3.33-x86" -Force
+          }
 
       - name: Configure & Build
         shell: bash
@@ -230,13 +256,13 @@ jobs:
             -DINSIGHT_BUILD_JULIA_BINDING=OFF \
             -DINSIGHT_USE_SNDFILE=OFF \
             -DINSIGHT_USE_MATPLOT=OFF \
-            -DCMAKE_PREFIX_PATH="C:/vcpkg/installed/x86-windows"
+            -DCMAKE_PREFIX_PATH="C:/deps_x86/OpenBLAS-0.3.33-x86;C:/vcpkg/installed/x86-windows"
           cmake --build build_x86 -j $(nproc)
 
       - name: Run tests
         shell: bash
         run: |
-          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/vcpkg/installed/x86-windows/bin:$PATH"
+          export PATH="/c/ProgramData/chocolatey/bin:/c/ProgramData/chocolatey/lib/lua51/tools:$GITHUB_WORKSPACE/build_x86/backends/cpu:/c/deps_x86/OpenBLAS-0.3.33-x86/bin:/c/vcpkg/installed/x86-windows/bin:$PATH"
           export LUA_CPATH="$GITHUB_WORKSPACE/build_x86/bindings/lua/?.dll;;"
           export LUA_PATH="$GITHUB_WORKSPACE/bindings/lua/?/init.lua;$GITHUB_WORKSPACE/bindings/lua/?.lua;;"
           busted --lua=lua5.1 --no-auto-insulate --pattern="test_.+%.lua" $GITHUB_WORKSPACE/tests/cpu/lua/
