@@ -70,8 +70,9 @@ C_Status contiguous_copy_gpu(void **inputs, void **outputs) {
   if (total == 0)
     return C_SUCCESS;
 
-  // Fast path: if BOTH input and output are contiguous, do direct device copy
-  if (insight_array_is_contiguous(in) && insight_array_is_contiguous(out)) {
+  // Fast path: both contiguous AND no offset
+  if (in->offset == 0 && out->offset == 0 && insight_array_is_contiguous(in) &&
+      insight_array_is_contiguous(out)) {
     size_t bytes = total * elem_size;
     cudaError_t err =
         cudaMemcpy(out->data, in->data, bytes, cudaMemcpyDeviceToDevice);
