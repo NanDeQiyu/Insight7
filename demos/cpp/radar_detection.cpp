@@ -34,9 +34,9 @@ static constexpr double B = 5e6;
 static constexpr double TAU = 50e-6;
 static constexpr int64_t N_PULSES = 32;
 static constexpr double SNR_DB = 10;
-static constexpr int64_t PULSE_LEN = int64_t(TAU * FS);   // 500
-static constexpr int64_t PC_OFFSET = PULSE_LEN / 2;         // 250
-static constexpr double RANGE_PER_BIN = 3e8 / (2 * FS);    // 15 m
+static constexpr int64_t PULSE_LEN = int64_t(TAU * FS); // 500
+static constexpr int64_t PC_OFFSET = PULSE_LEN / 2;     // 250
+static constexpr double RANGE_PER_BIN = 3e8 / (2 * FS); // 15 m
 static constexpr double MAX_UNAMBIG_RANGE = RANGE_PER_BIN * N;
 
 // 目标移动轨迹 (与 Python 一致)
@@ -49,6 +49,9 @@ static const std::vector<double> DOPPLER_END = {1800.0, -1200.0};
 // 全局缓存
 // ============================================================
 static Array _S_TX;         // LFM 发射信号
+static Array _TEMPLATE;     // 脉冲压缩模板
+static Array _HAMMING;      // 缓存的 hamming 窗 [N_PULSES, 1]
+static Array _SLOW_TIMES;   // 缓存的慢时间轴
 static double _SIG_POWER;   // 信号功率
 static double _NOISE_SIGMA; // 噪声标准差
 static Array _DOPPLER_BINS; // 多普勒轴
@@ -77,6 +80,12 @@ static void init_cache(Place place) {
   _RANGE_BINS = range_arr.place().kind() == DeviceKind::CPU
                     ? range_arr
                     : range_arr.to(CPUPlace());
+
+  // 预创建脉冲压缩模板和 hamming 窗
+  _TEMPLATE = _S_TX.slice({Slice(0, PULSE_LEN)});
+  _HAMMING =
+      reshape(signal::get_window("hamming", N_PULSES, false), {N_PULSES, 1});
+  _SLOW_TIMES = arange(N_PULSES, DType::F64, place) * T_PRF;
 }
 
 // ============================================================
@@ -103,26 +112,24 @@ static void get_target_params(int frame_idx, int total_frames,
 // 向量化回波模拟
 // ============================================================
 static Array simulate_echoes(const std::vector<double> &delays,
-                              const std::vector<double> &dopplers,
-                              Place place) {
+                             const std::vector<double> &dopplers, Place place) {
   Array noise_r = mul(randn({N_PULSES, N}, DType::F64, place),
-                       full({1}, _NOISE_SIGMA, DType::F64, place));
+                      full({1}, _NOISE_SIGMA, DType::F64, place));
   Array noise_i = mul(randn({N_PULSES, N}, DType::F64, place),
-                       full({1}, _NOISE_SIGMA, DType::F64, place));
+                      full({1}, _NOISE_SIGMA, DType::F64, place));
 
-  Array slow_times = arange(N_PULSES, DType::F64, place) * T_PRF;
   Array pulses = zeros({N_PULSES, N}, DType::C64, place);
 
   for (size_t tgt = 0; tgt < delays.size(); ++tgt) {
     int64_t ds = int64_t(delays[tgt] * FS);
     Array delayed_1d = zeros({N}, DType::C64, place);
     if (ds < N) {
-      Array view = delayed_1d.slice({Slice(ds, N)});
-      view.copy_from_(_S_TX.slice({Slice(0, N - ds)}));
+      delayed_1d.slice({Slice(ds, N)})
+          .copy_from_(_S_TX.slice({Slice(0, N - ds)}));
     }
     Array delayed_2d = reshape(delayed_1d, {1, N});
 
-    Array phase = 2.0 * M_PI * dopplers[tgt] * slow_times;
+    Array phase = _SLOW_TIMES * (2.0 * M_PI * dopplers[tgt]);
     Array rot = to_complex(cos(phase), sin(phase));
     Array rot_2d = reshape(rot, {N_PULSES, 1});
 
@@ -145,12 +152,13 @@ struct ExtractResult {
 };
 
 static ExtractResult extract_targets(const Array &energy, const Array &det,
-                                      int top_n = 2,
-                                      double cluster_threshold = 3.0) {
+                                     int top_n = 2,
+                                     double cluster_threshold = 3.0) {
   ExtractResult result;
 
   // 将 detection 转到 CPU 并扫描
-  Array det_cpu = (det.place().kind() == DeviceKind::CPU) ? det : det.to(CPUPlace());
+  Array det_cpu =
+      (det.place().kind() == DeviceKind::CPU) ? det : det.to(CPUPlace());
   const bool *det_data = det_cpu.data<bool>();
   int64_t n_det_doppler = det.shape().dim(0);
   int64_t n_det_range = det.shape().dim(1);
@@ -170,7 +178,8 @@ static ExtractResult extract_targets(const Array &energy, const Array &det,
     }
   }
 
-  if (candidates.empty()) return result;
+  if (candidates.empty())
+    return result;
   result.raw_count = (int)candidates.size();
 
   // 从 energy 数组读取能量值
@@ -194,11 +203,13 @@ static ExtractResult extract_targets(const Array &energy, const Array &det,
   std::vector<Candidate> clusters;
 
   for (int i = 0; i < keep; ++i) {
-    if (visited[i]) continue;
+    if (visited[i])
+      continue;
     visited[i] = true;
     std::vector<int> cluster_indices = {i};
     for (int j = i + 1; j < keep; ++j) {
-      if (visited[j]) continue;
+      if (visited[j])
+        continue;
       double d = std::sqrt(std::pow(top[i].i - top[j].i, 2) +
                            std::pow(top[i].j - top[j].j, 2));
       if (d <= cluster_threshold) {
@@ -206,8 +217,9 @@ static ExtractResult extract_targets(const Array &energy, const Array &det,
         cluster_indices.push_back(j);
       }
     }
-    auto best = std::max_element(cluster_indices.begin(), cluster_indices.end(),
-                                  [&](int a, int b) { return top[a].v < top[b].v; });
+    auto best =
+        std::max_element(cluster_indices.begin(), cluster_indices.end(),
+                         [&](int a, int b) { return top[a].v < top[b].v; });
     clusters.push_back(top[*best]);
   }
 
@@ -224,7 +236,8 @@ static ExtractResult extract_targets(const Array &energy, const Array &det,
       ti.d = c.i;
       ti.r = c.j;
       result.targets.push_back(ti);
-      if ((int)result.targets.size() >= top_n) break;
+      if ((int)result.targets.size() >= top_n)
+        break;
     }
   }
 
@@ -241,8 +254,8 @@ struct FrameResult {
 };
 
 static FrameResult run_frame(const std::vector<double> &delays,
-                              const std::vector<double> &dopplers,
-                              Place place, int seed_val, int) {
+                             const std::vector<double> &dopplers, Place place,
+                             int seed_val, int) {
   seed(seed_val);
 
   auto t0 = std::chrono::high_resolution_clock::now();
@@ -252,22 +265,24 @@ static FrameResult run_frame(const std::vector<double> &delays,
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // [2] Pulse compression
-  Array template_sig = _S_TX.slice({Slice(0, PULSE_LEN)});
-  Array pc = signal::pulse_compression(pulses, template_sig);
+  Array pc = signal::pulse_compression(pulses, _TEMPLATE);
   auto t2 = std::chrono::high_resolution_clock::now();
 
   // [3] Doppler processing
   Array mean_pc = mean(pc, {0}, true);
   Array pc_ac = sub(pc, mean_pc);
-  Array spec = signal::pulse_doppler(pc_ac, "hamming", N_PULSES);
-  Array doppler_shifted = div(spec, full(spec.shape(), (double)N_PULSES, spec.dtype(), spec.place()));
+  Array spec = signal::pulse_doppler(mul(pc_ac, _HAMMING), "", 0);
+  Array doppler_shifted = div(
+      spec, full(spec.shape(), (double)N_PULSES, spec.dtype(), spec.place()));
   auto t3 = std::chrono::high_resolution_clock::now();
 
   // [4] Energy
-  Array energy = add(square(real(doppler_shifted)), square(imag(doppler_shifted)));
+  Array energy =
+      add(square(real(doppler_shifted)), square(imag(doppler_shifted)));
 
   // [5] CA-CFAR
-  auto [threshold, detections] = signal::ca_cfar(energy, {4, 4}, {12, 12}, 1e-6);
+  auto [threshold, detections] =
+      signal::ca_cfar(energy, {4, 4}, {12, 12}, 1e-6);
   auto t4 = std::chrono::high_resolution_clock::now();
 
   // [6] Target extraction
@@ -338,16 +353,17 @@ int main(int argc, char **argv) {
   printf("============================================================\n");
   printf("  雷达目标检测与多普勒分析 (Insight7 C++)\n");
   printf("============================================================\n");
-  printf("\n[配置] 采样率: %.1f MHz  脉冲: %lld  设备: %s  种子: %d  帧数: %d\n",
-         FS / 1e6, (long long)N_PULSES, use_gpu ? "gpu" : "cpu", args.seed, n_frames);
+  printf(
+      "\n[配置] 采样率: %.1f MHz  脉冲: %lld  设备: %s  种子: %d  帧数: %d\n",
+      FS / 1e6, (long long)N_PULSES, use_gpu ? "gpu" : "cpu", args.seed,
+      n_frames);
 
   // 初始化缓存
   init_cache(place);
 
   // 模糊函数分析
   printf("\n[波形分析] 计算模糊函数...\n");
-  Array template_sig = _S_TX.slice({Slice(0, PULSE_LEN)});
-  Array ambg = signal::ambgfun(template_sig, FS, 1.0 / T_PRF);
+  Array ambg = signal::ambgfun(_TEMPLATE, FS, 1.0 / T_PRF);
   Array ambg_abs = abs(ambg);
   double peak_val = max(ambg_abs).item<double>();
   double mean_val = mean(ambg_abs).item<double>();
@@ -361,40 +377,41 @@ int main(int argc, char **argv) {
     std::vector<double> delays, dopplers;
     get_target_params(frame, n_frames, delays, dopplers);
 
-    FrameResult result =
-        run_frame(delays, dopplers, place, args.seed, frame);
+    FrameResult result = run_frame(delays, dopplers, place, args.seed, frame);
 
     times.push_back(result.total_ms);
 
-    bool print_frame =
-        (n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 ||
-         frame == n_frames - 1);
+    bool print_frame = (n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 ||
+                        frame == n_frames - 1);
 
     if (print_frame) {
       std::string targets_str;
       const double *dop_data = _DOPPLER_BINS.data<double>();
       const double *rng_data = _RANGE_BINS.data<double>();
       for (size_t k = 0; k < result.targets.size(); ++k) {
-        if (k > 0) targets_str += "; ";
+        if (k > 0)
+          targets_str += "; ";
         char buf[128];
         snprintf(buf, sizeof(buf), "距离 %.0fm 多普勒 %.0fHz",
-                 rng_data[result.targets[k].r],
-                 dop_data[result.targets[k].d]);
+                 rng_data[result.targets[k].r], dop_data[result.targets[k].d]);
         targets_str += buf;
       }
-      if (targets_str.empty()) targets_str = "无";
+      if (targets_str.empty())
+        targets_str = "无";
 
-      printf("  帧 %4d/%d | %8.2f ms | 检测 %4d → %zu 目标 | echo %5.2f pc %5.2f dop %5.2f cfar %5.2f ext %5.2f | %s\n",
+      printf("  帧 %4d/%d | %8.2f ms | 检测 %4d → %zu 目标 | echo %5.2f pc "
+             "%5.2f dop %5.2f cfar %5.2f ext %5.2f | %s\n",
              frame, n_frames, result.total_ms, result.raw_count,
-             result.targets.size(),
-             result.echo_ms, result.pc_ms, result.doppler_ms,
-             result.cfar_ms, result.local_ms, targets_str.c_str());
+             result.targets.size(), result.echo_ms, result.pc_ms,
+             result.doppler_ms, result.cfar_ms, result.local_ms,
+             targets_str.c_str());
     }
   }
 
   // 性能总结
   double sum = 0;
-  for (auto t : times) sum += t;
+  for (auto t : times)
+    sum += t;
   double avg_ms = sum / times.size();
   double fps = 1000.0 / avg_ms;
 

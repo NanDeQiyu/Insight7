@@ -202,18 +202,30 @@ void insight_jl_to_data(const Array *arr, void *dst) {
 double insight_jl_item_flat(const Array *arr, int64_t idx) {
   Array cpu = arr->contiguous().to(CPUPlace());
   switch (cpu.dtype()) {
-    case DType::F64: return cpu.data<double>()[idx];
-    case DType::F32: return (double)cpu.data<float>()[idx];
-    case DType::I64: return (double)cpu.data<int64_t>()[idx];
-    case DType::I32: return (double)cpu.data<int32_t>()[idx];
-    case DType::I16: return (double)cpu.data<int16_t>()[idx];
-    case DType::I8:  return (double)cpu.data<int8_t>()[idx];
-    case DType::U64: return (double)cpu.data<uint64_t>()[idx];
-    case DType::U32: return (double)cpu.data<uint32_t>()[idx];
-    case DType::U16: return (double)cpu.data<uint16_t>()[idx];
-    case DType::U8:  return (double)cpu.data<uint8_t>()[idx];
-    case DType::BOOL: return cpu.data<bool>()[idx] ? 1.0 : 0.0;
-    default: return 0.0;
+  case DType::F64:
+    return cpu.data<double>()[idx];
+  case DType::F32:
+    return (double)cpu.data<float>()[idx];
+  case DType::I64:
+    return (double)cpu.data<int64_t>()[idx];
+  case DType::I32:
+    return (double)cpu.data<int32_t>()[idx];
+  case DType::I16:
+    return (double)cpu.data<int16_t>()[idx];
+  case DType::I8:
+    return (double)cpu.data<int8_t>()[idx];
+  case DType::U64:
+    return (double)cpu.data<uint64_t>()[idx];
+  case DType::U32:
+    return (double)cpu.data<uint32_t>()[idx];
+  case DType::U16:
+    return (double)cpu.data<uint16_t>()[idx];
+  case DType::U8:
+    return (double)cpu.data<uint8_t>()[idx];
+  case DType::BOOL:
+    return cpu.data<bool>()[idx] ? 1.0 : 0.0;
+  default:
+    return 0.0;
   }
 }
 
@@ -737,7 +749,7 @@ Array *insight_jl_pulse_doppler(const Array *x) {
 }
 
 Array *insight_jl_pulse_doppler_window(const Array *x, const char *window,
-                                        int64_t nfft) {
+                                       int64_t nfft) {
   return new Array(signal::pulse_doppler(*x, std::string(window), nfft));
 }
 

@@ -4,7 +4,8 @@ demos/radar_insight_plot.py
 """
 
 import math
-import os, sys
+import os
+import sys
 import insight as ins
 import numpy as np
 
@@ -27,7 +28,7 @@ def run_frame():
     ins.set_device(ins.CPUPlace())
 
     t = ins.arange(N, dtype=ins.float64) / FS
-    phase = PI * (B / TAU) * (t ** 2)
+    phase = PI * (B / TAU) * (t**2)
     s_tx = ins.to_complex(ins.cos(phase), ins.sin(phase))
     tau_arr = ins.full([1], TAU, ins.float64)
     mask = ins.cast(ins.less(t, tau_arr), ins.float64)
@@ -48,7 +49,7 @@ def run_frame():
             ds = int(delay * FS)
             delayed = ins.zeros([N], ins.complex128)
             if ds < N:
-                delayed[ds:] = s_tx[0:N - ds]
+                delayed[ds:] = s_tx[0 : N - ds]
             fast_phase = 2 * PI * doppler * t
             rotation = ins.to_complex(ins.cos(fast_phase), ins.sin(fast_phase))
             slow_phase = 2 * PI * doppler * slow_time
@@ -66,7 +67,7 @@ def run_frame():
     for p in range(N_PULSES):
         conv = ins.signal.fftconvolve(s_rx[p], mf, "full")
         start = N - 1
-        pc[p] = conv[start:start + N]
+        pc[p] = conv[start : start + N]
 
     doppler_spec = ins.fft(pc, N_PULSES, 0)
     doppler_shifted = ins.fftshift(doppler_spec, 0)
@@ -90,8 +91,9 @@ def run_frame():
             for j in range(i + 1, len(points)):
                 if visited[j]:
                     continue
-                d = math.sqrt((points[i][0] - points[j][0]) ** 2 +
-                              (points[i][1] - points[j][1]) ** 2)
+                d = math.sqrt(
+                    (points[i][0] - points[j][0]) ** 2 + (points[i][1] - points[j][1]) ** 2
+                )
                 if d <= 5.0:
                     visited[j] = True
                     cluster.append(points[j])
@@ -134,7 +136,7 @@ def save_plots(r, path):
     plt.ylabel("Pulse #")
     plt.colorbar()
 
-    # (2) Range-Doppler Map 
+    # (2) Range-Doppler Map
     plt.subplot(2, 2, 2)
     plt.image(energy_db)
     plt.colormap(plt.Colormap.jet)
@@ -163,7 +165,7 @@ def save_plots(r, path):
     # (4) Doppler spectrum at max range gate
     plt.subplot(2, 2, 4)
     plt.plot(r["doppler_bins"], energy[:, max_r])
-    plt.title(f"Doppler Spectrum")
+    plt.title("Doppler Spectrum")
     plt.xlabel("Doppler [Hz]")
     plt.ylabel("Amplitude")
     plt.grid(True)

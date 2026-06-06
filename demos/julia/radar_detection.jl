@@ -32,6 +32,8 @@ const DOPPLER_END = [1800.0, -1200.0]
 # ============================================================
 _S_TX = nothing
 _TEMPLATE = nothing
+_HAMMING = nothing
+_SLOW_TIMES = nothing
 _SIG_POWER = 0.0
 _NOISE_SIGMA = 0.0
 _DOPPLER_BINS = nothing
@@ -39,7 +41,7 @@ _RANGE_BINS = nothing
 _PLACE = nothing
 
 function init_cache(device)
-    global _S_TX, _TEMPLATE, _SIG_POWER, _NOISE_SIGMA, _DOPPLER_BINS, _RANGE_BINS, _PLACE
+    global _S_TX, _TEMPLATE, _HAMMING, _SLOW_TIMES, _SIG_POWER, _NOISE_SIGMA, _DOPPLER_BINS, _RANGE_BINS, _PLACE
 
     if device == "gpu" && Insight.has_device(Int64(1))
         Insight.load_backend("cuda")
@@ -67,6 +69,12 @@ function init_cache(device)
 
     # 预创建脉冲压缩模板
     _TEMPLATE = Insight.slice(_S_TX, 1, 1, PULSE_LEN + 1)
+
+    # 预创建 hamming 窗 (避免每帧重新创建)
+    _HAMMING = Insight.reshape(Insight.signal.get_window("hamming", Int64(N_PULSES), fftbins=false), Int64[N_PULSES, 1])
+
+    # 预创建慢时间轴 (避免每帧重复 arange + mul)
+    _SLOW_TIMES = Insight.arange(Float64(0.0), Float64(N_PULSES), Float64(1.0), Insight.float64) * T_PRF
 end
 
 function get_target_params(frame_idx, total_frames)
@@ -82,7 +90,6 @@ end
 function simulate_echoes(delays, dopplers)
     noise_r = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
     noise_i = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
-    slow_times = Insight.arange(Float64(0.0), Float64(N_PULSES), Float64(1.0), Insight.float64) * T_PRF
     pulses = Insight.zeros(Int64[N_PULSES, N], Insight.complex128)
 
     for k in 1:length(delays)
@@ -94,7 +101,7 @@ function simulate_echoes(delays, dopplers)
             Insight.copy_from_!(dst, src)
         end
         delayed_2d = Insight.reshape(delayed_1d, Int64[1, N])
-        phase = 2.0 * π * dopplers[k] * slow_times
+        phase = _SLOW_TIMES * (2.0 * π * dopplers[k])
         rot = Insight.to_complex(Insight.cos(phase), Insight.sin(phase))
         rot_2d = Insight.reshape(rot, Int64[N_PULSES, 1])
         pulses = pulses + delayed_2d * rot_2d
@@ -172,7 +179,7 @@ function run_frame(delays, dopplers, _device, seed)
 
     mean_pc = Insight.mean(pc, axis=0, keepdims=true)
     pc_ac = pc - mean_pc
-    spec = Insight.signal.pulse_doppler(pc_ac, "hamming", Int64(N_PULSES))
+    spec = Insight.signal.pulse_doppler(pc_ac * _HAMMING, "", Int64(N_PULSES))
     shifted = spec / Float64(N_PULSES)
     t3 = time()
 
@@ -227,6 +234,8 @@ function main()
     local rng_jl = Insight.to_data(_RANGE_BINS)
     local times = Float64[]
 
+    # 禁用 GC 减少 finalizer 开销 (帧结束后恢复)
+    GC.enable(false)
     for frame in 0:n_frames-1
         local delays, dopplers = get_target_params(frame, n_frames)
         local targets, raw_count, total_ms = run_frame(delays, dopplers, device, seed)
@@ -243,6 +252,8 @@ function main()
                     "检测 $(Base.lpad(raw_count, 4)) → $(length(targets)) 目标 | $(targets_str)")
         end
     end
+    GC.enable(true)
+    GC.gc()  # 清理累积的临时数组
 
     local avg_ms = sum(times) / length(times)
     local fps = 1000.0 / avg_ms

@@ -50,7 +50,8 @@ Array pulse_compression(const Array &x, const Array &template_tx,
   int64_t min_n = samples_per_pulse + tpl_len - 1;
   if (nfft == 0 || nfft < min_n) {
     nfft = 1;
-    while (nfft < min_n) nfft <<= 1;
+    while (nfft < min_n)
+      nfft <<= 1;
   }
 
   // Apply window to template if specified
@@ -71,7 +72,8 @@ Array pulse_compression(const Array &x, const Array &template_tx,
 
   // Pad template to nfft and compute matched filter in freq domain
   DType work_dtype = is_complex ? x.dtype() : DType::F64;
-  if (tpl.dtype() != work_dtype) tpl = tpl.to(work_dtype);
+  if (tpl.dtype() != work_dtype)
+    tpl = tpl.to(work_dtype);
 
   Array tpl_padded = zeros({nfft}, work_dtype, dev);
   {
@@ -80,8 +82,9 @@ Array pulse_compression(const Array &x, const Array &template_tx,
   }
 
   // Matched filter in frequency domain: conj(flip(template))
-  // Correct: fft(conj(flip(template_padded))) = conj(fft(template) * exp(j*2π*k*(N-1)/N))
-  // We compute it directly by flipping the template, conjugating, then FFT.
+  // Correct: fft(conj(flip(template_padded))) = conj(fft(template) *
+  // exp(j*2π*k*(N-1)/N)) We compute it directly by flipping the template,
+  // conjugating, then FFT.
   Array mf_fft;
   if (is_complex) {
     // For complex input: flip → conj → FFT (full complex path)
@@ -93,13 +96,15 @@ Array pulse_compression(const Array &x, const Array &template_tx,
     }
     mf_fft = fft::fft(mf_padded, nfft, 0);
   } else {
-    // For real input: conj(rfft(template)) is correct (real signals are symmetric)
+    // For real input: conj(rfft(template)) is correct (real signals are
+    // symmetric)
     mf_fft = conj(fft::rfft(tpl_padded, nfft));
   }
 
   // Pad input and do batched FFT along axis 1
   Array x_work = x;
-  if (x_work.dtype() != work_dtype) x_work = x_work.to(work_dtype);
+  if (x_work.dtype() != work_dtype)
+    x_work = x_work.to(work_dtype);
 
   Array x_padded = zeros({num_pulses, nfft}, work_dtype, dev);
   {
@@ -148,7 +153,8 @@ Array pulse_doppler(const Array &x, const std::string &window, int64_t nfft) {
   int64_t num_pulses = x.shape().dim(0);
   int64_t samples_per_pulse = x.shape().dim(1);
 
-  if (nfft == 0) nfft = num_pulses;
+  if (nfft == 0)
+    nfft = num_pulses;
 
   // Work on the same device as input
   Place dev = x.place();
@@ -157,12 +163,14 @@ Array pulse_doppler(const Array &x, const std::string &window, int64_t nfft) {
   Array x_work = x;
   if (!window.empty()) {
     Array W = get_window(window, num_pulses, false);
-    W = reshape(W, {num_pulses, 1});  // broadcast: [num_pulses, 1] × [num_pulses, samples]
+    W = reshape(W, {num_pulses,
+                    1}); // broadcast: [num_pulses, 1] × [num_pulses, samples]
     x_work = mul(x_work, W);
   }
 
   // Ensure complex for FFT
-  bool is_complex = (x_work.dtype() == DType::C32 || x_work.dtype() == DType::C64);
+  bool is_complex =
+      (x_work.dtype() == DType::C32 || x_work.dtype() == DType::C64);
   if (!is_complex) {
     x_work = to_complex(x_work);
   }

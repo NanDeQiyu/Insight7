@@ -55,17 +55,27 @@ DOPPLER_END = [1800.0, -1200.0]
 # ============================================================
 # 全局缓存 (一次性初始化，所有帧共享)
 # ============================================================
-_S_TX = None         # LFM 发射信号
-_SIG_POWER = None    # 信号功率常数
+_S_TX = None  # LFM 发射信号
+_SIG_POWER = None  # 信号功率常数
 _NOISE_SIGMA = None  # 噪声标准差常数
-_DOPPLER_BINS = None # 多普勒频率轴 (Python list)
-_RANGE_BINS = None   # 距离轴 (Python list)
-_PLACE = None        # 当前设备 Place
+_DOPPLER_BINS = None  # 多普勒频率轴 (Python list)
+_RANGE_BINS = None  # 距离轴 (Python list)
+_PLACE = None  # 当前设备 Place
+_HAMMING = None  # 缓存的 hamming 窗 [N_PULSES, 1]
+_SLOW_TIMES = None  # 缓存的慢时间轴
 
 
 def _init_cache(device="cpu"):
     """一次性初始化: 生成 LFM 信号并预计算所有常数。"""
-    global _S_TX, _SIG_POWER, _NOISE_SIGMA, _DOPPLER_BINS, _RANGE_BINS, _PLACE
+    global \
+        _S_TX, \
+        _SIG_POWER, \
+        _NOISE_SIGMA, \
+        _DOPPLER_BINS, \
+        _RANGE_BINS, \
+        _PLACE, \
+        _HAMMING, \
+        _SLOW_TIMES
 
     # 确定设备
     if device == "gpu" and ins.has_device("gpu"):
@@ -77,7 +87,7 @@ def _init_cache(device="cpu"):
 
     # LFM 发射信号
     t = ins.arange(N, dtype=ins.float64, place=_PLACE) / FS
-    phase = PI * (B / TAU) * (t ** 2)
+    phase = PI * (B / TAU) * (t**2)
     s_tx = ins.to_complex(ins.cos(phase), ins.sin(phase))
     tau_arr = ins.full([1], TAU, ins.float64, place=_PLACE)
     mask = ins.cast(ins.less(t, tau_arr), ins.float64)
@@ -97,6 +107,12 @@ def _init_cache(device="cpu"):
     range_arr = (ins.arange(N, dtype=ins.float64, place=_PLACE) - PC_OFFSET) * RANGE_PER_BIN
     range_cpu = range_arr.to(cpu_place)
     _RANGE_BINS = range_cpu.list()
+
+    # 缓存 hamming 窗 (避免每帧重新创建)
+    _HAMMING = ins.reshape(ins.signal.get_window("hamming", N_PULSES, fftbins=False), [N_PULSES, 1])
+
+    # 缓存慢时间轴 (避免每帧重复 arange + mul)
+    _SLOW_TIMES = ins.arange(N_PULSES, dtype=ins.float64, place=_PLACE) * T_PRF
 
 
 def _get_target_params(frame_idx, total_frames):
@@ -118,15 +134,14 @@ def _simulate_echoes(target_delays, target_dopplers):
     noise_r = ins.randn([N_PULSES, N], ins.float64, place=_PLACE) * noise_sigma
     noise_i = ins.randn([N_PULSES, N], ins.float64, place=_PLACE) * noise_sigma
 
-    slow_times = ins.arange(N_PULSES, dtype=ins.float64, place=_PLACE) * T_PRF
     pulses = ins.zeros([N_PULSES, N], ins.complex128, place=_PLACE)
     for delay, doppler in zip(target_delays, target_dopplers):
         ds = int(delay * FS)
         delayed_1d = ins.zeros([N], ins.complex128, place=_PLACE)
         if ds < N:
-            delayed_1d[ds:] = _S_TX[0:N - ds]
+            delayed_1d[ds:] = _S_TX[0 : N - ds]
         delayed_2d = ins.reshape(delayed_1d, [1, N])
-        phase = 2.0 * PI * doppler * slow_times
+        phase = _SLOW_TIMES * (2.0 * PI * doppler)
         rot = ins.to_complex(ins.cos(phase), ins.sin(phase))
         rot_2d = ins.reshape(rot, [N_PULSES, 1])
         pulses = pulses + delayed_2d * rot_2d
@@ -143,7 +158,7 @@ def _extract_targets(energy, det, top_n=2, cluster_threshold=3.0):
     - 后续 Python loop 仅操作 CPU 数据，无 GPU 同步开销
     """
     idx = ins.nonzero(det)
-    n_det = int(idx.shape()[1]) if idx.shape() else 0
+    n_det = int(idx.shape[1]) if idx.shape else 0
     if n_det == 0:
         return [], 0
 
@@ -162,7 +177,7 @@ def _extract_targets(energy, det, top_n=2, cluster_threshold=3.0):
     ]
 
     candidates.sort(key=lambda x: x[2], reverse=True)
-    top_candidates = candidates[:max(top_n * 10, 20)]
+    top_candidates = candidates[: max(top_n * 10, 20)]
 
     points = [(i, j) for i, j, _ in top_candidates]
     visited = [False] * len(points)
@@ -176,9 +191,7 @@ def _extract_targets(energy, det, top_n=2, cluster_threshold=3.0):
         for j in range(i + 1, len(points)):
             if visited[j]:
                 continue
-            d = math.sqrt(
-                (points[i][0] - points[j][0]) ** 2 + (points[i][1] - points[j][1]) ** 2
-            )
+            d = math.sqrt((points[i][0] - points[j][0]) ** 2 + (points[i][1] - points[j][1]) ** 2)
             if d <= cluster_threshold:
                 visited[j] = True
                 cluster_indices.append(j)
@@ -237,7 +250,7 @@ def run_detection(device="cpu", seed=42, frame_idx=0, total_frames=1):
     t0 = time.time()
     mean_pc = ins.mean(pc, axis=0, keepdims=True)
     pc_ac = pc - mean_pc
-    spec = ins.signal.pulse_doppler(pc_ac, window="hamming", nfft=N_PULSES)
+    spec = ins.signal.pulse_doppler(pc_ac * _HAMMING, window="", nfft=N_PULSES)
     doppler_shifted = spec / float(N_PULSES)
     t_doppler = time.time() - t0
 
@@ -322,6 +335,7 @@ if __name__ == "__main__":
     if args.plot:
         os.makedirs(args.plot, exist_ok=True)
         from _plot_radar import save_frame, save_ambiguity_plot
+
         save_ambiguity_plot(ambg, args.plot)
         plot_dir = args.plot
 

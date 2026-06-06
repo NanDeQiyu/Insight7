@@ -18,13 +18,15 @@ freq_bins = spectrum.numel  # returns bound method, not int
 freq_bins = spectrum.numel()
 ```
 
-### `shape` is a method, not a property
+### `shape` is a property (post-Windows-merge)
+After the Windows adaptation PR, `shape` changed from a callable method to a property:
 ```python
-# ❌ WRONG — TypeError: 'method' object is not subscriptable
-n = arr.shape[0]
-
-# ✅ CORRECT
+# ❌ WRONG (pre-merge) — TypeError: 'insight._insight.Shape' object is not callable
 n = arr.shape()[0]
+
+# ✅ CORRECT (post-merge) — shape is a property, supports indexing
+n = arr.shape[0]
+n_det = int(idx.shape[1]) if idx.shape else 0
 ```
 
 ### `list(shape())` raises RuntimeError — use list comprehension
@@ -559,6 +561,36 @@ PATH="$HOME/.local/bin:$PATH" pre-commit run --all-files
 OMP_NUM_THREADS=1 ctest -j24  # Much faster for small data
 OMP_NUM_THREADS=1 ./tests/insight_tests_cpu  # 88ms vs seconds
 ```
+
+## Post-Merge Recovery Checklist
+
+After merging external PRs (especially Windows adaptation), verify:
+
+### Lua binding
+- `array_type["table"]` exists (Windows merge removed it)
+- `array_type["item"]` exists
+- `m["slice"]` exists (integer-param slice, no string parsing)
+- `ambgfun` uses lambda wrapper with `sol::optional<Array>` (not bare function pointer)
+- `pulse_doppler` uses lambda wrapper with `sol::optional` (preserves defaults)
+
+### Python demos
+- `.shape` is property not method (check `arr.shape[0]` vs `arr.shape()[0]`)
+- All `.shape()` calls in demos updated to `.shape`
+
+### C++ core
+- `fftshift`/`ifftshift` don't have unnecessary `contiguous()` calls
+- `common_impl.cpp` FFTWCache struct matches `common.h`
+
+### Julia binding
+- `Insight.jl` parent copy matches `src/Insight.jl` (build may overwrite)
+- `nonzero` function exists in Insight.jl
+- `item_flat` function exists for bulk extraction
+- `pulse_doppler_window` C API function exists
+
+### All languages
+- Hamming window cached in `init_cache` (not recreated per frame)
+- Slow-times (`arange * T_PRF`) cached in `init_cache`
+- Template slice cached in `init_cache`
 
 ## GPU Sections: Use has_device() + Silent Skip
 

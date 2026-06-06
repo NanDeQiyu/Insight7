@@ -72,7 +72,7 @@ def design_filters(fs):
 def apply_filter(sig, taps, numtaps):
     full = ins.signal.fftconvolve(sig, taps, "full")
     half = numtaps // 2
-    n = int(sig.shape()[0])
+    n = int(sig.shape[0])
     return full[half : half + n]
 
 
@@ -80,7 +80,7 @@ def apply_filter(sig, taps, numtaps):
 # 4. 高斯平滑
 # ============================================================
 def gaussian_smooth(sig, smooth_factor=0.1):
-    n = int(sig.shape()[0])
+    n = int(sig.shape[0])
     kernel_size = max(3, int(smooth_factor * n))
     if kernel_size % 2 == 0:
         kernel_size += 1
@@ -123,10 +123,10 @@ def extract_features(sig, fs):
     features["cwt_widths"] = widths_list
     features["cwt_matrix"] = ins.abs(ins.signal.cwt(sig, ins.signal.morlet2, widths_list))
 
-    seg_len = min(int(sig.shape()[0]), 2048)
+    seg_len = min(int(sig.shape[0]), 2048)
     seg = sig[0:seg_len]
     autocorr_full = ins.signal.correlate(seg, seg, "full")
-    half = int(autocorr_full.shape()[0]) // 2
+    half = int(autocorr_full.shape[0]) // 2
     autocorr = autocorr_full[half:]
     norm_val = autocorr.at([0]).numpy().item()
     if norm_val != 0:
@@ -144,14 +144,14 @@ def find_peaks(sig, order=15):
     peaks_min = ins.signal.argrelextrema(sig, comparator="less", order=order)
 
     max_arr = []
-    if peaks_max and int(peaks_max[0].shape()[1]) > 0:
+    if peaks_max and int(peaks_max[0].shape[1]) > 0:
         m = peaks_max[0]
-        max_arr = [int(m.at([0, i]).numpy().item()) for i in range(int(m.shape()[1]))]
+        max_arr = [int(m.at([0, i]).numpy().item()) for i in range(int(m.shape[1]))]
 
     min_arr = []
-    if peaks_min and int(peaks_min[0].shape()[1]) > 0:
+    if peaks_min and int(peaks_min[0].shape[1]) > 0:
         m = peaks_min[0]
-        min_arr = [int(m.at([0, i]).numpy().item()) for i in range(int(m.shape()[1]))]
+        min_arr = [int(m.at([0, i]).numpy().item()) for i in range(int(m.shape[1]))]
 
     return max_arr, min_arr
 
@@ -198,11 +198,11 @@ def estimate_parameters(inst_freq, fs, peaks):
     kf.update(z)
 
     smoothed = ins.flatten(kf.x)
-    smoothed_list = [smoothed.at([i]).numpy().item() for i in range(int(smoothed.shape()[0]))]
+    smoothed_list = [smoothed.at([i]).numpy().item() for i in range(int(smoothed.shape[0]))]
 
     params = []
     for i, p in enumerate(peaks):
-        if 0 <= int(p) < int(inst_freq.shape()[0]):
+        if 0 <= int(p) < int(inst_freq.shape[0]):
             params.append(
                 {
                     "index": int(p),
@@ -260,13 +260,13 @@ def run_pipeline(device="cpu"):
     timings["features"] = time.time() - t0
 
     def _shape_str(arr):
-        s = arr.shape()
+        s = arr.shape
         return f"[{s[0]}, {s[1]}]" if s.ndim() > 1 else f"[{s[0]}]"
 
-    print(f"  FM demod: {int(features['fm_demod'].shape()[0])} 点")
+    print(f"  FM demod: {int(features['fm_demod'].shape[0])} 点")
     print(f"  STFT: {_shape_str(features['stft_Sxx'])}")
     print(f"  CWT: {_shape_str(features['cwt_matrix'])}")
-    print(f"  自相关: {int(features['autocorr'].shape()[0])} 延迟")
+    print(f"  自相关: {int(features['autocorr'].shape[0])} 延迟")
 
     print("[6/6] 峰值查找 + Kalman...")
     t0 = time.time()
