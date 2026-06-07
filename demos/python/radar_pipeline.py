@@ -409,7 +409,7 @@ if __name__ == "__main__":
 
         if args.plot and (frame == 0 or frame == n_frames - 1):
             os.makedirs(args.plot, exist_ok=True)
-            from _plot_feature import save_feature_plot
+            from _plot_radar_pipeline import save_feature_plot
 
             save_feature_plot(result, args.plot, frame_idx=frame if n_frames > 1 else None)
 

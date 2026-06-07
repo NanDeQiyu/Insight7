@@ -52,6 +52,5 @@ if(INSIGHT_USE_SNDFILE)
     )
 endif()
 
-add_insight_demo(demo_radar_task1  cpp/radar_task1.cpp)
 add_insight_demo(demo_radar_detection cpp/radar_detection.cpp)
-add_insight_demo(demo_feature_extraction cpp/feature_extraction.cpp)
+add_insight_demo(demo_radar_pipeline cpp/radar_pipeline.cpp)
