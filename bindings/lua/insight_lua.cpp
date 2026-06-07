@@ -402,9 +402,13 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
         if (lua_gettop(L) > 2) {
           place = sol::stack::get<ins::Place>(L, 3);
         }
-        ins::Array result = from_lua_table(t, place);
-        sol::stack::push(L, std::move(result));
-        return 1;
+        try {
+          ins::Array result = from_lua_table(t, place);
+          sol::stack::push(L, std::move(result));
+          return 1;
+        } catch (const std::exception &e) {
+          return luaL_error(L, "%s", e.what());
+        }
       });
       lua_setfield(L, -2, "__call");
       lua_pop(L, 1); // pop metatable
@@ -684,7 +688,15 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
   // ====================================================================
   // Creation
   // ====================================================================
-  m["from_table"] = &from_lua_table;
+  m["from_table"] = [](sol::table t,
+                       sol::optional<ins::Place> place) -> ins::Array {
+    try {
+      return from_lua_table(t, place);
+    } catch (const std::exception &e) {
+      luaL_error(t.lua_state(), "%s", e.what());
+      return ins::Array(); // unreachable, luaL_error longjmps
+    }
+  };
   m["zeros"] = [](sol::table shape, sol::optional<ins::DType> dtype,
                   sol::optional<ins::Place> place) {
     return ins::zeros(ins::Shape(table_to_shape(shape)),

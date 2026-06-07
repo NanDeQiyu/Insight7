@@ -101,4 +101,61 @@ describe("Creation CPU Tests", function()
     local a = ins.ones({ 3 }, ins.int32)
     assert.are.equal(ins.int32, a.dtype)
   end)
+
+  -- ====================================================================
+  -- Error handling: must throw Lua errors, NOT crash the process
+  -- ====================================================================
+
+  it("error_ragged_table", function()
+    assert.has_error(function()
+      ins.Array({ { 3, 3 }, { 3 } })
+    end)
+  end)
+
+  it("error_ragged_deep", function()
+    assert.has_error(function()
+      ins.Array({ { { 1, 2 }, { 3, 4 } }, { { 5, 6 } } })
+    end)
+  end)
+
+  it("error_string_element", function()
+    assert.has_error(function()
+      ins.Array({ 1, 2, "hello" })
+    end)
+  end)
+
+  it("error_nil_element", function()
+    assert.has_error(function()
+      ins.Array({ 1, nil, 3 })
+    end)
+  end)
+
+  it("error_from_table_ragged", function()
+    assert.has_error(function()
+      ins.from_table({ { 1, 2 }, { 3 } })
+    end)
+  end)
+
+  it("valid_flat_table", function()
+    local a = ins.Array({ 1, 2, 3, 4 })
+    assert.is_not_nil(a)
+    assert.are.equal(4, a.numel)
+  end)
+
+  it("valid_nested_table", function()
+    local a = ins.Array({ { 1, 2 }, { 3, 4 } })
+    assert.is_not_nil(a)
+    assert.are.equal(4, a.numel)
+    assert.are.equal(2, a.ndim)
+  end)
+
+  it("process_survives_ragged_error", function()
+    -- Attempt a ragged table, then verify the process is still alive
+    pcall(function()
+      ins.Array({ { 1, 2 }, { 3 } })
+    end)
+    local a = ins.Array({ 5, 6, 7 })
+    assert.is_not_nil(a)
+    assert.are.equal(3, a.numel)
+  end)
 end)
