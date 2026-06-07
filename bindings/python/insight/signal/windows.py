@@ -34,6 +34,7 @@ __all__ = [
     "taylor",
     "general_cosine",
     "get_window",
+    "qmf",
 ]
 
 
@@ -332,3 +333,19 @@ def get_window(window, Nx: int, fftbins: bool = True):
     if isinstance(window, tuple):
         return _signal.get_window(window[0], Nx, fftbins, window[1])
     return _signal.get_window(window, Nx, fftbins)
+
+
+def qmf(h_low):
+    """Return a Quadrature Mirror Filter (QMF) pair.
+
+    Constructs the lowpass and highpass filters for a quadrature mirror
+    filter bank. The highpass filter is a frequency-shifted and
+    time-reversed version of the lowpass filter.
+
+    Args:
+        h_low: Lowpass filter coefficients (1D array).
+
+    Returns:
+        Tuple (lowpass, highpass) of filter arrays.
+    """
+    return _signal.qmf(h_low)
