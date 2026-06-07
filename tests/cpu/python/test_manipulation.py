@@ -191,6 +191,43 @@ class TestManipulationCPU:
         a["1:3"] = 7.0
         np.testing.assert_allclose(a.numpy(), [1.0, 7.0, 7.0, 4.0, 5.0])
 
+    # ========== reshape -1 inference ==========
+
+    def test_reshape_infer_neg1_end(self):
+        a = ins.from_numpy(np.arange(6, dtype=np.float64))
+        b = ins.reshape(a, [1, -1])
+        assert list(b.shape) == [1, 6]
+
+    def test_reshape_infer_neg1_begin(self):
+        a = ins.from_numpy(np.arange(6, dtype=np.float64))
+        b = ins.reshape(a, [-1, 2])
+        assert list(b.shape) == [3, 2]
+
+    def test_reshape_infer_neg1_to_1d(self):
+        a = ins.from_numpy(np.arange(6, dtype=np.float64).reshape(2, 3))
+        b = ins.reshape(a, [-1])
+        assert list(b.shape) == [6]
+
+    def test_reshape_infer_neg1_3d(self):
+        a = ins.from_numpy(np.arange(12, dtype=np.float64))
+        b = ins.reshape(a, [2, 3, -1])
+        assert list(b.shape) == [2, 3, 2]
+
+    def test_reshape_error_multiple_neg1(self):
+        a = ins.from_numpy(np.arange(6, dtype=np.float64))
+        with pytest.raises(Exception):
+            ins.reshape(a, [-1, -1])
+
+    def test_reshape_error_mismatch(self):
+        a = ins.from_numpy(np.arange(6, dtype=np.float64))
+        with pytest.raises(Exception):
+            ins.reshape(a, [2, 4])
+
+    def test_reshape_error_not_divisible(self):
+        a = ins.from_numpy(np.arange(5, dtype=np.float64))
+        with pytest.raises(Exception):
+            ins.reshape(a, [2, -1])
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

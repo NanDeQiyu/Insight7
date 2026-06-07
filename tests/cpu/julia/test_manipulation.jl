@@ -103,6 +103,44 @@ check("copy_from_!_1", isapprox(Insight.item(dst, 1), 20.0; atol=1e-10))
 check("copy_from_!_2", isapprox(Insight.item(dst, 2), 30.0; atol=1e-10))
 check("copy_from_!_3", isapprox(Insight.item(dst, 3), 40.0; atol=1e-10))
 
+# reshape -1 inference
+a = Insight.arange(0.0, 6.0, 1.0, Insight.float64)
+b = Insight.reshape(a, Int64[1, -1])
+check("reshape_neg1_end", Insight.numel(b) == 6 && Insight.ndim(b) == 2)
+
+b = Insight.reshape(a, Int64[-1, 2])
+check("reshape_neg1_begin", Insight.numel(b) == 6 && Insight.ndim(b) == 2)
+
+b = Insight.reshape(a, Int64[-1])
+check("reshape_neg1_to_1d", Insight.numel(b) == 6 && Insight.ndim(b) == 1)
+
+a = Insight.arange(0.0, 12.0, 1.0, Insight.float64)
+b = Insight.reshape(a, Int64[2, 3, -1])
+check("reshape_neg1_3d", Insight.numel(b) == 12 && Insight.ndim(b) == 3)
+
+# reshape error cases (should throw)
+try
+    Insight.reshape(a, Int64[-1, -1])
+    check("reshape_err_multi_neg1", false)
+catch
+    check("reshape_err_multi_neg1", true)
+end
+
+try
+    Insight.reshape(a, Int64[2, 4])
+    check("reshape_err_mismatch", false)
+catch
+    check("reshape_err_mismatch", true)
+end
+
+try
+    a5 = Insight.arange(0.0, 5.0, 1.0, Insight.float64)
+    Insight.reshape(a5, Int64[2, -1])
+    check("reshape_err_not_divisible", false)
+catch
+    check("reshape_err_not_divisible", true)
+end
+
 println("\n" * "="^40)
 println("Results: $passed passed, $failed failed")
 if failed > 0; exit(1); end

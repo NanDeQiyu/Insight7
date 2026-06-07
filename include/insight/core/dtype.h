@@ -113,6 +113,9 @@ template <typename T> constexpr DType dtype_of() {
     return DType::I32;
   else if constexpr (std::is_same_v<T, int64_t>)
     return DType::I64;
+  else if constexpr (!std::is_same_v<T, int64_t> &&
+                     std::is_same_v<T, long long>)
+    return DType::I64; // long long may differ from int64_t
   else if constexpr (std::is_same_v<T, uint8_t>)
     return DType::U8;
   else if constexpr (std::is_same_v<T, bool>)
@@ -126,6 +129,9 @@ template <typename T> constexpr DType dtype_of() {
   else if constexpr (std::is_same_v<T, uint32_t>)
     return DType::U32;
   else if constexpr (std::is_same_v<T, uint64_t>)
+    return DType::U64;
+  else if constexpr (!std::is_same_v<T, uint64_t> &&
+                     std::is_same_v<T, unsigned long long>)
     return DType::U64;
   else if constexpr (std::is_same_v<T, std::complex<float>>)
     return DType::C32;

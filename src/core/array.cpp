@@ -706,17 +706,45 @@ Array Array::operator[](const Slice &slice) {
 
 Array Array::reshape(const Shape &new_shape) const {
   INS_CHECK(defined(), "Cannot reshape undefined array");
-  INS_CHECK(new_shape.numel() == numel(),
+
+  // Resolve -1 (infer one dimension from numel)
+  auto dims = new_shape.dims();
+  int neg1_count = 0;
+  int64_t known_product = 1;
+  for (int i = 0; i < new_shape.ndim(); i++) {
+    if (dims[i] == -1) {
+      neg1_count++;
+    } else {
+      INS_CHECK(dims[i] > 0,
+                "reshape(): all dimensions must be > 0 or -1, got ", dims[i],
+                " at dim ", i);
+      known_product *= dims[i];
+    }
+  }
+  INS_CHECK(neg1_count <= 1, "reshape(): can only infer one dimension, got ",
+            neg1_count, " occurrences of -1");
+  if (neg1_count == 1) {
+    INS_CHECK(known_product > 0 && numel() % known_product == 0,
+              "reshape(): cannot infer dimension: numel()=", numel(),
+              " not divisible by product of known dims=", known_product);
+    for (auto &d : dims) {
+      if (d == -1)
+        d = numel() / known_product;
+    }
+  }
+
+  Shape resolved(dims);
+  INS_CHECK(resolved.numel() == numel(),
             "reshape(): shape.numel() mismatch. Expected ", numel(), ", got ",
-            new_shape.numel());
+            resolved.numel());
 
   if (!is_contiguous()) {
     Array cont = contiguous();
-    return cont.reshape(new_shape);
+    return cont.reshape(resolved);
   }
 
-  Strides new_strides(new_shape);
-  return Array(*this, new_shape, new_strides, layout_.offset);
+  Strides new_strides(resolved);
+  return Array(*this, resolved, new_strides, layout_.offset);
 }
 
 Array Array::transpose() const {
