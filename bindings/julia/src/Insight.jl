@@ -71,7 +71,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        firwin2, convolve2d, correlate2d,
        hilbert2, wiener, firfilter, lfilter_zi, resample_poly,
        morlet2,
-       csd, coherence, spectrogram, stft, vectorstrength,
+       csd, coherence, spectrogram, stft, vectorstrength, lombscargle,
        choose_conv_method, firfilter_zi_state,
        # Device info
        device_name, gpu_version, driver_version, compute_capability,
@@ -2114,6 +2114,7 @@ module signal
     const spectrogram = Insight.spectrogram
     const stft = Insight.stft
     const vectorstrength = Insight.vectorstrength
+    const lombscargle = Insight.lombscargle
     const choose_conv_method = Insight.choose_conv_method
     const firfilter_zi_state = Insight.firfilter_zi_state
     const pulse_compression = Insight.pulse_compression

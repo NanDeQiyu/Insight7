@@ -159,5 +159,48 @@ Array resample_poly(const Array &x, int64_t up, int64_t down, int axis = -1);
  */
 Array freq_shift(const Array &x, double freq, double fs);
 
+// ============================================================================
+// Additional Filtering (cuSignal alignment)
+// ============================================================================
+
+/**
+ * @brief Filter data along one dimension using second-order sections (SOS).
+ *
+ * Applies a cascade of second-order (biquad) sections to the input signal.
+ * Each row of sos is [b0, b1, b2, a0, a1, a2].
+ *
+ * @param x Input signal (1D)
+ * @param sos Second-order sections matrix (2D, shape [n_sections x 6])
+ * @return Filtered signal (same length as x)
+ */
+Array sosfilt(const Array &x, const Array &sos);
+
+/**
+ * @brief Upsample, FIR filter, and downsample.
+ *
+ * Performs polyphase filtering: upsamples by p, applies FIR filter h,
+ * then downsamples by q.
+ *
+ * @param h FIR filter coefficients (1D)
+ * @param x Input signal (1D)
+ * @param p Upsampling factor
+ * @param q Downsampling factor
+ * @return Filtered and resampled signal
+ */
+Array upfirdn(const Array &h, const Array &x, int64_t p, int64_t q);
+
+/**
+ * @brief Polyphase channelizer.
+ *
+ * Splits a broadband signal into multiple narrowband channels using
+ * a polyphase filter bank.
+ *
+ * @param x Input signal (1D)
+ * @param h Prototype lowpass filter (1D)
+ * @param n_channels Number of channels
+ * @return 2D array [n_channels x n_frames] of channelized signals
+ */
+Array channelize_poly(const Array &x, const Array &h, int64_t n_channels);
+
 } // namespace signal
 } // namespace ins

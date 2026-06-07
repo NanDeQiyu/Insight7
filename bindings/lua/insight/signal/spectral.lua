@@ -105,4 +105,13 @@ M.vectorstrength = _wrap({ "signal", "freq", "fs" }, function(signal, freq, fs)
   return sig.vectorstrength(signal, freq, fs)
 end)
 
+--- Compute the Lomb-Scargle periodogram.
+-- @array x Sample times (1D).
+-- @array y Sample values (1D, same length as x).
+-- @array freqs Frequencies to evaluate (1D, in Hz).
+-- @treturn Array Power spectral density at each frequency.
+M.lombscargle = _wrap({ "x", "y", "freqs" }, function(x, y, freqs)
+  return sig.lombscargle(x, y, freqs)
+end)
+
 return M

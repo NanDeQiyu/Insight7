@@ -1479,6 +1479,7 @@ PYBIND11_MODULE(_insight, m) {
     sig.def("taylor", &signal::taylor, py::arg("M"), py::arg("nbar") = 4,
             py::arg("sll") = -30.0, py::arg("norm") = true,
             py::arg("sym") = true);
+    sig.def("qmf", &signal::qmf, py::arg("h_low"));
 
     // ----------------------------------------------------------------
     // Waveforms
@@ -1562,6 +1563,11 @@ PYBIND11_MODULE(_insight, m) {
             py::arg("up"), py::arg("down"), py::arg("axis") = -1);
     sig.def("freq_shift", &signal::freq_shift, py::arg("x"), py::arg("freq"),
             py::arg("fs"));
+    sig.def("sosfilt", &signal::sosfilt, py::arg("x"), py::arg("sos"));
+    sig.def("upfirdn", &signal::upfirdn, py::arg("h"), py::arg("x"),
+            py::arg("p"), py::arg("q"));
+    sig.def("channelize_poly", &signal::channelize_poly, py::arg("x"),
+            py::arg("h"), py::arg("n_channels"));
 
     // ----------------------------------------------------------------
     // Spectral Analysis
@@ -1592,8 +1598,13 @@ PYBIND11_MODULE(_insight, m) {
     sig.def("stft", &signal::stft, py::arg("x"), py::arg("fs") = 1.0,
             py::arg("window") = "hann", py::arg("nperseg") = 256,
             py::arg("noverlap") = 0, py::arg("nfft") = 0);
+    sig.def("istft", &signal::istft, py::arg("Zxx"), py::arg("fs") = 1.0,
+            py::arg("window") = "hann", py::arg("nperseg") = 0,
+            py::arg("noverlap") = 0, py::arg("nfft") = 0);
     sig.def("vectorstrength", &signal::vectorstrength, py::arg("events"),
             py::arg("period"));
+    sig.def("lombscargle", &signal::lombscargle, py::arg("x"), py::arg("y"),
+            py::arg("freqs"));
 
     // ----------------------------------------------------------------
     // Wavelets

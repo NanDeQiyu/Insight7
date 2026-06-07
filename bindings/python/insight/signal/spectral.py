@@ -263,3 +263,21 @@ def vectorstrength(events, period):
         mean phase in radians.
     """
     return _signal.vectorstrength(events, period)
+
+
+def lombscargle(x, y, freqs):
+    """Compute the Lomb-Scargle periodogram.
+
+    Computes a frequency representation of irregularly-sampled data.
+    The periodogram measures the power at each frequency for signals
+    with non-uniform sampling.
+
+    Args:
+        x: 1D array of sample times.
+        y: 1D array of sample values (same length as x).
+        freqs: 1D array of frequencies to evaluate (in Hz).
+
+    Returns:
+        1D array of power spectral density at each frequency.
+    """
+    return _signal.lombscargle(x, y, freqs)

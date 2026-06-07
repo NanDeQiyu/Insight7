@@ -95,6 +95,22 @@ SpectrogramResult stft(const Array &x, double fs = 1.0,
                        int64_t nperseg = 256, int64_t noverlap = 0,
                        int64_t nfft = 0);
 
+/// @brief Compute the inverse Short-Time Fourier Transform (ISTFT).
+///
+/// Reconstructs a time-domain signal from its STFT representation using
+/// overlap-add synthesis.
+///
+/// @param Zxx STFT complex spectrogram (2D, [freq_bins x time_frames])
+/// @param fs Sampling frequency. Default: 1.0
+/// @param window Window name used in STFT. Default: "hann"
+/// @param nperseg Segment length used in STFT. Default: inferred from Zxx
+/// @param noverlap Overlap used in STFT. Default: nperseg/2
+/// @param nfft FFT length used in STFT. Default: inferred from Zxx
+/// @return Array Reconstructed time-domain signal (1D)
+Array istft(const Array &Zxx, double fs = 1.0,
+            const std::string &window = "hann", int64_t nperseg = 0,
+            int64_t noverlap = 0, int64_t nfft = 0);
+
 // ============================================================================
 // Phase Synchrony
 // ============================================================================
@@ -105,6 +121,24 @@ SpectrogramResult stft(const Array &x, double fs = 1.0,
 /// @param period Period of the signal (or array of periods)
 /// @return Pair of {strength, phase}
 std::pair<double, double> vectorstrength(const Array &events, double period);
+
+// ============================================================================
+// Lomb-Scargle Periodogram
+// ============================================================================
+
+/// @brief Compute the Lomb-Scargle periodogram.
+///
+/// Computes a frequency representation of irregularly-sampled data.
+/// The periodogram is defined as:
+///   P[f] = 0.5 * ( (Σ y·cos(ω(t-τ)))² / Σ cos²(ω(t-τ))
+///                 + (Σ y·sin(ω(t-τ)))² / Σ sin²(ω(t-τ)) )
+/// where ω = 2πf and τ = atan2(Σ sin(2ωt), Σ cos(2ωt)) / (2ω).
+///
+/// @param x Sample times (1D, F32 or F64)
+/// @param y Sample values (1D, same length as x)
+/// @param freqs Frequencies to evaluate (1D, F32 or F64, in Hz not angular)
+/// @return Power spectral density at each frequency (1D, same length as freqs)
+Array lombscargle(const Array &x, const Array &y, const Array &freqs);
 
 } // namespace signal
 } // namespace ins

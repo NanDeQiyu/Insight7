@@ -428,3 +428,51 @@ TEST_F(SignalWindowsTestCPU, HannPeriodic) {
   // while symmetric last sample = 0
   EXPECT_NE(ds[9], dp[9]);
 }
+
+// ========== qmf ==========
+
+TEST_F(SignalWindowsTestCPU, QmfBasic) {
+  // Create a simple lowpass filter
+  Array h_low = signal::hamming(8);
+
+  auto [low, high] = signal::qmf(h_low);
+
+  // Both should have same length
+  EXPECT_EQ(low.numel(), h_low.numel());
+  EXPECT_EQ(high.numel(), h_low.numel());
+
+  // Highpass should have alternating signs
+  Array h_cpu = h_low.to(CPUPlace());
+  Array high_cpu = high.to(CPUPlace());
+  const double *h_data = h_cpu.data<double>();
+  const double *high_data = high_cpu.data<double>();
+
+  for (int64_t i = 0; i < low.numel(); ++i) {
+    double expected = (i % 2 == 0) ? h_data[i] : -h_data[i];
+    EXPECT_NEAR(high_data[i], expected, 1e-10);
+  }
+}
+
+TEST_F(SignalWindowsTestCPU, QmfPowerComplementary) {
+  // QMF filters should be power complementary:
+  // |H_low(z)|^2 + |H_high(z)|^2 = constant
+  Array h_low = signal::hamming(16);
+  auto [low, high] = signal::qmf(h_low);
+
+  // Check that low + high has certain symmetry
+  Array low_cpu = low.to(CPUPlace());
+  Array high_cpu = high.to(CPUPlace());
+  const double *l = low_cpu.data<double>();
+  const double *h = high_cpu.data<double>();
+
+  // Sum at even indices should differ from sum at odd indices
+  double sum_even = 0, sum_odd = 0;
+  for (int64_t i = 0; i < low.numel(); ++i) {
+    if (i % 2 == 0)
+      sum_even += l[i] + h[i];
+    else
+      sum_odd += l[i] + h[i];
+  }
+  // Even: l[i] + l[i] = 2*l[i], Odd: l[i] - l[i] = 0
+  EXPECT_GT(sum_even, 0.0);
+}

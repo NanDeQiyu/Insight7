@@ -215,4 +215,74 @@ TEST_F(SignalSpectralTestGPU, VectorStrengthAntiSync) {
   EXPECT_NEAR(strength, 0.0, 1e-10);
 }
 
+// ========== lombscargle ==========
+
+TEST_F(SignalSpectralTestGPU, LombScargleBasic) {
+  int64_t N = 100;
+  double fs = 10.0;
+  double f_signal = 1.0;
+  std::vector<double> t(N), y(N);
+  for (int64_t i = 0; i < N; ++i) {
+    t[i] = i / fs;
+    y[i] = std::sin(2.0 * M_PI * f_signal * t[i]);
+  }
+
+  int64_t nf = 50;
+  std::vector<double> freqs(nf);
+  for (int64_t i = 0; i < nf; ++i) {
+    freqs[i] = 0.1 * (i + 1);
+  }
+
+  Array t_arr = to_array(t).to(GPUPlace(0));
+  Array y_arr = to_array(y).to(GPUPlace(0));
+  Array f_arr = to_array(freqs).to(GPUPlace(0));
+
+  Array power = signal::lombscargle(t_arr, y_arr, f_arr);
+  EXPECT_EQ(power.numel(), nf);
+
+  // Copy to CPU for verification
+  Array power_cpu = power.to(CPUPlace());
+  const double *p = power_cpu.data<double>();
+  Array freqs_cpu = f_arr.to(CPUPlace());
+  const double *f_data = freqs_cpu.data<double>();
+
+  int64_t peak_idx = 0;
+  double peak_val = p[0];
+  for (int64_t i = 1; i < nf; ++i) {
+    if (p[i] > peak_val) {
+      peak_val = p[i];
+      peak_idx = i;
+    }
+  }
+  double peak_freq = f_data[peak_idx];
+  EXPECT_NEAR(peak_freq, f_signal, 0.3);
+}
+
+TEST_F(SignalSpectralTestGPU, LombScargleF32) {
+  int64_t N = 50;
+  std::vector<float> t(N), y(N), freqs(20);
+  for (int64_t i = 0; i < N; ++i) {
+    t[i] = static_cast<float>(i) * 0.1f;
+    y[i] = std::sin(2.0f * static_cast<float>(M_PI) * 2.0f * t[i]);
+  }
+  for (int64_t i = 0; i < 20; ++i) {
+    freqs[i] = 0.5f * (i + 1);
+  }
+
+  Array t_arr = to_array(t).to(GPUPlace(0));
+  Array y_arr = to_array(y).to(GPUPlace(0));
+  Array f_arr = to_array(freqs).to(GPUPlace(0));
+
+  Array power = signal::lombscargle(t_arr, y_arr, f_arr);
+  EXPECT_EQ(power.numel(), 20);
+  EXPECT_EQ(power.dtype(), DType::F32);
+}
+
+TEST_F(SignalSpectralTestGPU, LombScargleInvalidInput) {
+  Array x = to_array(std::vector<double>{1, 2, 3}).to(GPUPlace(0));
+  Array y = to_array(std::vector<double>{1, 2}).to(GPUPlace(0));
+  Array f = to_array(std::vector<double>{0.5}).to(GPUPlace(0));
+  EXPECT_THROW(signal::lombscargle(x, y, f), std::exception);
+}
+
 } // namespace

@@ -1317,6 +1317,7 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
       return ins::signal::taylor(M, nbar.value_or(4), sll.value_or(-30.0),
                                  norm_mode.value_or(true), sym.value_or(true));
     };
+    sig["qmf"] = &ins::signal::qmf;
 
     // --- Waveforms ---
     sig["sawtooth"] = [](const ins::Array &t, sol::optional<double> width) {
@@ -1447,6 +1448,9 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
       return ins::signal::resample_poly(x, up, down, axis.value_or(-1));
     };
     sig["freq_shift"] = &ins::signal::freq_shift;
+    sig["sosfilt"] = &ins::signal::sosfilt;
+    sig["upfirdn"] = &ins::signal::upfirdn;
+    sig["channelize_poly"] = &ins::signal::channelize_poly;
 
     // --- Spectral Analysis ---
     sig["welch"] = [](const ins::Array &x, sol::optional<double> fs,
@@ -1518,7 +1522,17 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
                                    nperseg.value_or(256), noverlap.value_or(0),
                                    nfft.value_or(0));
         };
+    sig["istft"] = [](const ins::Array &Zxx, sol::optional<double> fs,
+                      sol::optional<std::string> window,
+                      sol::optional<int64_t> nperseg,
+                      sol::optional<int64_t> noverlap,
+                      sol::optional<int64_t> nfft) {
+      return ins::signal::istft(Zxx, fs.value_or(1.0), window.value_or("hann"),
+                                nperseg.value_or(0), noverlap.value_or(0),
+                                nfft.value_or(0));
+    };
     sig["vectorstrength"] = &ins::signal::vectorstrength;
+    sig["lombscargle"] = &ins::signal::lombscargle;
 
     // --- Wavelets ---
     sig["morlet"] = [](int64_t M, sol::optional<double> w,

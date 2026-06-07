@@ -226,6 +226,7 @@ try:
         spectrogram,
         stft,
         vectorstrength,
+        lombscargle,
         # Wavelets
         morlet,
         ricker,
@@ -553,6 +554,7 @@ __all__ = [
     "spectrogram",
     "stft",
     "vectorstrength",
+    "lombscargle",
     "morlet",
     "ricker",
     "morlet2",
