@@ -586,8 +586,13 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
 
   // View ops
   array_type["contiguous"] = &ins::Array::contiguous;
-  array_type["reshape"] = [](const ins::Array &a, sol::table new_shape) {
-    return a.reshape(ins::Shape(table_to_shape(new_shape)));
+  array_type["reshape"] = [](const ins::Array &a, sol::table new_shape,
+                             sol::this_state L) {
+    try {
+      return a.reshape(ins::Shape(table_to_shape(new_shape)));
+    } catch (const std::exception &e) {
+      return luaL_error(L, "%s", e.what()), ins::Array();
+    }
   };
   array_type["transpose"] =
       sol::overload([](const ins::Array &a) { return a.transpose(); },

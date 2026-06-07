@@ -1080,6 +1080,9 @@ function reshape(x::InsightArray, dims::Vector{Int64})::InsightArray
     ptr = ccall((:insight_jl_reshape, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Ptr{Int64}, Int32),
                 x, dims, Int32(length(dims)))
+    if ptr == C_NULL
+        error("reshape failed: invalid dimensions")
+    end
     arr = InsightArray(ptr)
     finalizer(_free, arr)
     return arr

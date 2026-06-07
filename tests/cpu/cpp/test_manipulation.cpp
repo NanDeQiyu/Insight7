@@ -60,6 +60,52 @@ TEST_F(ManipulationTest, ReshapeTo1D) {
   expect_float_equal<float>(b, {0, 1, 2, 3, 4, 5});
 }
 
+TEST_F(ManipulationTest, ReshapeInferNeg1End) {
+  Array a({2, 3}, DType::F32);
+  fill_sequential<float>(a, 0);
+  Array b = a.reshape(Shape({1, -1}));
+  EXPECT_EQ(b.shape(), Shape({1, 6}));
+  expect_float_equal<float>(b, {0, 1, 2, 3, 4, 5});
+}
+
+TEST_F(ManipulationTest, ReshapeInferNeg1Begin) {
+  Array a({2, 3}, DType::F32);
+  fill_sequential<float>(a, 0);
+  Array b = a.reshape(Shape({-1, 2}));
+  EXPECT_EQ(b.shape(), Shape({3, 2}));
+  expect_float_equal<float>(b, {0, 1, 2, 3, 4, 5});
+}
+
+TEST_F(ManipulationTest, ReshapeInferNeg1To1D) {
+  Array a({2, 3}, DType::F32);
+  fill_sequential<float>(a, 0);
+  Array b = a.reshape(Shape({-1}));
+  EXPECT_EQ(b.shape(), Shape({6}));
+  expect_float_equal<float>(b, {0, 1, 2, 3, 4, 5});
+}
+
+TEST_F(ManipulationTest, ReshapeInferNeg1_3D) {
+  Array a({2, 3, 4}, DType::F32);
+  fill_sequential<float>(a, 0);
+  Array b = a.reshape(Shape({2, 3, -1}));
+  EXPECT_EQ(b.shape(), Shape({2, 3, 4}));
+}
+
+TEST_F(ManipulationTest, ReshapeErrorMultipleNeg1) {
+  Array a({2, 3}, DType::F32);
+  EXPECT_THROW(a.reshape(Shape({-1, -1})), ins::Exception);
+}
+
+TEST_F(ManipulationTest, ReshapeErrorMismatch) {
+  Array a({2, 3}, DType::F32);
+  EXPECT_THROW(a.reshape(Shape({2, 4})), ins::Exception);
+}
+
+TEST_F(ManipulationTest, ReshapeErrorNotDivisible) {
+  Array a({5}, DType::F32);
+  EXPECT_THROW(a.reshape(Shape({2, -1})), ins::Exception);
+}
+
 // ========== flatten / ravel ==========
 
 TEST_F(ManipulationTest, Flatten) {
