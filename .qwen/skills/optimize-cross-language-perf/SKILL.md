@@ -2,7 +2,7 @@
 name: optimize-cross-language-perf
 description: Profile and optimize binding language (Lua/Julia/Python) demo performance to match or exceed C++ baseline
 source: auto-skill
-extracted_at: '2026-06-06T23:45:00.000Z'
+extracted_at: '2026-06-07T00:30:00.000Z'
 ---
 
 # Cross-Language Performance Optimization
@@ -120,10 +120,36 @@ Array result = concat({last, first}, ax);
 
 After merging external PRs, check for:
 1. `array_type["table"]` removed from Lua binding
-2. `array_type["slice"]` removed from Lua binding
+2. `array_type["slice"]` removed from Lua binding  
 3. Bare function pointers replacing lambda wrappers (ambgfun, pulse_doppler)
 4. Unnecessary `contiguous()` calls added to core ops
 5. `.shape()` → `.shape` API changes in Python demos
+6. `build.luarocks/` accidentally committed (add to `.gitignore`)
+
+## Lua Test Gotcha: Integer Index Returns 0-d Array
+
+`y[1]` returns a 0-d Array (not a number). Tests must use `:item()`:
+```lua
+-- ❌ Wrong: compares Array vs number
+assert.are.equal(5.0, y[1])
+
+-- ✅ Correct: extract scalar first
+assert.are.equal(5.0, y[1]:item())
+```
+
+## ambgfun/pulse_doppler Must Use Lambda Wrappers
+
+`sol::optional<Array>` default parameters cause segfault when bound as bare function pointers:
+```cpp
+// ❌ CRASH: sol2 passes empty Array() which segfaults inside ambgfun
+sig["ambgfun"] = &signal::ambgfun;
+
+// ✅ Safe: explicit sol::optional with default
+sig["ambgfun"] = [](const Array &x, double fs, double prf,
+                     sol::optional<Array> y) {
+    return signal::ambgfun(x, fs, prf, y.value_or(Array()));
+};
+```
 
 ## Performance Reference (A800 GPU, radar detection demo)
 
