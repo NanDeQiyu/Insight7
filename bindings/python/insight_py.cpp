@@ -783,6 +783,98 @@ PYBIND11_MODULE(_insight, m) {
       .def_static(
           "from_numpy", [](py::array arr) { return from_numpy(arr); },
           "Create Insight Array from NumPy array")
+      // --- list (flat extraction) ---
+      .def("list",
+           [](const Array &a) {
+             Array cpu = a.to(CPUPlace());
+             py::list result;
+             int64_t n = cpu.numel();
+             switch (cpu.dtype()) {
+             case DType::F64: {
+               const double *d = cpu.data<double>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::float_(d[i]));
+               break;
+             }
+             case DType::F32: {
+               const float *d = cpu.data<float>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::float_(d[i]));
+               break;
+             }
+             case DType::I64: {
+               const int64_t *d = cpu.data<int64_t>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::int_(d[i]));
+               break;
+             }
+             case DType::I32: {
+               const int32_t *d = cpu.data<int32_t>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::int_(d[i]));
+               break;
+             }
+             case DType::I16: {
+               const int16_t *d = cpu.data<int16_t>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::int_(d[i]));
+               break;
+             }
+             case DType::I8: {
+               const int8_t *d = cpu.data<int8_t>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::int_(d[i]));
+               break;
+             }
+             case DType::U64: {
+               const uint64_t *d = cpu.data<uint64_t>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::int_(d[i]));
+               break;
+             }
+             case DType::U32: {
+               const uint32_t *d = cpu.data<uint32_t>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::int_(d[i]));
+               break;
+             }
+             case DType::U16: {
+               const uint16_t *d = cpu.data<uint16_t>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::int_(d[i]));
+               break;
+             }
+             case DType::U8: {
+               const uint8_t *d = cpu.data<uint8_t>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::int_(d[i]));
+               break;
+             }
+             case DType::BOOL: {
+               const bool *d = cpu.data<bool>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(py::bool_(d[i]));
+               break;
+             }
+             case DType::C32: {
+               const std::complex<float> *d = cpu.data<std::complex<float>>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(
+                     py::cast(std::complex<double>(d[i].real(), d[i].imag())));
+               break;
+             }
+             case DType::C64: {
+               const std::complex<double> *d = cpu.data<std::complex<double>>();
+               for (int64_t i = 0; i < n; i++)
+                 result.append(
+                     py::cast(std::complex<double>(d[i].real(), d[i].imag())));
+               break;
+             }
+             default:
+               throw std::runtime_error("list(): unsupported dtype");
+             }
+             return result;
+           })
       // --- repr ---
       .def("__repr__", &array_repr)
       .def("__str__", &array_repr);

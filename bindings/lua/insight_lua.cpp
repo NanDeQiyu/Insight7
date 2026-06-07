@@ -487,6 +487,99 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     }
   };
 
+  // Bulk extraction: flatten to Lua table
+  array_type["table"] = [](const ins::Array &a,
+                           sol::this_state ts) -> sol::table {
+    sol::state_view lv(ts);
+    ins::Array cpu =
+        (a.place().kind() == ins::DeviceKind::CPU) ? a : a.to(ins::CPUPlace());
+    sol::table t = lv.create_table(cpu.numel());
+    int64_t n = cpu.numel();
+    switch (cpu.dtype()) {
+    case ins::DType::F64: {
+      const double *d = cpu.data<double>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = d[i];
+      break;
+    }
+    case ins::DType::F32: {
+      const float *d = cpu.data<float>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i];
+      break;
+    }
+    case ins::DType::I64: {
+      const int64_t *d = cpu.data<int64_t>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i];
+      break;
+    }
+    case ins::DType::I32: {
+      const int32_t *d = cpu.data<int32_t>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i];
+      break;
+    }
+    case ins::DType::I16: {
+      const int16_t *d = cpu.data<int16_t>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i];
+      break;
+    }
+    case ins::DType::I8: {
+      const int8_t *d = cpu.data<int8_t>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i];
+      break;
+    }
+    case ins::DType::U64: {
+      const uint64_t *d = cpu.data<uint64_t>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i];
+      break;
+    }
+    case ins::DType::U32: {
+      const uint32_t *d = cpu.data<uint32_t>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i];
+      break;
+    }
+    case ins::DType::U16: {
+      const uint16_t *d = cpu.data<uint16_t>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i];
+      break;
+    }
+    case ins::DType::U8: {
+      const uint8_t *d = cpu.data<uint8_t>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i];
+      break;
+    }
+    case ins::DType::BOOL: {
+      const bool *d = cpu.data<bool>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = d[i] ? 1.0 : 0.0;
+      break;
+    }
+    case ins::DType::C64: {
+      const std::complex<double> *d = cpu.data<std::complex<double>>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = d[i].real();
+      break;
+    }
+    case ins::DType::C32: {
+      const std::complex<float> *d = cpu.data<std::complex<float>>();
+      for (int64_t i = 0; i < n; i++)
+        t[i + 1] = (double)d[i].real();
+      break;
+    }
+    default:
+      break;
+    }
+    return t;
+  };
+
   // View ops
   array_type["contiguous"] = &ins::Array::contiguous;
   array_type["reshape"] = [](const ins::Array &a, sol::table new_shape) {
@@ -1452,7 +1545,12 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
                                             window.value_or(""),
                                             nfft.value_or(0));
     };
-    sig["pulse_doppler"] = &ins::signal::pulse_doppler;
+    sig["pulse_doppler"] = [](const ins::Array &x,
+                              sol::optional<std::string> window,
+                              sol::optional<int64_t> nfft) {
+      return ins::signal::pulse_doppler(x, window.value_or(""),
+                                        nfft.value_or(0));
+    };
     sig["cfar_alpha"] = &ins::signal::cfar_alpha;
     sig["ca_cfar"] = [](sol::this_state L, const ins::Array &data,
                         sol::table guard_tbl, sol::table ref_tbl,
@@ -1473,7 +1571,10 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
                      sol::optional<bool> calc_cov) {
       return ins::signal::mvdr(x, sv, calc_cov.value_or(true));
     };
-    sig["ambgfun"] = &ins::signal::ambgfun;
+    sig["ambgfun"] = [](const ins::Array &x, double fs, double prf,
+                        sol::optional<ins::Array> y) {
+      return ins::signal::ambgfun(x, fs, prf, y.value_or(ins::Array()));
+    };
 
     // --- Signal I/O ---
     sig["read_bin"] = &lua_read_bin;
@@ -2395,6 +2496,12 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
   m["take"] = &ins::take;
   m["nonzero"] = &ins::nonzero;
   m["flatnonzero"] = &ins::flatnonzero;
+
+  // Fast slice: integer params, no string parsing overhead
+  // dim: 1-based, start: 1-based inclusive, stop: 1-based exclusive
+  m["slice"] = [](const ins::Array &a, int dim, int64_t start, int64_t stop) {
+    return a.slice(dim - 1, start - 1, stop - 1);
+  };
   m["masked_select"] = &ins::masked_select;
   m["argsort"] = [](const ins::Array &x, sol::optional<int> axis,
                     sol::optional<bool> descending) {

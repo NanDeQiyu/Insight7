@@ -1,9 +1,12 @@
-// backends/cuda/kernels/fft/common.cuh
 /**
  * @file common.cuh
  * @brief Common utilities for CUDA FFT kernels.
  *
- * Provides cuFFT plan caching and error handling for FFT operations.
+ * Provides multi-plan cuFFT caching and error handling for FFT operations.
+ * Uses a thread-local hash map keyed by (n, batch, kind, is_f32) so that
+ * alternating between different FFT sizes (e.g. range-FFT and Doppler-FFT
+ * in radar processing) reuses cached plans instead of creating new ones
+ * every time (cuFFT plan creation ~5ms overhead).
  */
 
 #pragma once
@@ -12,6 +15,7 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 #include <string>
+#include <unordered_map>
 
 /**
  * @brief Type of FFT transform.
@@ -23,46 +27,123 @@ enum class CuFFTKind {
 };
 
 /**
- * @brief Thread-local cuFFT plan cache.
+ * @brief Key for cuFFT plan cache.
  *
- * Caches the most recently used plan to avoid repeated creation overhead.
- * Each thread has its own cache instance.
+ * Note: direction (CUFFT_FORWARD/CUFFT_INVERSE) is NOT part of the key
+ * because C2C plans work for both directions (direction passed at exec time),
+ * and R2C/C2R plans have implicit direction in their kind.
  */
-struct CuFFTPlanCache {
-  cufftHandle plan = 0;
-  int64_t n = 0;
-  int64_t batch = 0;
-  int direction = 0; // CUFFT_FORWARD or CUFFT_INVERSE
-  CuFFTKind kind = CuFFTKind::C2C;
-  bool is_f32 = true;
+struct CuFFTKey {
+  int64_t n;
+  int64_t batch;
+  CuFFTKind kind;
+  bool is_f32;
 
-  /**
-   * @brief Check if cache matches given parameters.
-   */
-  bool matches(int64_t n_, int64_t batch_, int direction_, CuFFTKind kind_,
-               bool is_f32_) const {
-    return n == n_ && batch == batch_ && direction == direction_ &&
-           kind == kind_ && is_f32 == is_f32_;
-  }
-
-  /**
-   * @brief Destroy the cached plan.
-   */
-  void destroy() {
-    if (plan != 0) {
-      cufftDestroy(plan);
-      plan = 0;
-    }
-    n = 0;
-    batch = 0;
-    direction = 0;
-    kind = CuFFTKind::C2C;
-    is_f32 = true;
+  bool operator==(const CuFFTKey &o) const {
+    return n == o.n && batch == o.batch && kind == o.kind && is_f32 == o.is_f32;
   }
 };
 
 /**
- * @brief Get thread-local cuFFT plan cache.
+ * @brief Hash functor for CuFFTKey.
+ */
+struct CuFFTKeyHash {
+  size_t operator()(const CuFFTKey &k) const {
+    return std::hash<int64_t>()(k.n) ^ (std::hash<int64_t>()(k.batch) << 1) ^
+           (std::hash<int>()(static_cast<int>(k.kind)) << 2) ^
+           (std::hash<bool>()(k.is_f32) << 3);
+  }
+};
+
+/**
+ * @brief Thread-local multi-plan cuFFT cache.
+ *
+ * Stores up to MAX_PLANS plans keyed by (n, batch, kind, is_f32).
+ * Evicts the oldest entry when full.
+ */
+struct CuFFTPlanCache {
+  static constexpr size_t MAX_PLANS = 16;
+  std::unordered_map<CuFFTKey, cufftHandle, CuFFTKeyHash> plans;
+
+  ~CuFFTPlanCache() {
+    for (auto &kv : plans) {
+      cufftDestroy(kv.second);
+    }
+  }
+
+  /**
+   * @brief Get or create a cuFFT plan.
+   *
+   * @return cufftHandle (0 on error)
+   */
+  cufftHandle get_or_create(int64_t n, int64_t batch, CuFFTKind kind,
+                            bool is_f32) {
+    CuFFTKey key{n, batch, kind, is_f32};
+    auto it = plans.find(key);
+    if (it != plans.end())
+      return it->second;
+
+    // Evict oldest if cache is full
+    if (plans.size() >= MAX_PLANS) {
+      auto first = plans.begin();
+      cufftDestroy(first->second);
+      plans.erase(first);
+    }
+
+    cufftHandle plan = create_plan_impl(n, batch, kind, is_f32);
+    if (plan != 0) {
+      plans[key] = plan;
+    }
+    return plan;
+  }
+
+private:
+  cufftHandle create_plan_impl(int64_t n, int64_t batch, CuFFTKind kind,
+                               bool is_f32) {
+    cufftHandle plan;
+    cufftResult result;
+
+    if (batch == 1) {
+      if (kind == CuFFTKind::C2C) {
+        result = cufftPlan1d(&plan, static_cast<int>(n),
+                             is_f32 ? CUFFT_C2C : CUFFT_Z2Z, 1);
+      } else if (kind == CuFFTKind::R2C) {
+        result = cufftPlan1d(&plan, static_cast<int>(n),
+                             is_f32 ? CUFFT_R2C : CUFFT_D2Z, 1);
+      } else { // C2R
+        result = cufftPlan1d(&plan, static_cast<int>(n),
+                             is_f32 ? CUFFT_C2R : CUFFT_Z2D, 1);
+      }
+    } else {
+      int n_int = static_cast<int>(n);
+      int batch_int = static_cast<int>(batch);
+
+      if (kind == CuFFTKind::C2C) {
+        result =
+            cufftPlanMany(&plan, 1, &n_int, nullptr, 1, n_int, nullptr, 1,
+                          n_int, is_f32 ? CUFFT_C2C : CUFFT_Z2Z, batch_int);
+      } else if (kind == CuFFTKind::R2C) {
+        int out_dist = static_cast<int>(n / 2 + 1);
+        result =
+            cufftPlanMany(&plan, 1, &n_int, nullptr, 1, n_int, nullptr, 1,
+                          out_dist, is_f32 ? CUFFT_R2C : CUFFT_D2Z, batch_int);
+      } else { // C2R
+        int in_dist = static_cast<int>(n / 2 + 1);
+        result =
+            cufftPlanMany(&plan, 1, &n_int, nullptr, 1, in_dist, nullptr, 1,
+                          n_int, is_f32 ? CUFFT_C2R : CUFFT_Z2D, batch_int);
+      }
+    }
+
+    if (result != CUFFT_SUCCESS) {
+      return 0;
+    }
+    return plan;
+  }
+};
+
+/**
+ * @brief Get thread-local multi-plan cuFFT cache.
  *
  * @return Reference to thread-local cache
  */
@@ -74,108 +155,21 @@ inline CuFFTPlanCache &cufft_get_cache() {
 /**
  * @brief Ensure cuFFT plan exists for given parameters.
  *
- * Creates or reuses a cached cuFFT plan. The plan is invalidated if parameters
- * change.
+ * Creates or reuses a cached cuFFT plan from the multi-plan cache.
+ * The direction parameter is accepted for API compatibility but is NOT
+ * used in the cache key: C2C plans work for both directions, and
+ * R2C/C2R direction is implicit in the transform kind.
  *
- * @param n        FFT length
- * @param batch    Number of transforms
- * @param direction CUFFT_FORWARD or CUFFT_INVERSE
- * @param kind     Transform kind (C2C, R2C, C2R)
- * @param is_f32   True for single precision, false for double precision
- * @return cufftHandle Valid plan handle
+ * @param n         FFT length
+ * @param batch     Number of transforms
+ * @param direction CUFFT_FORWARD or CUFFT_INVERSE (ignored for cache key)
+ * @param kind      Transform kind (C2C, R2C, C2R)
+ * @param is_f32    True for single precision, false for double precision
+ * @return cufftHandle Valid plan handle (0 on error)
  */
 inline cufftHandle cufft_ensure_plan(int64_t n, int64_t batch, int direction,
                                      CuFFTKind kind, bool is_f32) {
-  CuFFTPlanCache &cache = cufft_get_cache();
-
-  // Return cached plan if parameters match
-  if (cache.plan != 0 && cache.matches(n, batch, direction, kind, is_f32)) {
-    return cache.plan;
-  }
-
-  // Destroy old plan if exists
-  cache.destroy();
-
-  // Create new plan
-  cufftHandle plan;
-  cufftResult result;
-
-  if (batch == 1) {
-    // Single transform
-    if (kind == CuFFTKind::C2C) {
-      if (is_f32) {
-        result = cufftPlan1d(&plan, static_cast<int>(n), CUFFT_C2C, 1);
-      } else {
-        result = cufftPlan1d(&plan, static_cast<int>(n), CUFFT_Z2Z, 1);
-      }
-    } else if (kind == CuFFTKind::R2C) {
-      if (is_f32) {
-        result = cufftPlan1d(&plan, static_cast<int>(n), CUFFT_R2C, 1);
-      } else {
-        result = cufftPlan1d(&plan, static_cast<int>(n), CUFFT_D2Z, 1);
-      }
-    } else { // C2R
-      if (is_f32) {
-        result = cufftPlan1d(&plan, static_cast<int>(n), CUFFT_C2R, 1);
-      } else {
-        result = cufftPlan1d(&plan, static_cast<int>(n), CUFFT_Z2D, 1);
-      }
-    }
-  } else {
-    // Batched transform
-    int n_int = static_cast<int>(n);
-    int batch_int = static_cast<int>(batch);
-
-    if (kind == CuFFTKind::C2C) {
-      if (is_f32) {
-        result = cufftPlanMany(&plan, 1, &n_int, nullptr, 1,
-                               n_int,             // input stride and dist
-                               nullptr, 1, n_int, // output stride and dist
-                               CUFFT_C2C, batch_int);
-      } else {
-        result = cufftPlanMany(&plan, 1, &n_int, nullptr, 1, n_int, nullptr, 1,
-                               n_int, CUFFT_Z2Z, batch_int);
-      }
-    } else if (kind == CuFFTKind::R2C) {
-      // Real input: n real values per transform
-      // Complex output: n/2+1 complex values per transform
-      int out_dist = n / 2 + 1;
-      if (is_f32) {
-        result = cufftPlanMany(&plan, 1, &n_int, nullptr, 1, n_int, // input
-                               nullptr, 1, out_dist,                // output
-                               CUFFT_R2C, batch_int);
-      } else {
-        result = cufftPlanMany(&plan, 1, &n_int, nullptr, 1, n_int, nullptr, 1,
-                               out_dist, CUFFT_D2Z, batch_int);
-      }
-    } else { // C2R
-      // Complex input: n/2+1 complex values per transform
-      // Real output: n real values per transform
-      int in_dist = n / 2 + 1;
-      if (is_f32) {
-        result = cufftPlanMany(&plan, 1, &n_int, nullptr, 1, in_dist, // input
-                               nullptr, 1, n_int,                     // output
-                               CUFFT_C2R, batch_int);
-      } else {
-        result = cufftPlanMany(&plan, 1, &n_int, nullptr, 1, in_dist, nullptr,
-                               1, n_int, CUFFT_Z2D, batch_int);
-      }
-    }
-  }
-
-  if (result != CUFFT_SUCCESS) {
-    return 0; // Error
-  }
-
-  // Update cache
-  cache.plan = plan;
-  cache.n = n;
-  cache.batch = batch;
-  cache.direction = direction;
-  cache.kind = kind;
-  cache.is_f32 = is_f32;
-
-  return plan;
+  return cufft_get_cache().get_or_create(n, batch, kind, is_f32);
 }
 
 /**

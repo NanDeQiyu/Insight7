@@ -7,6 +7,7 @@
 #include "../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
 #include <cstring>
+#include <cuComplex.h>
 #include <cuda_runtime.h>
 
 template <typename T>
@@ -33,6 +34,51 @@ __global__ void flip_kernel(const T *src, T *dst, int64_t n, int64_t ndim,
       src_offset += indices[d] * src_strides[d];
     }
 
+    dst[idx] = src[src_offset];
+  }
+}
+
+// Dedicated kernels for complex types (avoids <<<>>> parsing ambiguity with
+// template)
+__global__ void flip_c64_kernel(const cuFloatComplex *src, cuFloatComplex *dst,
+                                int64_t n, int64_t ndim, const int64_t *dims,
+                                const int64_t *src_strides,
+                                const int64_t *dst_strides, int64_t axis,
+                                int64_t axis_size) {
+  int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < n) {
+    int64_t indices[10];
+    int64_t remaining = idx;
+    for (int64_t d = ndim - 1; d >= 0; --d) {
+      indices[d] = remaining % dims[d];
+      remaining /= dims[d];
+    }
+    indices[axis] = axis_size - 1 - indices[axis];
+    int64_t src_offset = 0;
+    for (int64_t d = 0; d < ndim; ++d) {
+      src_offset += indices[d] * src_strides[d];
+    }
+    dst[idx] = src[src_offset];
+  }
+}
+
+__global__ void
+flip_c128_kernel(const cuDoubleComplex *src, cuDoubleComplex *dst, int64_t n,
+                 int64_t ndim, const int64_t *dims, const int64_t *src_strides,
+                 const int64_t *dst_strides, int64_t axis, int64_t axis_size) {
+  int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < n) {
+    int64_t indices[10];
+    int64_t remaining = idx;
+    for (int64_t d = ndim - 1; d >= 0; --d) {
+      indices[d] = remaining % dims[d];
+      remaining /= dims[d];
+    }
+    indices[axis] = axis_size - 1 - indices[axis];
+    int64_t src_offset = 0;
+    for (int64_t d = 0; d < ndim; ++d) {
+      src_offset += indices[d] * src_strides[d];
+    }
     dst[idx] = src[src_offset];
   }
 }
@@ -80,15 +126,27 @@ C_Status flip_kernel_gpu(void **inputs, void **outputs) {
   int64_t axis_size = x->dims[axis];
 
   switch (out->dtype) {
-  case INSIGHT_DTYPE_F32:
-    flip_kernel<float><<<blocks, threads>>>(
-        static_cast<const float *>(x->data), static_cast<float *>(out->data), n,
+  case INSIGHT_DTYPE_BOOL:
+    flip_kernel<bool><<<blocks, threads>>>(
+        static_cast<const bool *>(x->data), static_cast<bool *>(out->data), n,
         ndim, d_dims, d_src_strides, d_dst_strides, axis, axis_size);
     break;
-  case INSIGHT_DTYPE_F64:
-    flip_kernel<double><<<blocks, threads>>>(
-        static_cast<const double *>(x->data), static_cast<double *>(out->data),
+  case INSIGHT_DTYPE_U8:
+    flip_kernel<uint8_t><<<blocks, threads>>>(
+        static_cast<const uint8_t *>(x->data),
+        static_cast<uint8_t *>(out->data), n, ndim, d_dims, d_src_strides,
+        d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_I8:
+    flip_kernel<int8_t><<<blocks, threads>>>(
+        static_cast<const int8_t *>(x->data), static_cast<int8_t *>(out->data),
         n, ndim, d_dims, d_src_strides, d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_I16:
+    flip_kernel<int16_t><<<blocks, threads>>>(
+        static_cast<const int16_t *>(x->data),
+        static_cast<int16_t *>(out->data), n, ndim, d_dims, d_src_strides,
+        d_dst_strides, axis, axis_size);
     break;
   case INSIGHT_DTYPE_I32:
     flip_kernel<int32_t><<<blocks, threads>>>(
@@ -100,6 +158,58 @@ C_Status flip_kernel_gpu(void **inputs, void **outputs) {
     flip_kernel<int64_t><<<blocks, threads>>>(
         static_cast<const int64_t *>(x->data),
         static_cast<int64_t *>(out->data), n, ndim, d_dims, d_src_strides,
+        d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_U16:
+    flip_kernel<uint16_t><<<blocks, threads>>>(
+        static_cast<const uint16_t *>(x->data),
+        static_cast<uint16_t *>(out->data), n, ndim, d_dims, d_src_strides,
+        d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_U32:
+    flip_kernel<uint32_t><<<blocks, threads>>>(
+        static_cast<const uint32_t *>(x->data),
+        static_cast<uint32_t *>(out->data), n, ndim, d_dims, d_src_strides,
+        d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_U64:
+    flip_kernel<uint64_t><<<blocks, threads>>>(
+        static_cast<const uint64_t *>(x->data),
+        static_cast<uint64_t *>(out->data), n, ndim, d_dims, d_src_strides,
+        d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_F32:
+    flip_kernel<float><<<blocks, threads>>>(
+        static_cast<const float *>(x->data), static_cast<float *>(out->data), n,
+        ndim, d_dims, d_src_strides, d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_F64:
+    flip_kernel<double><<<blocks, threads>>>(
+        static_cast<const double *>(x->data), static_cast<double *>(out->data),
+        n, ndim, d_dims, d_src_strides, d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_C32:
+    flip_c64_kernel<<<blocks, threads>>>(
+        static_cast<const cuFloatComplex *>(x->data),
+        static_cast<cuFloatComplex *>(out->data), n, ndim, d_dims,
+        d_src_strides, d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_C64:
+    flip_c128_kernel<<<blocks, threads>>>(
+        static_cast<const cuDoubleComplex *>(x->data),
+        static_cast<cuDoubleComplex *>(out->data), n, ndim, d_dims,
+        d_src_strides, d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_F16:
+    flip_kernel<uint16_t><<<blocks, threads>>>(
+        static_cast<const uint16_t *>(x->data),
+        static_cast<uint16_t *>(out->data), n, ndim, d_dims, d_src_strides,
+        d_dst_strides, axis, axis_size);
+    break;
+  case INSIGHT_DTYPE_BF16:
+    flip_kernel<uint16_t><<<blocks, threads>>>(
+        static_cast<const uint16_t *>(x->data),
+        static_cast<uint16_t *>(out->data), n, ndim, d_dims, d_src_strides,
         d_dst_strides, axis, axis_size);
     break;
   default:
@@ -125,7 +235,18 @@ C_Status flip_kernel_gpu(void **inputs, void **outputs) {
 
 } // extern "C"
 
-REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_F32, flip_kernel_gpu);
-REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_F64, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_BOOL, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_U8, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_I8, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_I16, flip_kernel_gpu);
 REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_I32, flip_kernel_gpu);
 REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_I64, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_U16, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_U32, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_U64, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_F32, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_F64, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_C32, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_C64, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_F16, flip_kernel_gpu);
+REGISTER_GPU_KERNEL(flip, INSIGHT_DTYPE_BF16, flip_kernel_gpu);

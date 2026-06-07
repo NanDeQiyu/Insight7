@@ -3,12 +3,14 @@
  * @file concat.cu
  * @brief CUDA kernel for concatenation operation.
  *
- * Concatenates multiple arrays along an axis.
- * Uses CPU fallback for complex logic.
+ * Optimized: replaces O(N) element-by-element cudaMemcpy loop
+ * with O(num_inputs) cudaMemcpy2D calls (covers all axis cases).
+ * Inspired by PaddlePaddle's concat kernel pattern.
  */
 
 #include "../../registry/cuda_registry.h"
 #include "insight/c_api/array.h"
+#include <cstdio>
 #include <cstring>
 #include <cuda_runtime.h>
 #include <vector>
@@ -17,7 +19,6 @@ extern "C" {
 
 C_Status concat_kernel_gpu(void **inputs, void **outputs) {
   InsightArray *out = static_cast<InsightArray *>(outputs[0]);
-
   if (!out) {
     gpu_set_last_error("concat: output is null");
     return C_FAILED;
@@ -27,9 +28,7 @@ C_Status concat_kernel_gpu(void **inputs, void **outputs) {
     gpu_set_last_error("concat: num_inputs is null");
     return C_FAILED;
   }
-
   int num_inputs = *static_cast<int *>(inputs[1]);
-
   if (num_inputs < 1) {
     gpu_set_last_error("concat: no input arrays");
     return C_FAILED;
@@ -54,96 +53,100 @@ C_Status concat_kernel_gpu(void **inputs, void **outputs) {
   int axis = *static_cast<int *>(inputs[2 + num_inputs]);
 
   int64_t ndim = out->ndim;
-  int64_t element_size = 1;
+  int64_t elem_size;
   switch (out->dtype) {
   case INSIGHT_DTYPE_BOOL:
   case INSIGHT_DTYPE_U8:
   case INSIGHT_DTYPE_I8:
-    element_size = 1;
+    elem_size = 1;
     break;
   case INSIGHT_DTYPE_I16:
   case INSIGHT_DTYPE_U16:
-    element_size = 2;
+    elem_size = 2;
     break;
   case INSIGHT_DTYPE_I32:
   case INSIGHT_DTYPE_U32:
   case INSIGHT_DTYPE_F32:
-    element_size = 4;
+    elem_size = 4;
     break;
   case INSIGHT_DTYPE_I64:
   case INSIGHT_DTYPE_U64:
   case INSIGHT_DTYPE_F64:
   case INSIGHT_DTYPE_C32:
-    element_size = 8;
+    elem_size = 8;
     break;
   case INSIGHT_DTYPE_C64:
-    element_size = 16;
+    elem_size = 16;
     break;
   default:
     gpu_set_last_error("concat: unsupported dtype");
     return C_FAILED;
   }
 
-  // Compute output strides
-  int64_t out_strides[INSIGHT_MAX_NDIM];
-  out_strides[ndim - 1] = 1;
-  for (int d = ndim - 2; d >= 0; --d) {
-    out_strides[d] = out_strides[d + 1] * out->dims[d + 1];
+  // inner = elements after concat axis, outer = elements before
+  int64_t inner = 1;
+  for (int d = axis + 1; d < ndim; ++d)
+    inner *= out->dims[d];
+  int64_t outer = 1;
+  for (int d = 0; d < axis; ++d)
+    outer *= out->dims[d];
+
+  if (inner == 0 || outer == 0) {
+    gpu_set_last_error("concat: zero-dim tensor not supported");
+    return C_FAILED;
   }
 
-  // Copy data from each input to the appropriate region of output
+  // cudaMemcpy2D copies each input as a 2D array:
+  //   width = axis_dim * inner * elem_size  (bytes per "row")
+  //   height = outer                       (number of "rows")
+  //   src_pitch = width                    (contiguous in source)
+  //   dst_pitch = out_axis_dim * inner * elem_size (strided in output)
   int64_t axis_offset = 0;
   for (int i = 0; i < num_inputs; ++i) {
     InsightArray *src = in_arrays[i];
-    int64_t src_size = src->numel;
-
-    // Compute source strides
-    int64_t src_strides[INSIGHT_MAX_NDIM];
-    src_strides[ndim - 1] = 1;
-    for (int d = ndim - 2; d >= 0; --d) {
-      src_strides[d] = src_strides[d + 1] * src->dims[d + 1];
+    int64_t src_axis_dim = src->dims[axis];
+    if (src_axis_dim <= 0) {
+      axis_offset += src_axis_dim;
+      continue;
     }
 
-    // Copy element by element (simplified version)
-    for (int64_t linear = 0; linear < src_size; ++linear) {
-      // Convert linear index to multi-dimensional indices
-      int64_t indices[INSIGHT_MAX_NDIM];
-      int64_t remaining = linear;
-      for (int d = ndim - 1; d >= 0; --d) {
-        indices[d] = remaining % src->dims[d];
-        remaining /= src->dims[d];
-      }
+    size_t width = static_cast<size_t>(src_axis_dim * inner) *
+                   static_cast<size_t>(elem_size);
+    size_t height = static_cast<size_t>(outer);
+    size_t src_pitch = width;
+    size_t dst_pitch = static_cast<size_t>(out->dims[axis] * inner) *
+                       static_cast<size_t>(elem_size);
+    size_t dst_off = static_cast<size_t>(axis_offset * inner) *
+                     static_cast<size_t>(elem_size);
+    size_t src_off =
+        static_cast<size_t>(src->offset) * static_cast<size_t>(elem_size);
 
-      // Adjust axis index for output
-      indices[axis] += axis_offset;
+    cudaError_t err =
+        cudaMemcpy2D(static_cast<char *>(out->data) + dst_off, dst_pitch,
+                     static_cast<const char *>(src->data) + src_off, src_pitch,
+                     width, height, cudaMemcpyDeviceToDevice);
 
-      // Compute output linear index
-      int64_t out_linear = 0;
-      for (int d = 0; d < ndim; ++d) {
-        out_linear += indices[d] * out_strides[d];
-      }
-
-      // Copy element
-      cudaMemcpy(static_cast<char *>(out->data) + out_linear * element_size,
-                 static_cast<const char *>(src->data) + linear * element_size,
-                 element_size, cudaMemcpyDeviceToDevice);
+    if (err != cudaSuccess) {
+      char buf[256];
+      snprintf(buf, sizeof(buf), "concat: cudaMemcpy2D failed for input %d: %s",
+               i, cudaGetErrorString(err));
+      gpu_set_last_error(buf);
+      return C_FAILED;
     }
-
-    axis_offset += src->dims[axis];
+    axis_offset += src_axis_dim;
   }
 
+  // Check for async errors
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
     gpu_set_last_error(cudaGetErrorString(err));
     return C_FAILED;
   }
-
   return C_SUCCESS;
 }
 
 } // extern "C"
 
-// Register for all supported types
 REGISTER_GPU_KERNEL(concat, INSIGHT_DTYPE_BOOL, concat_kernel_gpu);
 REGISTER_GPU_KERNEL(concat, INSIGHT_DTYPE_U8, concat_kernel_gpu);
 REGISTER_GPU_KERNEL(concat, INSIGHT_DTYPE_I8, concat_kernel_gpu);

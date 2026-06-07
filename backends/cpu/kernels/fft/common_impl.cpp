@@ -3,10 +3,9 @@
  * @file common_impl.cpp
  * @brief FFTW plan cache implementation.
  *
- * - C2C: plans created with actual buffer each time (FFTW_ESTIMATE +
- * fftw_execute). fftw_execute_dft gives wrong results for n>=64 with
- * FFTW_ESTIMATE.
- * - R2C/C2R: plans cached with dummy buffers (fftw_execute_dft_r2c/c2r works).
+ * - C2C: always recreate with actual buffers (FFTW_ESTIMATE buffer-address
+ *   dependency for n >= 64 — using dummy buffers gives wrong results).
+ * - R2C/C2R: multi-plan cache with dummy buffers (works correctly).
  */
 
 #ifdef INSIGHT_USE_FFTW3
@@ -14,108 +13,34 @@
 #include "common.h"
 #include <cstring>
 
-static thread_local FFTWCache cache = {NULL, NULL, NULL, NULL,
-                                       0,    0,    0,    FFT_KIND_C2C};
+static thread_local FFTWCache cache = {{0}};
 
 FFTWCache *fft_get_cache(void) { return &cache; }
 
 fftw_plan fft_ensure_plan_f64(int n, int64_t batch, int direction, FFTKind kind,
                               void *buf_in, void *buf_out) {
-  FFTWCache *c = &cache;
-
   if (kind == FFT_KIND_C2C) {
-    if (c->plan_f64 && c->kind == FFT_KIND_C2C) {
-      fftw_destroy_plan(c->plan_f64);
-      c->plan_f64 = NULL;
-    }
+    // C2C must use actual buffers
     int n_int = (int)n;
-    c->plan_f64 = fftw_plan_many_dft(
-        1, &n_int, (int)batch, (fftw_complex *)buf_in, NULL, 1, n_int,
-        (fftw_complex *)buf_out, NULL, 1, n_int, direction, FFTW_ESTIMATE);
-    c->n = n;
-    c->batch = batch;
-    c->direction = direction;
-    c->kind = FFT_KIND_C2C;
-    return c->plan_f64;
+    return fftw_plan_many_dft(1, &n_int, (int)batch, (fftw_complex *)buf_in,
+                              NULL, 1, n_int, (fftw_complex *)buf_out, NULL, 1,
+                              n_int, direction, FFTW_ESTIMATE);
   }
-
-  // R2C/C2R: use actual buffers for plan creation
-  if (c->plan_f64 && c->n == n && c->batch == batch &&
-      c->direction == direction && c->kind == kind) {
-    return c->plan_f64;
-  }
-
-  if (c->plan_f64) {
-    fftw_destroy_plan(c->plan_f64);
-    c->plan_f64 = NULL;
-  }
-
-  int n_int = (int)n;
-
-  if (kind == FFT_KIND_R2C) {
-    c->plan_f64 = fftw_plan_many_dft_r2c(
-        1, &n_int, (int)batch, (double *)buf_in, NULL, 1, n_int,
-        (fftw_complex *)buf_out, NULL, 1, n_int / 2 + 1, FFTW_ESTIMATE);
-  } else {
-    c->plan_f64 = fftw_plan_many_dft_c2r(
-        1, &n_int, (int)batch, (fftw_complex *)buf_in, NULL, 1, n_int / 2 + 1,
-        (double *)buf_out, NULL, 1, n_int, FFTW_ESTIMATE);
-  }
-
-  c->n = n;
-  c->batch = batch;
-  c->direction = direction;
-  c->kind = kind;
-  return c->plan_f64;
+  // R2C/C2R: use multi-plan cache (dummy buffers work correctly)
+  return (fftw_plan)fft_cache_find_or_create(n, batch, direction, kind, 1);
 }
 
 fftwf_plan fft_ensure_plan_f32(int n, int64_t batch, int direction,
                                FFTKind kind, void *buf_in, void *buf_out) {
-  FFTWCache *c = &cache;
-
   if (kind == FFT_KIND_C2C) {
-    if (c->plan_f32 && c->kind == FFT_KIND_C2C) {
-      fftwf_destroy_plan(c->plan_f32);
-      c->plan_f32 = NULL;
-    }
+    // C2C must use actual buffers
     int n_int = (int)n;
-    c->plan_f32 = fftwf_plan_many_dft(
-        1, &n_int, (int)batch, (fftwf_complex *)buf_in, NULL, 1, n_int,
-        (fftwf_complex *)buf_out, NULL, 1, n_int, direction, FFTW_ESTIMATE);
-    c->n = n;
-    c->batch = batch;
-    c->direction = direction;
-    c->kind = FFT_KIND_C2C;
-    return c->plan_f32;
+    return fftwf_plan_many_dft(1, &n_int, (int)batch, (fftwf_complex *)buf_in,
+                               NULL, 1, n_int, (fftwf_complex *)buf_out, NULL,
+                               1, n_int, direction, FFTW_ESTIMATE);
   }
-
-  if (c->plan_f32 && c->n == n && c->batch == batch &&
-      c->direction == direction && c->kind == kind) {
-    return c->plan_f32;
-  }
-
-  if (c->plan_f32) {
-    fftwf_destroy_plan(c->plan_f32);
-    c->plan_f32 = NULL;
-  }
-
-  int n_int = (int)n;
-
-  if (kind == FFT_KIND_R2C) {
-    c->plan_f32 = fftwf_plan_many_dft_r2c(
-        1, &n_int, (int)batch, (float *)buf_in, NULL, 1, n_int,
-        (fftwf_complex *)buf_out, NULL, 1, n_int / 2 + 1, FFTW_ESTIMATE);
-  } else {
-    c->plan_f32 = fftwf_plan_many_dft_c2r(
-        1, &n_int, (int)batch, (fftwf_complex *)buf_in, NULL, 1, n_int / 2 + 1,
-        (float *)buf_out, NULL, 1, n_int, FFTW_ESTIMATE);
-  }
-
-  c->n = n;
-  c->batch = batch;
-  c->direction = direction;
-  c->kind = kind;
-  return c->plan_f32;
+  // R2C/C2R: use multi-plan cache (dummy buffers work correctly)
+  return (fftwf_plan)fft_cache_find_or_create(n, batch, direction, kind, 0);
 }
 
 #endif // INSIGHT_USE_FFTW3

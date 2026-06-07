@@ -58,6 +58,17 @@ function pulse_doppler(x::InsightArray)::InsightArray
 end
 
 """
+    pulse_doppler(x::InsightArray, window::String, nfft::Integer) -> InsightArray
+
+Compute the pulse-Doppler processing with windowing (FFT along slow-time axis).
+"""
+function pulse_doppler(x::InsightArray, window::String, nfft::Integer)::InsightArray
+    ptr = ccall((:insight_jl_pulse_doppler_window, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Cstring, Int64), x, window, Int64(nfft))
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+"""
     mvdr(x::InsightArray, sv::InsightArray) -> InsightArray
 
 Apply MVDR (Capon) beamforming.
@@ -65,5 +76,16 @@ Apply MVDR (Capon) beamforming.
 function mvdr(x::InsightArray, sv::InsightArray)::InsightArray
     ptr = ccall((:insight_jl_mvdr, LIB_INSIGHT), Ptr{Cvoid},
                 (Ptr{Cvoid}, Ptr{Cvoid}), x, sv)
+    arr = InsightArray(ptr); finalizer(_free, arr); return arr
+end
+
+"""
+    ambgfun(x::InsightArray, fs::Float64, prf::Float64) -> InsightArray
+
+Compute the ambiguity function of a signal.
+"""
+function ambgfun(x::InsightArray, fs::Float64, prf::Float64)::InsightArray
+    ptr = ccall((:insight_jl_ambgfun, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Float64, Float64), x, fs, prf)
     arr = InsightArray(ptr); finalizer(_free, arr); return arr
 end
