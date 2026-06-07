@@ -102,11 +102,11 @@ Array cwt(const Array &data, std::function<Array(int64_t, double)> wavelet,
   INS_CHECK(!widths.empty(), "cwt: widths must not be empty");
 
   Place cpu = CPUPlace();
-  Array data_cpu =
-      (data.place().kind() == DeviceKind::CPU) ? data : data.to(cpu);
+  Place dev = data.place();
+  Array data_cpu = (dev.kind() == DeviceKind::CPU) ? data : data.to(cpu);
 
   int64_t n = data_cpu.numel();
-  int64_t nw = widths.size();
+  int64_t nw = static_cast<int64_t>(widths.size());
 
   // Determine output dtype (complex if wavelet returns complex)
   Array test_w = wavelet(10, widths[0]);
@@ -114,63 +114,74 @@ Array cwt(const Array &data, std::function<Array(int64_t, double)> wavelet,
       (test_w.dtype() == DType::C64 || test_w.dtype() == DType::C32);
 
   // Prepare data as complex for FFT convolution
-  DType work_dtype = DType::C64;
   Array data_cpx = data_cpu;
   if (data_cpu.dtype() != DType::C64 && data_cpu.dtype() != DType::C32) {
     data_cpx = to_complex(data_cpu);
   }
 
-  // Precompute FFT of data
+  // Precompute FFT of data (once)
   Array data_fft = fft::fft(data_cpx, n);
+  // Reshape to [1, n] for broadcasting with [nw, n]
+  Array data_fft_2d = reshape(data_fft, {1, n});
 
-  std::vector<Array> result_rows;
+  // --- Batched wavelet preparation ---
+  // Pre-compute all wavelets, zero-pad to n, stack into [nw, n]
+  std::vector<Array> w_rows;
+  std::vector<int64_t> Ns; // original wavelet lengths for circular shift
+  w_rows.reserve(nw);
+  Ns.reserve(nw);
 
   for (int64_t ind = 0; ind < nw; ++ind) {
     double width = widths[ind];
     int64_t N = std::min(static_cast<int64_t>(10 * width), n);
     if (N < 1)
       N = 1;
+    Ns.push_back(N);
 
-    // Get wavelet, conjugate, and reverse using composite ops
     Array w_arr = wavelet(N, width);
-
-    // Conjugate and reverse using composite ops
     Array w_conj = conj(w_arr);
     Array w_rev = flip(w_conj, 0);
 
-    // Convert to complex if needed
     if (w_rev.dtype() != DType::C64 && w_rev.dtype() != DType::C32) {
       w_rev = to_complex(w_rev);
     }
 
-    // Zero-pad wavelet to length n and compute FFT
+    // Zero-pad to length n
     int64_t pad_len = n - w_rev.numel();
     if (pad_len > 0) {
-      Array pad_zeros = zeros({pad_len}, w_rev.dtype(), cpu);
-      w_rev = concat({w_rev, pad_zeros}, 0);
+      w_rev = concat({w_rev, zeros({pad_len}, DType::C64, cpu)}, 0);
     } else if (pad_len < 0) {
       w_rev = slice(w_rev, 0, 0, n);
     }
-    Array w_fft = fft::fft(w_rev, n);
+    w_rows.push_back(w_rev);
+  }
 
-    // Multiply in frequency domain and inverse FFT
-    Array conv_fft = mul(data_fft, w_fft);
-    Array conv_result = fft::ifft(conv_fft, n);
+  // Stack into [nw, n] and do batched FFT along axis 1
+  Array w_stack = stack(w_rows, 0);      // [nw, n]
+  Array w_fft = fft::fft(w_stack, n, 1); // [nw, n] batched FFT
 
-    // Extract "same" mode: center portion using composite ops
-    int64_t start = N / 2;
-    // Circular shift by -start using slice+concat (roll doesn't support C64)
-    Array part1 = slice(conv_result, 0, start, n);
-    Array part2 = slice(conv_result, 0, 0, start);
+  // Batched multiply and inverse FFT
+  Array conv_fft = mul(w_fft, data_fft_2d);      // [nw, n] broadcast
+  Array conv_result = fft::ifft(conv_fft, n, 1); // [nw, n] batched IFFT
+
+  // --- Extract "same" mode with per-row circular shift ---
+  std::vector<Array> result_rows;
+  result_rows.reserve(nw);
+
+  for (int64_t ind = 0; ind < nw; ++ind) {
+    int64_t start = Ns[ind] / 2;
+    Array row = slice(conv_result, 0, ind, ind + 1); // [1, n]
+    row = reshape(row, {n});                         // [n]
+
+    // Circular shift by -start
+    Array part1 = slice(row, 0, start, n);
+    Array part2 = slice(row, 0, 0, start);
     Array conv_shifted = concat({part1, part2}, 0);
-    // Take first n elements
-    Array conv_same = slice(conv_shifted, 0, 0, n);
 
-    // Convert to complex64 for storage
-    if (conv_same.dtype() != DType::C64) {
-      conv_same = as_complex(conv_same);
+    if (conv_shifted.dtype() != DType::C64) {
+      conv_shifted = as_complex(conv_shifted);
     }
-    result_rows.push_back(conv_same);
+    result_rows.push_back(conv_shifted);
   }
 
   Array result = stack(result_rows, 0);
@@ -178,8 +189,6 @@ Array cwt(const Array &data, std::function<Array(int64_t, double)> wavelet,
   if (is_complex) {
     return result;
   }
-
-  // Extract real part
   return real(result);
 }
 

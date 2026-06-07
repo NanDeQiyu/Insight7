@@ -1530,7 +1530,14 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     sig["morlet2"] = [](int64_t M, double s, sol::optional<double> w) {
       return ins::signal::morlet2(M, s, w.value_or(5.0));
     };
-    // Note: cwt takes std::function — not easily bindable from Lua
+    sig["cwt"] = [](const ins::Array &data, sol::function wavelet,
+                    std::vector<double> widths) {
+      auto wavelet_fn = [&wavelet](int64_t points, double a) -> ins::Array {
+        sol::function_result r = wavelet(points, a);
+        return r.get<ins::Array>();
+      };
+      return ins::signal::cwt(data, wavelet_fn, widths);
+    };
 
     // --- Acoustics ---
     sig["mel2hz"] = &ins::signal::mel2hz;

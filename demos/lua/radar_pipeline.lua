@@ -44,7 +44,7 @@ local _T = nil
 local _COMPOSITE_BASE = nil
 local _TAPS = nil
 local _GAUSS_KERNEL = nil
-local _CWT_WAVELETS = {}
+local _CWT_WIDTHS_LIST = {}
 local _PLACE = nil
 
 -- ============================================================
@@ -129,42 +129,12 @@ local function find_peaks_simple(sig, order)
 end
 
 -- ============================================================
--- 快速 CWT (手动 FFT 卷积, Lua 无 cwt 绑定)
+-- CWT (使用原生 ins.signal.cwt)
 -- ============================================================
 local function cwt_fast(signal)
-  local n = signal.numel
-  local sig_cpx = ins.to_complex(signal)
-  local sig_fft = ins.fft(sig_cpx, n)
-
-  local rows = {}
-  for _, wp in ipairs(_CWT_WAVELETS) do
-    local w_arr = wp[2]
-    local N_w = w_arr.numel
-    local w_conj = ins.conj(w_arr)
-    local w_rev = ins.flip(w_conj, 0)
-    if w_rev.dtype ~= ins.complex128 then
-      w_rev = ins.to_complex(w_rev)
-    end
-
-    local pad_len = n - N_w
-    local w_padded
-    if pad_len > 0 then
-      w_padded = ins.concat({ w_rev, ins.zeros({ pad_len }, ins.complex128, _PLACE) })
-    else
-      w_padded = ins.slice(w_rev, 1, 1, n + 1)
-    end
-    local w_fft = ins.fft(w_padded, n)
-    local conv_fft = sig_fft * w_fft
-    local conv_result = ins.ifft(conv_fft, n)
-
-    local start = math.floor(N_w / 2)
-    local part1 = ins.slice(conv_result, 1, start + 1, n + 1)
-    local part2 = ins.slice(conv_result, 1, 1, start + 1)
-    local conv_shifted = ins.concat({ part1, part2 })
-    local conv_same = ins.slice(conv_shifted, 1, 1, n + 1)
-    rows[#rows + 1] = ins.real(conv_same)
-  end
-  return ins.stack(rows, 0)
+  return ins.signal.cwt(signal, function(points, s)
+    return ins.signal.morlet2(points, s, MORLET_W)
+  end, _CWT_WIDTHS_LIST)
 end
 
 -- ============================================================
@@ -212,15 +182,10 @@ local function init_cache(device)
   local kernel = ins.exp(-0.5 * x_kernel * x_kernel)
   _GAUSS_KERNEL = kernel / ins.sum(kernel)
 
-  -- Pre-compute CWT wavelets
-  _CWT_WAVELETS = {}
+  -- Pre-compute CWT widths list
+  _CWT_WIDTHS_LIST = {}
   for w = CWT_WIDTHS_START, CWT_WIDTHS_END - 1, CWT_WIDTHS_STEP do
-    local N_wavelet = math.min(10 * w, N_SAMPLES)
-    if N_wavelet < 1 then
-      N_wavelet = 1
-    end
-    local w_arr = ins.signal.morlet2(N_wavelet, w + 0.0, MORLET_W)
-    _CWT_WAVELETS[#_CWT_WAVELETS + 1] = { w, w_arr }
+    _CWT_WIDTHS_LIST[#_CWT_WIDTHS_LIST + 1] = w + 0.0
   end
 end
 
@@ -372,7 +337,7 @@ print(
   )
 )
 print(string.format("[滤波]  FIR 带通 %.0f-%.0fHz, %d 阶", BP_LOW, BP_HIGH, NUMTAPS))
-print(string.format("[特征]  FM解调 + STFT + CWT(morlet2, %d scales) + 自相关", #_CWT_WAVELETS))
+print(string.format("[特征]  FM解调 + STFT + CWT(morlet2, %d scales) + 自相关", #_CWT_WIDTHS_LIST))
 print(string.format("[检测]  峰值查找(order=%d) + 卡尔曼滤波", PEAK_ORDER))
 
 local times = {}
