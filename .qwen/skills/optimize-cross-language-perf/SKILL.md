@@ -172,3 +172,41 @@ Pure compute benchmark (fib(35), 1e8 sum, sin+cos 1e7): LuaJIT 10-60x faster tha
 GPU framework benchmark (Insight7 radar): Python ≈ LuaJIT — binding layer is negligible.
 
 **Conclusion**: For Insight7-style frameworks, optimize C++/CUDA kernels first. Language choice is an ecosystem decision, not a performance decision.
+
+## CWT Batched Optimization (2026-06-07)
+
+When implementing CWT (Continuous Wavelet Transform) with multiple scales:
+
+**Problem**: Per-scale FFT creates N_scales FFT plans, each with overhead.
+
+**Solution**: Batch all scales into a single 2D array and do batched FFT:
+```cpp
+// 1. Pre-compute all wavelets, zero-pad to n
+// 2. Stack into [n_scales, n]
+Array w_stack = stack(w_rows, 0);
+// 3. Batched FFT along axis 1
+Array w_fft = fft::fft(w_stack, n, 1);
+// 4. Broadcast multiply with data_fft
+Array conv_fft = mul(w_fft, data_fft_2d);
+// 5. Batched inverse FFT
+Array conv_result = fft::ifft(conv_fft, n, 1);
+```
+
+**Speedup**: C++ CPU 10s → 3.2s on GPU (3x), because FFT plan creation is amortized.
+
+## Lua std::function Binding (2026-06-07)
+
+Binding C++ functions that take `std::function` callbacks requires wrapping `sol::function`:
+
+```cpp
+sig["cwt"] = [](const Array &data, sol::function wavelet,
+                std::vector<double> widths) {
+    auto wavelet_fn = [&wavelet](int64_t points, double a) -> Array {
+        sol::function_result r = wavelet(points, a);
+        return r.get<Array>();
+    };
+    return signal::cwt(data, wavelet_fn, widths);
+};
+```
+
+**Key**: Use `sol::function_result` to get the return value, not `sol::object`.
