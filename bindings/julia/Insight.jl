@@ -75,7 +75,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        choose_conv_method, firfilter_zi_state,
        # Device info
        device_name, gpu_version, driver_version, compute_capability,
-       device_memory, gpu_count, load_backend,
+       device_memory, gpu_count, load_backend, has_device,
        get_device, set_device,
        # Profiler / Timer
        Timer, timer_start, timer_stop, timer_elapsed_ms, timer_destroy,

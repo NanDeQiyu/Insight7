@@ -16,7 +16,7 @@ let
     ms = timer_elapsed_ms(t)
     println(string("CPU timer: ", round(ms, digits=3), " ms"))
     if ms < 0.0 || ms > 100.0
-        error("CPU timer out of range: $ms")
+        error(string("CPU timer out of range: ", ms))
     end
     timer_destroy(t)
 end
@@ -26,9 +26,9 @@ if has_device(1)
     load_backend("cuda")
     t = Timer(1, 0)
     timer_start(t)
-    a = ones([256, 256], DTypeF32, GPUPlace())
-    b = full([256, 256], 2.0, DTypeF32, GPUPlace())
-    c = add(a, b)
+    a = Insight.ones(Int64[256, 256], Insight.float32, Int32(1))
+    b = Insight.full(Int64[256, 256], 2.0, Insight.float32, Int32(1))
+    c = Insight.add(a, b)
     timer_stop(t)
     ms = timer_elapsed_ms(t)
     println(string("GPU timer: ", round(ms, digits=3), " ms"))
