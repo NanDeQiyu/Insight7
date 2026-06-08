@@ -277,6 +277,7 @@ local function run_frame(seed_val)
     n_peaks_max = #peaks_max,
     n_peaks_min = #peaks_min,
     params = params,
+    smoothed = smoothed,
   }
 end
 
@@ -284,7 +285,7 @@ end
 -- CLI 参数解析
 -- ============================================================
 local function parse_args()
-  local args = { device = "cpu", seed = 42, iterations = 0 }
+  local args = { device = "cpu", seed = 42, iterations = 0, timer = false, info = false }
   local i = 1
   while i <= #arg do
     if arg[i] == "--device" and i < #arg then
@@ -296,6 +297,12 @@ local function parse_args()
     elseif arg[i] == "--iterations" and i < #arg then
       args.iterations = tonumber(arg[i + 1])
       i = i + 2
+    elseif arg[i] == "--timer" then
+      args.timer = true
+      i = i + 1
+    elseif arg[i] == "--info" then
+      args.info = true
+      i = i + 1
     else
       i = i + 1
     end
@@ -340,55 +347,162 @@ print(string.format("[滤波]  FIR 带通 %.0f-%.0fHz, %d 阶", BP_LOW, BP_HIGH,
 print(string.format("[特征]  FM解调 + STFT + CWT(morlet2, %d scales) + 自相关", #_CWT_WIDTHS_LIST))
 print(string.format("[检测]  峰值查找(order=%d) + 卡尔曼滤波", PEAK_ORDER))
 
-local times = {}
-for frame = 0, n_frames - 1 do
-  local r = run_frame(args.seed + frame)
-  times[#times + 1] = r.total_ms
-
-  if n_frames == 1 or frame == 0 or (frame + 1) % 10 == 0 or frame == n_frames - 1 then
-    local params_str = "无"
-    if #r.params > 0 then
-      params_str = string.format("峰值@%d f=%.1fHz", r.params[1][1], r.params[1][2])
-    end
+-- Device info (--info flag)
+if args.info then
+  local cpu_total, cpu_free = ins.device_memory_info(0, 0)
+  print(
+    string.format(
+      "[Memory] CPU: total=%dMB used=%dMB",
+      math.floor(cpu_total / (1024 * 1024)),
+      math.floor((cpu_total - cpu_free) / (1024 * 1024))
+    )
+  )
+  if ins.has_device("gpu") then
+    local gpu_total, gpu_free = ins.device_memory_info(1, 0)
     print(
       string.format(
-        "  帧 %4d/%d | %8.2f ms | gen %5.1f filt %5.1f spl %5.1f demod %5.1f "
-          .. "stft %5.1f cwt %5.1f corr %5.1f peak %5.1f kalman %5.1f | "
-          .. "极大值 %d 极小值 %d | %s",
-        frame,
-        n_frames,
-        r.total_ms,
-        r.t_gen_ms,
-        r.t_filt_ms,
-        r.t_spline_ms,
-        r.t_demod_ms,
-        r.t_stft_ms,
-        r.t_cwt_ms,
-        r.t_corr_ms,
-        r.t_peak_ms,
-        r.t_kalman_ms,
-        r.n_peaks_max,
-        r.n_peaks_min,
-        params_str
+        "[Memory] GPU: total=%dMB used=%dMB",
+        math.floor(gpu_total / (1024 * 1024)),
+        math.floor((gpu_total - gpu_free) / (1024 * 1024))
       )
     )
   end
 end
 
-local sum = 0
-for _, t in ipairs(times) do
-  sum = sum + t
+local times = {}
+local cpu_times = {}
+local gpu_times = {}
+
+if args.device == "all" then
+  -- Device comparison mode
+  for frame = 0, n_frames - 1 do
+    -- CPU run
+    init_cache("cpu")
+    local cpu_r = run_frame(args.seed + frame)
+
+    if ins.has_device("gpu") then
+      -- GPU run
+      init_cache("gpu")
+      local gpu_r = run_frame(args.seed + frame)
+
+      -- Compare smoothed signal
+      local cpu_smoothed = cpu_r.smoothed
+      local gpu_smoothed = gpu_r.smoothed:to(ins.CPUPlace())
+      local diff = ins.max(ins.abs(cpu_smoothed - gpu_smoothed))
+      local max_diff = diff:item()
+
+      cpu_times[#cpu_times + 1] = cpu_r.total_ms
+      gpu_times[#gpu_times + 1] = gpu_r.total_ms
+
+      print(
+        string.format(
+          "  帧 %4d/%d | CPU: %8.2f ms | GPU: %8.2f ms | max_diff=%.1e",
+          frame,
+          n_frames,
+          cpu_r.total_ms,
+          gpu_r.total_ms,
+          max_diff
+        )
+      )
+    else
+      print("  [WARNING] GPU not available, running on CPU only")
+      cpu_times[#cpu_times + 1] = cpu_r.total_ms
+      print(string.format("  帧 %4d/%d | CPU: %8.2f ms | (GPU unavailable)", frame, n_frames, cpu_r.total_ms))
+    end
+  end
+  -- Restore CPU cache after comparison loop
+  init_cache("cpu")
+else
+  -- Normal single-device mode
+  for frame = 0, n_frames - 1 do
+    local r = run_frame(args.seed + frame)
+    times[#times + 1] = r.total_ms
+
+    if n_frames == 1 or frame == 0 or (frame + 1) % 10 == 0 or frame == n_frames - 1 then
+      local params_str = "无"
+      if #r.params > 0 then
+        params_str = string.format("峰值@%d f=%.1fHz", r.params[1][1], r.params[1][2])
+      end
+
+      if args.timer then
+        print(
+          string.format(
+            "  帧 %4d/%d | %8.2f ms | gen %5.1f filt %5.1f spl %5.1f demod %5.1f "
+              .. "stft %5.1f cwt %5.1f corr %5.1f peak %5.1f kalman %5.1f | "
+              .. "极大值 %d 极小值 %d | %s",
+            frame,
+            n_frames,
+            r.total_ms,
+            r.t_gen_ms,
+            r.t_filt_ms,
+            r.t_spline_ms,
+            r.t_demod_ms,
+            r.t_stft_ms,
+            r.t_cwt_ms,
+            r.t_corr_ms,
+            r.t_peak_ms,
+            r.t_kalman_ms,
+            r.n_peaks_max,
+            r.n_peaks_min,
+            params_str
+          )
+        )
+      else
+        print(
+          string.format(
+            "  帧 %4d/%d | %8.2f ms | 极大值 %d 极小值 %d | %s",
+            frame,
+            n_frames,
+            r.total_ms,
+            r.n_peaks_max,
+            r.n_peaks_min,
+            params_str
+          )
+        )
+      end
+    end
+  end
 end
-local avg_ms = sum / #times
-local fps = 1000.0 / avg_ms
 
-print(string.format("\n  %s", string.rep("=", 50)))
-print(string.format("  性能总结 (%s)", args.device == "gpu" and "GPU" or "CPU"))
-print(string.format("  %s", string.rep("=", 50)))
-print(string.format("  总帧数: %d", n_frames))
-print(string.format("  平均每帧: %.2f ms  FPS: %.2f", avg_ms, fps))
+-- 性能总结
+if args.device == "all" then
+  if #cpu_times > 0 then
+    local cpu_sum = 0
+    for _, t in ipairs(cpu_times) do
+      cpu_sum = cpu_sum + t
+    end
+    local cpu_avg = cpu_sum / #cpu_times
+    print(string.format("\n  %s", string.rep("=", 50)))
+    print(string.format("  性能总结 (CPU vs GPU)"))
+    print(string.format("  %s", string.rep("=", 50)))
+    print(string.format("  总帧数: %d", #cpu_times))
+    print(string.format("  CPU 平均每帧: %.2f ms  FPS: %.2f", cpu_avg, 1000.0 / cpu_avg))
+    if #gpu_times > 0 then
+      local gpu_sum = 0
+      for _, t in ipairs(gpu_times) do
+        gpu_sum = gpu_sum + t
+      end
+      local gpu_avg = gpu_sum / #gpu_times
+      print(string.format("  GPU 平均每帧: %.2f ms  FPS: %.2f", gpu_avg, 1000.0 / gpu_avg))
+      print(string.format("  加速比: %.2fx", cpu_avg / gpu_avg))
+    end
+  end
+else
+  local sum = 0
+  for _, t in ipairs(times) do
+    sum = sum + t
+  end
+  local avg_ms = sum / #times
+  local fps = 1000.0 / avg_ms
 
-if ins.has_device("gpu") and args.device ~= "gpu" then
+  print(string.format("\n  %s", string.rep("=", 50)))
+  print(string.format("  性能总结 (%s)", args.device == "gpu" and "GPU" or "CPU"))
+  print(string.format("  %s", string.rep("=", 50)))
+  print(string.format("  总帧数: %d", n_frames))
+  print(string.format("  平均每帧: %.2f ms  FPS: %.2f", avg_ms, fps))
+end
+
+if ins.has_device("gpu") and args.device ~= "gpu" and args.device ~= "all" then
   print("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本")
 end
 print("\n完成！")

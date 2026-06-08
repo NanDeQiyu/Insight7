@@ -345,11 +345,18 @@ def _run_frame(rng_seed=42):
 
 def parse_args():
     p = argparse.ArgumentParser(description="多域特征提取与定位 (Insight7)")
-    p.add_argument("--device", choices=["cpu", "gpu"], default="cpu")
+    p.add_argument(
+        "--device",
+        choices=["cpu", "gpu", "all"],
+        default="cpu",
+        help="设备: cpu/gpu/all (all=双后端对比)",
+    )
     p.add_argument("--seed", type=int, default=42, help="随机种子")
     p.add_argument("--iterations", type=int, default=0, help="帧数 (0=单帧)")
     p.add_argument("--plot", type=str, default=None, help="图片输出目录")
     p.add_argument("--output", type=str, default=".", help="其他输出目录")
+    p.add_argument("--timer", action="store_true", help="显示详细时序")
+    p.add_argument("--info", action="store_true", help="显示设备内存信息")
     return p.parse_args()
 
 
@@ -380,48 +387,133 @@ if __name__ == "__main__":
     print(f"[特征]  FM解调 + STFT + CWT(morlet2, {n_scales} scales) + 自相关")
     print(f"[检测]  峰值查找(order={PEAK_ORDER}) + 卡尔曼滤波")
 
-    times = []
-    for frame in range(n_frames):
-        result = _run_frame(rng_seed=args.seed + frame)
-        t = result["total_ms"]
-        times.append(t)
-
-        if n_frames == 1 or frame == 0 or (frame + 1) % 10 == 0 or frame == n_frames - 1:
-            params_str = (
-                f"峰值@{result['params'][0][0]} " f"f={result['params'][0][2]:.1f}Hz"
-                if result["params"]
-                else "无"
-            )
+    # --info: 打印设备内存信息
+    has_gpu = ins.has_device("gpu")
+    if args.info:
+        cpu_total, cpu_free = ins.device_memory_info(0, 0)
+        print(
+            f"[Memory] CPU: total={cpu_total//1024//1024}MB used={(cpu_total-cpu_free)//1024//1024}MB"
+        )
+        if has_gpu:
+            gpu_total, gpu_free = ins.device_memory_info(1, 0)
             print(
-                f"  帧 {frame:4d}/{n_frames} | {t:8.2f} ms | "
-                f"gen {result['t_gen_ms']:5.1f} "
-                f"filt {result['t_filt_ms']:5.1f} "
-                f"spl {result['t_spline_ms']:5.1f} "
-                f"demod {result['t_demod_ms']:5.1f} "
-                f"stft {result['t_stft_ms']:5.1f} "
-                f"cwt {result['t_cwt_ms']:5.1f} "
-                f"corr {result['t_corr_ms']:5.1f} "
-                f"peak {result['t_peak_ms']:5.1f} "
-                f"kalman {result['t_kalman_ms']:5.1f} | "
-                f"极大值 {result['n_peaks_max']} "
-                f"极小值 {result['n_peaks_min']} | {params_str}"
+                f"[Memory] GPU: total={gpu_total//1024//1024}MB used={(gpu_total-gpu_free)//1024//1024}MB"
             )
 
-        if args.plot and (frame == 0 or frame == n_frames - 1):
+    device_all = args.device == "all"
+    times_cpu = []
+    times_gpu = []
+
+    for frame in range(n_frames):
+        seed_val = args.seed + frame
+
+        if device_all:
+            # CPU 运行
+            _init_cache("cpu")
+            cpu_result = _run_frame(rng_seed=seed_val)
+            times_cpu.append(cpu_result["total_ms"])
+
+            # GPU 运行
+            if has_gpu:
+                _init_cache("gpu")
+                gpu_result = _run_frame(rng_seed=seed_val)
+                times_gpu.append(gpu_result["total_ms"])
+                cpu_sig = cpu_result["smoothed"]
+                gpu_sig_cpu = gpu_result["smoothed"].to(ins.CPUPlace())
+                diff = ins.max(ins.abs(cpu_sig - gpu_sig_cpu))
+                max_diff = float(diff)
+            else:
+                print("  [警告] GPU 不可用，仅运行 CPU")
+                gpu_result = cpu_result
+                times_gpu.append(cpu_result["total_ms"])
+                max_diff = 0.0
+
+            if n_frames == 1 or frame == 0 or (frame + 1) % 10 == 0 or frame == n_frames - 1:
+                if args.timer:
+                    print(
+                        f"  帧 {frame:4d}/{n_frames} | "
+                        f"CPU: {cpu_result['total_ms']:8.2f} ms "
+                        f"(gen {cpu_result['t_gen_ms']:5.1f} filt {cpu_result['t_filt_ms']:5.1f} "
+                        f"spl {cpu_result['t_spline_ms']:5.1f} demod {cpu_result['t_demod_ms']:5.1f} "
+                        f"stft {cpu_result['t_stft_ms']:5.1f} cwt {cpu_result['t_cwt_ms']:5.1f} "
+                        f"corr {cpu_result['t_corr_ms']:5.1f}) | "
+                        f"GPU: {gpu_result['total_ms']:8.2f} ms "
+                        f"(gen {gpu_result['t_gen_ms']:5.1f} filt {gpu_result['t_filt_ms']:5.1f} "
+                        f"spl {gpu_result['t_spline_ms']:5.1f} demod {gpu_result['t_demod_ms']:5.1f} "
+                        f"stft {gpu_result['t_stft_ms']:5.1f} cwt {gpu_result['t_cwt_ms']:5.1f} "
+                        f"corr {gpu_result['t_corr_ms']:5.1f}) | "
+                        f"max_diff={max_diff:.2e}"
+                    )
+                else:
+                    print(
+                        f"  帧 {frame:4d}/{n_frames} | "
+                        f"CPU: {cpu_result['total_ms']:8.2f} ms | "
+                        f"GPU: {gpu_result['total_ms']:8.2f} ms | "
+                        f"max_diff={max_diff:.2e}"
+                    )
+        else:
+            _init_cache(args.device)
+            result = _run_frame(rng_seed=seed_val)
+            t = result["total_ms"]
+            if args.device == "gpu":
+                times_gpu.append(t)
+            else:
+                times_cpu.append(t)
+
+            if n_frames == 1 or frame == 0 or (frame + 1) % 10 == 0 or frame == n_frames - 1:
+                params_str = (
+                    f"峰值@{result['params'][0][0]} f={result['params'][0][2]:.1f}Hz"
+                    if result["params"]
+                    else "无"
+                )
+                if args.timer:
+                    print(
+                        f"  帧 {frame:4d}/{n_frames} | {t:8.2f} ms | "
+                        f"gen {result['t_gen_ms']:5.1f} "
+                        f"filt {result['t_filt_ms']:5.1f} "
+                        f"spl {result['t_spline_ms']:5.1f} "
+                        f"demod {result['t_demod_ms']:5.1f} "
+                        f"stft {result['t_stft_ms']:5.1f} "
+                        f"cwt {result['t_cwt_ms']:5.1f} "
+                        f"corr {result['t_corr_ms']:5.1f} "
+                        f"peak {result['t_peak_ms']:5.1f} "
+                        f"kalman {result['t_kalman_ms']:5.1f} | "
+                        f"极大值 {result['n_peaks_max']} "
+                        f"极小值 {result['n_peaks_min']} | {params_str}"
+                    )
+                else:
+                    print(
+                        f"  帧 {frame:4d}/{n_frames} | {t:8.2f} ms | "
+                        f"极大值 {result['n_peaks_max']} "
+                        f"极小值 {result['n_peaks_min']} | {params_str}"
+                    )
+
+        if args.plot and (not device_all) and (frame == 0 or frame == n_frames - 1):
             os.makedirs(args.plot, exist_ok=True)
             from _plot_radar_pipeline import save_feature_plot
 
             save_feature_plot(result, args.plot, frame_idx=frame if n_frames > 1 else None)
 
-    avg_ms = sum(times) / len(times)
-    fps = 1000.0 / avg_ms
-
+    # 性能总结
     print(f"\n  {'=' * 50}")
-    print(f"  性能总结 ({args.device.upper()})")
-    print(f"  {'=' * 50}")
-    print(f"  总帧数: {n_frames}")
-    print(f"  平均每帧: {avg_ms:.2f} ms  FPS: {fps:.2f}")
+    if device_all:
+        cpu_avg = sum(times_cpu) / max(len(times_cpu), 1) if times_cpu else 0
+        gpu_avg = sum(times_gpu) / max(len(times_gpu), 1) if times_gpu else 0
+        print("  性能总结 (CPU vs GPU)")
+        print(f"  {'=' * 50}")
+        print(f"  总帧数: {n_frames}")
+        print(f"  CPU 平均每帧: {cpu_avg:.2f} ms  FPS: {1000/max(cpu_avg,0.001):.2f}")
+        if has_gpu:
+            print(f"  GPU 平均每帧: {gpu_avg:.2f} ms  FPS: {1000/max(gpu_avg,0.001):.2f}")
+            print(f"  加速比: {cpu_avg/max(gpu_avg,0.001):.2f}x")
+    else:
+        avg_ms = sum(times_cpu + times_gpu) / max(len(times_cpu + times_gpu), 1)
+        fps = 1000.0 / max(avg_ms, 0.001)
+        print(f"  性能总结 ({args.device.upper()})")
+        print(f"  {'=' * 50}")
+        print(f"  总帧数: {n_frames}")
+        print(f"  平均每帧: {avg_ms:.2f} ms  FPS: {fps:.2f}")
 
-    if ins.has_device("gpu") and args.device == "cpu":
+    if has_gpu and args.device == "cpu":
         print("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本")
     print("\n完成！")

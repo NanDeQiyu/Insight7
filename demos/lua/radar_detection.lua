@@ -274,6 +274,7 @@ local function run_frame(delays, dopplers, device, seed)
     doppler_ms = (t3 - t2) * 1000,
     cfar_ms = (t4 - t3) * 1000,
     local_ms = (t5 - t4) * 1000,
+    energy = energy,
   }
   return result
 end
@@ -285,6 +286,8 @@ local args = {
   device = "cpu",
   seed = 42,
   iterations = 0,
+  timer = false,
+  info = false,
 }
 
 local i = 1
@@ -298,6 +301,10 @@ while i <= #arg do
   elseif arg[i] == "--iterations" and i < #arg then
     args.iterations = tonumber(arg[i + 1])
     i = i + 1
+  elseif arg[i] == "--timer" then
+    args.timer = true
+  elseif arg[i] == "--info" then
+    args.info = true
   end
   i = i + 1
 end
@@ -340,58 +347,165 @@ else
   print("  ambgfun 计算失败:", ambg)
 end
 
--- 帧循环
-local times = {}
-for frame = 0, n_frames - 1 do
-  local delays, dopplers = get_target_params(frame, n_frames)
-  local result = run_frame(delays, dopplers, args.device, args.seed)
-
-  times[#times + 1] = result.total_ms
-
-  if n_frames == 1 or frame == 0 or (frame + 1) % 10 == 0 or frame == n_frames - 1 then
-    local targets_str = ""
-    for k, tgt in ipairs(result.targets) do
-      if k > 1 then
-        targets_str = targets_str .. "; "
-      end
-      local dist = _RANGE_BINS:get(tgt[2])
-      local dop = _DOPPLER_BINS:get(tgt[1])
-      targets_str = targets_str .. string.format("距离 %.0fm 多普勒 %.0fHz", dist, dop)
-    end
-    if targets_str == "" then
-      targets_str = "无"
-    end
-
+-- Device info (--info flag)
+if args.info then
+  local cpu_total, cpu_free = ins.device_memory_info(0, 0)
+  print(
+    string.format(
+      "[Memory] CPU: total=%dMB used=%dMB",
+      math.floor(cpu_total / (1024 * 1024)),
+      math.floor((cpu_total - cpu_free) / (1024 * 1024))
+    )
+  )
+  if ins.has_device("gpu") then
+    local gpu_total, gpu_free = ins.device_memory_info(1, 0)
     print(
       string.format(
-        "  帧 %4d/%d | %8.2f ms | 检测 %4d → %d 目标 | echo %5.2f pc %5.2f dop %5.2f cfar %5.2f ext %5.2f | %s",
-        frame,
-        n_frames,
-        result.total_ms,
-        result.raw_count,
-        #result.targets,
-        result.echo_ms,
-        result.pc_ms,
-        result.doppler_ms,
-        result.cfar_ms,
-        result.local_ms,
-        targets_str
+        "[Memory] GPU: total=%dMB used=%dMB",
+        math.floor(gpu_total / (1024 * 1024)),
+        math.floor((gpu_total - gpu_free) / (1024 * 1024))
       )
     )
   end
 end
 
--- 性能总结
-local sum = 0
-for _, t in ipairs(times) do
-  sum = sum + t
-end
-local avg_ms = sum / #times
-local fps = 1000.0 / avg_ms
+-- 帧循环
+local times = {}
+local cpu_times = {}
+local gpu_times = {}
 
-print(string.format("\n  ================================================="))
-print(string.format("  性能总结 (%s)", args.device:upper()))
-print(string.format("  ================================================="))
-print(string.format("  总帧数: %d", n_frames))
-print(string.format("  平均每帧: %.2f ms  FPS: %.2f", avg_ms, fps))
+if args.device == "all" then
+  -- Device comparison mode
+  for frame = 0, n_frames - 1 do
+    local delays, dopplers = get_target_params(frame, n_frames)
+
+    -- CPU run
+    init_cache("cpu")
+    local cpu_result = run_frame(delays, dopplers, "cpu", args.seed)
+
+    if ins.has_device("gpu") then
+      -- GPU run
+      init_cache("gpu")
+      local gpu_result = run_frame(delays, dopplers, "gpu", args.seed)
+
+      -- Compare
+      local cpu_energy = cpu_result.energy
+      local gpu_energy = gpu_result.energy:to(ins.CPUPlace())
+      local diff = ins.max(ins.abs(cpu_energy - gpu_energy))
+      local max_diff = diff:item()
+
+      cpu_times[#cpu_times + 1] = cpu_result.total_ms
+      gpu_times[#gpu_times + 1] = gpu_result.total_ms
+
+      print(
+        string.format(
+          "  帧 %4d/%d | CPU: %8.2f ms | GPU: %8.2f ms | max_diff=%.1e",
+          frame,
+          n_frames,
+          cpu_result.total_ms,
+          gpu_result.total_ms,
+          max_diff
+        )
+      )
+    else
+      print("  [WARNING] GPU not available, running on CPU only")
+      cpu_times[#cpu_times + 1] = cpu_result.total_ms
+      print(string.format("  帧 %4d/%d | CPU: %8.2f ms | (GPU unavailable)", frame, n_frames, cpu_result.total_ms))
+    end
+  end
+  -- Restore CPU cache after comparison loop
+  init_cache("cpu")
+else
+  -- Normal single-device mode
+  for frame = 0, n_frames - 1 do
+    local delays, dopplers = get_target_params(frame, n_frames)
+    local result = run_frame(delays, dopplers, args.device, args.seed)
+
+    times[#times + 1] = result.total_ms
+
+    if n_frames == 1 or frame == 0 or (frame + 1) % 10 == 0 or frame == n_frames - 1 then
+      local targets_str = ""
+      for k, tgt in ipairs(result.targets) do
+        if k > 1 then
+          targets_str = targets_str .. "; "
+        end
+        local dist = _RANGE_BINS:get(tgt[2])
+        local dop = _DOPPLER_BINS:get(tgt[1])
+        targets_str = targets_str .. string.format("距离 %.0fm 多普勒 %.0fHz", dist, dop)
+      end
+      if targets_str == "" then
+        targets_str = "无"
+      end
+
+      if args.timer then
+        print(
+          string.format(
+            "  帧 %4d/%d | %8.2f ms | 检测 %4d → %d 目标 | echo %5.2f pc %5.2f dop %5.2f cfar %5.2f ext %5.2f | %s",
+            frame,
+            n_frames,
+            result.total_ms,
+            result.raw_count,
+            #result.targets,
+            result.echo_ms,
+            result.pc_ms,
+            result.doppler_ms,
+            result.cfar_ms,
+            result.local_ms,
+            targets_str
+          )
+        )
+      else
+        print(
+          string.format(
+            "  帧 %4d/%d | %8.2f ms | 检测 %4d → %d 目标 | %s",
+            frame,
+            n_frames,
+            result.total_ms,
+            result.raw_count,
+            #result.targets,
+            targets_str
+          )
+        )
+      end
+    end
+  end
+end
+
+-- 性能总结
+if args.device == "all" then
+  if #cpu_times > 0 then
+    local cpu_sum = 0
+    for _, t in ipairs(cpu_times) do
+      cpu_sum = cpu_sum + t
+    end
+    local cpu_avg = cpu_sum / #cpu_times
+    print(string.format("\n  ================================================="))
+    print(string.format("  性能总结 (CPU vs GPU)"))
+    print(string.format("  ================================================="))
+    print(string.format("  总帧数: %d", #cpu_times))
+    print(string.format("  CPU 平均每帧: %.2f ms  FPS: %.2f", cpu_avg, 1000.0 / cpu_avg))
+    if #gpu_times > 0 then
+      local gpu_sum = 0
+      for _, t in ipairs(gpu_times) do
+        gpu_sum = gpu_sum + t
+      end
+      local gpu_avg = gpu_sum / #gpu_times
+      print(string.format("  GPU 平均每帧: %.2f ms  FPS: %.2f", gpu_avg, 1000.0 / gpu_avg))
+      print(string.format("  加速比: %.2fx", cpu_avg / gpu_avg))
+    end
+  end
+else
+  local sum = 0
+  for _, t in ipairs(times) do
+    sum = sum + t
+  end
+  local avg_ms = sum / #times
+  local fps = 1000.0 / avg_ms
+
+  print(string.format("\n  ================================================="))
+  print(string.format("  性能总结 (%s)", args.device:upper()))
+  print(string.format("  ================================================="))
+  print(string.format("  总帧数: %d", n_frames))
+  print(string.format("  平均每帧: %.2f ms  FPS: %.2f", avg_ms, fps))
+end
 print("\n完成！")
