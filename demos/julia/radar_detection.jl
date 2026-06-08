@@ -72,6 +72,10 @@ function init_cache(device)
 
     # 预创建 hamming 窗 (避免每帧重新创建)
     _HAMMING = Insight.reshape(Insight.signal.get_window("hamming", Int64(N_PULSES), fftbins=false), Int64[N_PULSES, 1])
+    # 确保 hamming 窗在正确的设备上 (get_window 可能因后端差异在 CPU 上创建)
+    if device == "gpu" && Insight.has_device(Int64(1))
+        _HAMMING = Insight.to(_HAMMING, Int64(1))
+    end
 
     # 预创建慢时间轴 (避免每帧重复 arange + mul)
     _SLOW_TIMES = Insight.arange(Float64(0.0), Float64(N_PULSES), Float64(1.0), Insight.float64) * T_PRF
@@ -128,18 +132,19 @@ function extract_targets(energy, det)
     if length(n_det) < 2 || n_det[1] == 0 || n_det[2] == 0
         return Tuple{Int64,Int64}[], 0
     end
-    n_nonzero = Base.max(n_det[1], n_det[2])  # whichever is the count
+    # n_det from Insight.shape is column-major: [N, 2] where N = #detections
+    n_nonzero = n_det[1]
 
     # 批量 GPU→CPU 传输 nonzero 索引
     idx_cpu = Insight.to(idx, Int64(0))
     eng_cpu = Insight.to(energy, Int64(0))
-    # to_data returns column-major: (2, n_nonzero)
-    idx_jl = Insight.to_data(idx_cpu)  # [2, n_nonzero] in column-major
+    # to_data returns column-major: N×2 where each row is [doppler, range]
+    idx_jl = Insight.to_data(idx_cpu)  # N×2 matrix
 
     candidates = Tuple{Int64,Int64,Float64}[]
     for k in 1:n_nonzero
-        di_raw = Int64(idx_jl[1, k])
-        ri_raw = Int64(idx_jl[2, k])
+        di_raw = Int64(idx_jl[k, 1])
+        ri_raw = Int64(idx_jl[k, 2])
         if di_raw < 0 || di_raw >= NP_const || ri_raw < 0 || ri_raw >= N_const
             continue  # skip invalid indices
         end
@@ -198,7 +203,8 @@ function run_frame(delays, dopplers, _device, seed; noise_r=nothing, noise_i=not
     if prof !== nothing; Insight.profiler_begin_event(prof, "doppler"); end
     mean_pc = Insight.mean(pc, axis=0, keepdims=true)
     pc_ac = pc - mean_pc
-    spec = Insight.signal.pulse_doppler(pc_ac * _HAMMING, "", Int64(N_PULSES))
+    windowed = pc_ac * _HAMMING
+    spec = Insight.signal.pulse_doppler(windowed, "", Int64(N_PULSES))
     shifted = spec / Float64(N_PULSES)
     if prof !== nothing; Insight.profiler_end_event(prof); end
     t3 = time()
