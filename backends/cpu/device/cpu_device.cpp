@@ -6,8 +6,12 @@
 #include <string>
 
 #ifdef _WIN32
-#include <psapi.h>
-#include <windows.h>
+#define WIN32_LEAN_AND_MEAN
+// clang-format off
+#include <windows.h>   // must come before psapi.h
+#include <psapi.h>     // depends on types from windows.h
+// clang-format on
+#undef interface
 #pragma comment(lib, "psapi.lib")
 #else
 #include <fstream>

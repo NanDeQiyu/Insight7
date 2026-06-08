@@ -1,8 +1,8 @@
 // tests/cuda/cpp/test_memory.cpp
-#include "gtest/gtest.h"
-#include "insight/core/place.h"
 #include "insight/c_api/memory.h"
+#include "insight/core/place.h"
 #include "insight/insight.h"
+#include "gtest/gtest.h"
 
 class MemoryTestGPU : public ::testing::Test {
 protected:
