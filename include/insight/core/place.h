@@ -148,12 +148,23 @@ struct DeviceMemoryInfo {
 };
 
 /**
- * @brief Get memory information for a GPU device.
+ * @brief Get memory information for a device.
+ *
+ * @param kind Device kind (CPU or GPU)
+ * @param device_id Device index
+ * @return DeviceMemoryInfo with total and free memory
+ */
+DeviceMemoryInfo device_memory_info(DeviceKind kind, int device_id = 0);
+
+/**
+ * @brief Get memory information for a GPU device (convenience wrapper).
  *
  * @param device_id GPU device index
  * @return DeviceMemoryInfo with total and free memory
  */
-DeviceMemoryInfo device_memory(int device_id = 0);
+inline DeviceMemoryInfo device_memory(int device_id = 0) {
+  return device_memory_info(DeviceKind::GPU, device_id);
+}
 
 // ========================================================================
 // Factory functions for creating Place objects

@@ -75,7 +75,7 @@ export Array, zeros, ones, full, arange, linspace, eye,
        choose_conv_method, firfilter_zi_state,
        # Device info
        device_name, gpu_version, driver_version, compute_capability,
-       device_memory, gpu_count, load_backend, has_device,
+       device_memory, device_memory_info, gpu_count, load_backend, has_device,
        get_device, set_device,
        # Profiler / Timer
        Timer, timer_start, timer_stop, timer_elapsed_ms, timer_destroy,
@@ -247,6 +247,15 @@ function device_memory(device_id::Int=0)
     free = Ref{Csize_t}(0)
     ccall((:insight_jl_device_memory, LIB_INSIGHT), Cvoid,
           (Int32, Ptr{Csize_t}, Ptr{Csize_t}), Int32(device_id), total, free)
+    return (total=total[], free=free[])
+end
+
+function device_memory_info(device_kind::Int, device_id::Int=0)
+    total = Ref{Csize_t}(0)
+    free = Ref{Csize_t}(0)
+    ccall((:insight_jl_device_memory_info, LIB_INSIGHT), Cvoid,
+          (Int32, Int32, Ptr{Csize_t}, Ptr{Csize_t}),
+          Int32(device_kind), Int32(device_id), total, free)
     return (total=total[], free=free[])
 end
 

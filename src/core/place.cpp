@@ -192,9 +192,9 @@ int compute_capability(int device_id) {
   return (status == C_SUCCESS) ? static_cast<int>(cap) : 0;
 }
 
-DeviceMemoryInfo device_memory(int device_id) {
+DeviceMemoryInfo device_memory_info(DeviceKind kind, int device_id) {
   DeviceMemoryInfo info{0, 0};
-  const C_DeviceInterface *iface = get_device_interface(DeviceKind::GPU);
+  const C_DeviceInterface *iface = get_device_interface(kind);
   if (!iface || !iface->device_memory_stats)
     return info;
 
@@ -203,6 +203,30 @@ DeviceMemoryInfo device_memory(int device_id) {
   iface->device_memory_stats(&dev, &info.total, &info.free);
   return info;
 }
+
+// ========================================================================
+// C API: insight_device_memory_info
+// ========================================================================
+
+extern "C" {
+
+C_Status insight_device_memory_info(int32_t device_type, int32_t device_id,
+                                    size_t *total_bytes, size_t *free_bytes) {
+  if (!total_bytes || !free_bytes)
+    return C_FAILED;
+
+  DeviceKind kind =
+      (device_type == INSIGHT_DEVICE_GPU) ? DeviceKind::GPU : DeviceKind::CPU;
+  const C_DeviceInterface *iface = get_device_interface(kind);
+  if (!iface || !iface->device_memory_stats)
+    return C_FAILED;
+
+  C_Device_st dev;
+  dev.id = device_id;
+  return iface->device_memory_stats(&dev, total_bytes, free_bytes);
+}
+
+} // extern "C"
 
 // ========================================================================
 // Factory functions
