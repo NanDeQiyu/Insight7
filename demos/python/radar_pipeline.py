@@ -234,10 +234,9 @@ def _cwt_fast(signal_arr):
     return ins.stack(result_rows, 0)
 
 
-def _run_frame(rng_seed=42, external_noise=None, profiler=None):
+def _run_frame(rng_seed=42, external_noise=None):
     """运行一帧特征提取管线。
     external_noise: 可选外部噪声数组，用于 --device all 模式共享随机噪声。
-    profiler: 可选的 Profiler 实例。
     """
     # [1] 合成信号
     t0 = time.time()
@@ -245,32 +244,27 @@ def _run_frame(rng_seed=42, external_noise=None, profiler=None):
     if external_noise is not None:
         noise = external_noise
     else:
-        with ins.ProfileBlock(profiler, "randn"):
-            noise = ins.randn([N_SAMPLES], dtype=ins.float64, place=_PLACE) * NOISE_STD
+        noise = ins.randn([N_SAMPLES], dtype=ins.float64, place=_PLACE) * NOISE_STD
     composite = _COMPOSITE_BASE + noise
     t_gen = time.time() - t0
 
     # [2] 去趋势 + 带通滤波
     t0 = time.time()
-    with ins.ProfileBlock(profiler, "detrend"):
-        detrended = ins.signal.detrend(composite)
-    with ins.ProfileBlock(profiler, "fir_filter"):
-        filtered_full = ins.signal.fftconvolve(detrended, _TAPS, mode="full")
+    detrended = ins.signal.detrend(composite)
+    filtered_full = ins.signal.fftconvolve(detrended, _TAPS, mode="full")
     half = NUMTAPS // 2
     filtered = filtered_full[half : half + N_SAMPLES]
     t_filt = time.time() - t0
 
     # [3] 高斯平滑
     t0 = time.time()
-    with ins.ProfileBlock(profiler, "gauss_smooth"):
-        smoothed = ins.signal.fftconvolve(filtered, _GAUSS_KERNEL, mode="same")
+    smoothed = ins.signal.fftconvolve(filtered, _GAUSS_KERNEL, mode="same")
     smoothed_list = smoothed.list()
     t_spline = time.time() - t0
 
     # [4] FM 解调
     t0 = time.time()
-    with ins.ProfileBlock(profiler, "hilbert"):
-        analytic = ins.signal.hilbert(smoothed)
+    analytic = ins.signal.hilbert(smoothed)
     inst_phase = ins.unwrap(ins.angle(analytic))
     inst_freq = _gradient(inst_phase, 1.0 / FS) / (2.0 * PI)
     inst_freq_list = inst_freq.list()
@@ -278,8 +272,7 @@ def _run_frame(rng_seed=42, external_noise=None, profiler=None):
 
     # [5] STFT
     t0 = time.time()
-    with ins.ProfileBlock(profiler, "stft"):
-        stft_result = ins.signal.stft(smoothed, fs=FS, nperseg=NPERSEG, noverlap=NOVERLAP)
+    stft_result = ins.signal.stft(smoothed, fs=FS, nperseg=NPERSEG, noverlap=NOVERLAP)
     f_stft = stft_result.f
     t_stft_arr = stft_result.t
     Zxx = stft_result.Sxx
@@ -289,16 +282,14 @@ def _run_frame(rng_seed=42, external_noise=None, profiler=None):
 
     # [7] CWT (快速版本)
     t0 = time.time()
-    with ins.ProfileBlock(profiler, "cwt"):
-        cwt_matrix = _cwt_fast(smoothed)
+    cwt_matrix = _cwt_fast(smoothed)
     t_cwt = time.time() - t0
 
     # [8] 自相关 (简化: 取前 512 点)
     t0 = time.time()
-    with ins.ProfileBlock(profiler, "correlate"):
-        seg_len = min(N_SAMPLES, 512)
-        seg = smoothed[:seg_len]
-        autocorr_full = ins.signal.correlate(seg, seg, mode="full")
+    seg_len = min(N_SAMPLES, 512)
+    seg = smoothed[:seg_len]
+    autocorr_full = ins.signal.correlate(seg, seg, mode="full")
     mid = int(autocorr_full.shape[0]) // 2
     autocorr = autocorr_full[mid:]
     norm_val = float(autocorr[0])
@@ -309,8 +300,7 @@ def _run_frame(rng_seed=42, external_noise=None, profiler=None):
 
     # [9] 峰值查找 (简单线性扫描)
     t0 = time.time()
-    with ins.ProfileBlock(profiler, "peak_finding"):
-        peaks_max, peaks_min = _find_peaks_simple(smoothed_list, PEAK_ORDER)
+    peaks_max, peaks_min = _find_peaks_simple(smoothed_list, PEAK_ORDER)
     n_max = len(peaks_max)
     n_min = len(peaks_min)
     t_peak = time.time() - t0
@@ -372,7 +362,6 @@ def parse_args():
     p.add_argument("--output", type=str, default=".", help="其他输出目录")
     p.add_argument("--timer", action="store_true", help="显示详细时序")
     p.add_argument("--info", action="store_true", help="显示设备内存信息")
-    p.add_argument("--profiler", action="store_true", help="启用 Profiler 性能分析")
     return p.parse_args()
 
 
@@ -416,16 +405,6 @@ if __name__ == "__main__":
                 f"[Memory] GPU: total={gpu_total//1024//1024}MB used={(gpu_total-gpu_free)//1024//1024}MB"
             )
 
-    # 创建 Profiler
-    device_str = args.device
-    if device_str == "default":
-        device_str = "gpu" if has_gpu else "cpu"
-    prof = ins.Profiler(
-        "gpu" if (device_str == "gpu" or device_str == "all") and has_gpu else "cpu", 0
-    )
-    if args.profiler:
-        prof.start()
-
     device_all = args.device == "all"
     times_cpu = []
     times_gpu = []
@@ -439,22 +418,14 @@ if __name__ == "__main__":
             cpu_noise = ins.randn([N_SAMPLES], ins.float64, place=ins.CPUPlace()) * NOISE_STD
 
             # CPU run
-            cpu_result = _run_frame(
-                rng_seed=seed_val,
-                external_noise=cpu_noise,
-                profiler=prof if args.profiler else None,
-            )
+            cpu_result = _run_frame(rng_seed=seed_val, external_noise=cpu_noise)
             times_cpu.append(cpu_result["total_ms"])
 
             # GPU run with same noise
             if has_gpu:
                 gpu_noise = cpu_noise.to(ins.GPUPlace(0))
                 _init_cache("gpu")
-                gpu_result = _run_frame(
-                    rng_seed=seed_val,
-                    external_noise=gpu_noise,
-                    profiler=prof if args.profiler else None,
-                )
+                gpu_result = _run_frame(rng_seed=seed_val, external_noise=gpu_noise)
                 times_gpu.append(gpu_result["total_ms"])
                 cpu_sig = cpu_result["smoothed"]
                 gpu_sig_cpu = gpu_result["smoothed"].to(ins.CPUPlace())
@@ -491,7 +462,7 @@ if __name__ == "__main__":
                     )
         else:
             _init_cache(args.device)
-            result = _run_frame(rng_seed=seed_val, profiler=prof if args.profiler else None)
+            result = _run_frame(rng_seed=seed_val)
             t = result["total_ms"]
             if args.device == "gpu":
                 times_gpu.append(t)
@@ -531,11 +502,6 @@ if __name__ == "__main__":
             from _plot_radar_pipeline import save_feature_plot
 
             save_feature_plot(result, args.plot, frame_idx=frame if n_frames > 1 else None)
-
-    # Profiler 报告
-    if args.profiler:
-        prof.stop()
-        prof.report()
 
     # 性能总结
     print(f"\n  {'=' * 50}")

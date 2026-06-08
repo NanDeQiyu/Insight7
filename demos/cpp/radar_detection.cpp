@@ -4,7 +4,6 @@
 // 编译: cmake .. -DINSIGHT_BUILD_DEMOS=ON && make -j24
 // 运行: ./radar_detection --device gpu --seed 42 --iterations 50
 
-#include "insight/core/profiler.h"
 #include "insight/insight.h"
 #include "insight/ops/fft.h"
 #include "insight/ops/indexing.h"
@@ -266,39 +265,26 @@ static FrameResult run_frame(const std::vector<double> &delays,
                              const std::vector<double> &dopplers, Place place,
                              int seed_val, int,
                              const Array *external_noise_r = nullptr,
-                             const Array *external_noise_i = nullptr,
-                             ins::Profiler *prof = nullptr) {
+                             const Array *external_noise_i = nullptr) {
   seed(seed_val);
 
   auto t0 = std::chrono::high_resolution_clock::now();
 
   // [1] Echo simulation
-  if (prof)
-    prof->begin_event("echo_simulation");
   Array pulses = simulate_echoes(delays, dopplers, place, external_noise_r,
                                  external_noise_i);
-  if (prof)
-    prof->end_event();
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // [2] Pulse compression
-  if (prof)
-    prof->begin_event("pulse_compression");
   Array pc = signal::pulse_compression(pulses, _TEMPLATE);
-  if (prof)
-    prof->end_event();
   auto t2 = std::chrono::high_resolution_clock::now();
 
   // [3] Doppler processing
-  if (prof)
-    prof->begin_event("doppler");
   Array mean_pc = mean(pc, {0}, true);
   Array pc_ac = sub(pc, mean_pc);
   Array spec = signal::pulse_doppler(mul(pc_ac, _HAMMING), "", 0);
   Array doppler_shifted = div(
       spec, full(spec.shape(), (double)N_PULSES, spec.dtype(), spec.place()));
-  if (prof)
-    prof->end_event();
   auto t3 = std::chrono::high_resolution_clock::now();
 
   // [4] Energy
@@ -306,20 +292,12 @@ static FrameResult run_frame(const std::vector<double> &delays,
       add(square(real(doppler_shifted)), square(imag(doppler_shifted)));
 
   // [5] CA-CFAR
-  if (prof)
-    prof->begin_event("ca_cfar");
   auto [threshold, detections] =
       signal::ca_cfar(energy, {4, 4}, {12, 12}, 1e-6);
-  if (prof)
-    prof->end_event();
   auto t4 = std::chrono::high_resolution_clock::now();
 
   // [6] Target extraction
-  if (prof)
-    prof->begin_event("target_extraction");
   ExtractResult ext = extract_targets(energy, detections);
-  if (prof)
-    prof->end_event();
   auto t5 = std::chrono::high_resolution_clock::now();
 
   // [7] Range validation
@@ -356,7 +334,6 @@ struct Args {
   int iterations = 0;
   bool timer = false;
   bool info = false;
-  bool profiler = false;
 };
 
 static Args parse_args(int argc, char **argv) {
@@ -372,8 +349,6 @@ static Args parse_args(int argc, char **argv) {
       args.timer = true;
     else if (strcmp(argv[i], "--info") == 0)
       args.info = true;
-    else if (strcmp(argv[i], "--profiler") == 0)
-      args.profiler = true;
   }
   return args;
 }
@@ -416,21 +391,12 @@ int main(int argc, char **argv) {
   }
 
   // 初始化缓存 (单设备模式)
-  ins::Profiler prof(place);
   if (!do_all) {
     init_cache(place);
 
-    if (args.profiler)
-      prof.start();
-
     // 模糊函数分析
     printf("\n[波形分析] 计算模糊函数...\n");
-    Array ambg;
-    if (args.profiler)
-      prof.begin_event("ambgfun");
-    ambg = signal::ambgfun(_TEMPLATE, FS, 1.0 / T_PRF);
-    if (args.profiler)
-      prof.end_event();
+    Array ambg = signal::ambgfun(_TEMPLATE, FS, 1.0 / T_PRF);
     Array ambg_abs = abs(ambg);
     double peak_val = max(ambg_abs).item<double>();
     double mean_val = mean(ambg_abs).item<double>();
@@ -548,13 +514,7 @@ int main(int argc, char **argv) {
     std::vector<double> delays, dopplers;
     get_target_params(frame, n_frames, delays, dopplers);
 
-    if (args.profiler)
-      prof.begin_event("frame");
-    FrameResult result =
-        run_frame(delays, dopplers, place, args.seed, frame, nullptr, nullptr,
-                  args.profiler ? &prof : nullptr);
-    if (args.profiler)
-      prof.end_event();
+    FrameResult result = run_frame(delays, dopplers, place, args.seed, frame);
 
     times.push_back(result.total_ms);
 
@@ -589,12 +549,6 @@ int main(int argc, char **argv) {
                result.targets.size(), targets_str.c_str());
       }
     }
-  }
-
-  // Profiler 报告
-  if (args.profiler) {
-    prof.stop();
-    prof.report();
   }
 
   // 性能总结
