@@ -54,3 +54,4 @@ endif()
 
 add_insight_demo(demo_radar_detection cpp/radar_detection.cpp)
 add_insight_demo(demo_radar_pipeline cpp/radar_pipeline.cpp)
+add_insight_demo(demo_timer cpp/timer_demo.cpp)

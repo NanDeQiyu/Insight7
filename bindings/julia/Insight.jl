@@ -75,8 +75,10 @@ export Array, zeros, ones, full, arange, linspace, eye,
        choose_conv_method, firfilter_zi_state,
        # Device info
        device_name, gpu_version, driver_version, compute_capability,
-       device_memory, gpu_count, load_backend,
+       device_memory, gpu_count, load_backend, has_device,
        get_device, set_device,
+       # Profiler / Timer
+       Timer, timer_start, timer_stop, timer_elapsed_ms, timer_destroy,
        # Signal submodule
        signal
 
@@ -2141,6 +2143,84 @@ module signal
     const KalmanFilter = Insight.KalmanFilter
     const kf_predict = Insight.predict
     const kf_update = Insight.update
+end
+
+"""
+    Timer
+
+High-resolution timer for measuring execution time on CPU or GPU.
+
+# Fields
+- `handle::Ptr{Cvoid}` - Opaque pointer to the native timer
+
+# Usage
+```julia
+t = Timer(0, 0)  # CPU
+timer_start(t)
+# ... work ...
+timer_stop(t)
+ms = timer_elapsed_ms(t)
+timer_destroy(t)
+```
+"""
+mutable struct Timer
+    handle::Ptr{Cvoid}
+end
+
+"""
+    Timer(device_type::Integer, device_id::Integer) -> Timer
+
+Create a timer for the specified device.
+- `device_type`: 0 for CPU, 1 for GPU
+- `device_id`: Device ID (0 for first device)
+"""
+function Timer(device_type::Integer, device_id::Integer)
+    handle = ccall((:insight_jl_timer_create, LIB_INSIGHT), Ptr{Cvoid},
+                   (Cint, Cint), Cint(device_type), Cint(device_id))
+    if handle == C_NULL
+        error("Timer: failed to create timer (device not available)")
+    end
+    return Timer(handle)
+end
+
+"""
+    timer_destroy(t::Timer)
+
+Destroy a timer and release associated resources.
+"""
+function timer_destroy(t::Timer)
+    if t.handle != C_NULL
+        ccall((:insight_jl_timer_destroy, LIB_INSIGHT), Cvoid, (Ptr{Cvoid},), t.handle)
+        t.handle = C_NULL
+    end
+end
+
+"""
+    timer_start(t::Timer)
+
+Record a start event on the device.
+"""
+function timer_start(t::Timer)
+    ccall((:insight_jl_timer_start, LIB_INSIGHT), Cvoid, (Ptr{Cvoid},), t.handle)
+end
+
+"""
+    timer_stop(t::Timer)
+
+Record a stop event and synchronize.
+"""
+function timer_stop(t::Timer)
+    ccall((:insight_jl_timer_stop, LIB_INSIGHT), Cvoid, (Ptr{Cvoid},), t.handle)
+end
+
+"""
+    timer_elapsed_ms(t::Timer) -> Float64
+
+Get the elapsed time in milliseconds between start and stop.
+"""
+function timer_elapsed_ms(t::Timer)
+    return ccall((:insight_jl_timer_elapsed_ms, LIB_INSIGHT), Float64,
+                 (Ptr{Cvoid},), t.handle)
 end
 
 end # module Insight

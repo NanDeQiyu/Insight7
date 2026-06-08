@@ -84,6 +84,7 @@ jobs:
           ./demo_fft
           ./demo_radar_detection
           ./demo_radar_pipeline
+          ./demo_timer
 
   python-demos:
     name: Python Demos
@@ -136,6 +137,7 @@ jobs:
           python3 $GITHUB_WORKSPACE/demos/python/sndfile_demo.py
           python3 $GITHUB_WORKSPACE/demos/python/radar_detection.py
           python3 $GITHUB_WORKSPACE/demos/python/radar_pipeline.py
+          python3 $GITHUB_WORKSPACE/demos/python/timer_demo.py
 
   lua-demos:
     name: Lua Demos
@@ -187,6 +189,7 @@ jobs:
           luajit demos/lua/sndfile_demo.lua
           luajit demos/lua/radar_detection.lua
           luajit demos/lua/radar_pipeline.lua
+          luajit demos/lua/timer_demo.lua
 
   julia-demos:
     name: Julia Demos
@@ -239,3 +242,4 @@ jobs:
           julia demos/julia/sndfile_demo.jl
           julia demos/julia/radar_detection.jl
           julia demos/julia/radar_pipeline.jl
+          julia demos/julia/timer_demo.jl
