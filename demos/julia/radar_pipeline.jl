@@ -322,7 +322,7 @@ end
 # CLI 参数解析
 # ============================================================
 function parse_args()
-    args = Dict("device" => "cpu", "seed" => 42, "iterations" => 0, "timer" => false, "info" => false)
+    args = Dict("device" => "cpu", "seed" => 42, "iterations" => 0, "timer" => false, "info" => false, "profiler" => false)
     i = 1
     while i <= length(ARGS)
         if ARGS[i] == "--device" && i < length(ARGS)
@@ -339,6 +339,9 @@ function parse_args()
             i += 1
         elseif ARGS[i] == "--info"
             args["info"] = true
+            i += 1
+        elseif ARGS[i] == "--profiler"
+            args["profiler"] = true
             i += 1
         else
             i += 1
@@ -360,6 +363,11 @@ println("=" ^ 60)
 println("\n[配置]  采样率: $(FS/1e3) kHz  信号长度: $N_SAMPLES 点  时长: $(DURATION)s  设备: $(args["device"])  帧数: $n_frames")
 
 init_cache(args["device"])
+
+if args["profiler"]
+    global prof = Insight.Profiler(Int32(0), Int32(0))
+    Insight.profiler_start(prof)
+end
 
 if args["device"] == "all"
     if !Insight.has_device(Int64(1))
@@ -442,5 +450,9 @@ println("  平均每帧: $(round(avg_ms, digits=2)) ms  FPS: $(round(fps, digits
 
 if Insight.has_device(Int64(1)) && device_flag != "gpu" && device_flag != "all"
     println("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本")
+end
+if args["profiler"]
+    Insight.profiler_stop(prof)
+    Insight.profiler_report(prof)
 end
 println("\n完成！")

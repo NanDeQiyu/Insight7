@@ -1125,8 +1125,8 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     return ins::fft::ifft(x, n.value_or(-1), axis.value_or(-1),
                           norm_mode.value_or("backward"));
   };
-  m["rfft"] = [](sol::this_state L, const ins::Array &x,
-                 sol::optional<int> n, sol::optional<int> axis,
+  m["rfft"] = [](sol::this_state L, const ins::Array &x, sol::optional<int> n,
+                 sol::optional<int> axis,
                  sol::optional<std::string> norm_mode) -> sol::object {
     try {
       auto result = ins::fft::rfft(x, n.value_or(-1), axis.value_or(-1),
@@ -1587,11 +1587,10 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     sig["argrelmin"] = &ins::signal::argrelmin;
 
     // --- Radar ---
-    sig["pulse_compression"] = [](sol::this_state L, const ins::Array &x,
-                                  const ins::Array &tpl,
-                                  sol::optional<bool> normalize,
-                                  sol::optional<std::string> window,
-                                  sol::optional<int64_t> nfft) -> sol::object {
+    sig["pulse_compression"] =
+        [](sol::this_state L, const ins::Array &x, const ins::Array &tpl,
+           sol::optional<bool> normalize, sol::optional<std::string> window,
+           sol::optional<int64_t> nfft) -> sol::object {
       try {
         auto result = ins::signal::pulse_compression(
             x, tpl, normalize.value_or(false), window.value_or(""),
@@ -1599,8 +1598,7 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
         return sol::make_object(L, std::move(result));
       } catch (const std::exception &e) {
         sol::state_view lv(L);
-        lv.script(
-            "error('pulse_compression: " + std::string(e.what()) + "')");
+        lv.script("error('pulse_compression: " + std::string(e.what()) + "')");
         return sol::nil;
       }
     };

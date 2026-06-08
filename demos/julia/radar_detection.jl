@@ -220,7 +220,7 @@ end
 # ============================================================
 function main()
     local device = "cpu"; local seed = Int32(42); local iterations = Int32(0)
-    local timer_flag = false; local info_flag = false
+    local timer_flag = false; local info_flag = false; local profiler_flag = false
     local i = 1
     while i <= length(ARGS)
         if ARGS[i] == "--device" && i < length(ARGS); device = ARGS[i+1]; i += 1
@@ -228,6 +228,7 @@ function main()
         elseif ARGS[i] == "--iterations" && i < length(ARGS); iterations = parse(Int32, ARGS[i+1]); i += 1
         elseif ARGS[i] == "--timer"; timer_flag = true
         elseif ARGS[i] == "--info"; info_flag = true
+        elseif ARGS[i] == "--profiler"; profiler_flag = true
         end
         i += 1
     end
@@ -246,6 +247,11 @@ function main()
     end
 
     init_cache(device == "all" ? "cpu" : device)
+
+    if profiler_flag
+        global prof = Insight.Profiler(Int32(0), Int32(0))
+        Insight.profiler_start(prof)
+    end
 
     if info_flag
         cpu_total, cpu_free = Insight.device_memory_info(Int64(0), Int64(0))
@@ -323,6 +329,12 @@ function main()
     println("  =================================================")
     println("  总帧数: $(n_frames)")
     println("  平均每帧: $(Base.round(avg_ms, digits=2)) ms  FPS: $(Base.round(fps, digits=2))")
+
+    if profiler_flag
+        Insight.profiler_stop(prof)
+        Insight.profiler_report(prof)
+    end
+
     println("\n完成！")
 end
 

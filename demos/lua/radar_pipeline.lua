@@ -290,7 +290,7 @@ end
 -- CLI 参数解析
 -- ============================================================
 local function parse_args()
-  local args = { device = "cpu", seed = 42, iterations = 0, timer = false, info = false }
+  local args = { device = "cpu", seed = 42, iterations = 0, timer = false, info = false, profiler = false }
   local i = 1
   while i <= #arg do
     if arg[i] == "--device" and i < #arg then
@@ -307,6 +307,9 @@ local function parse_args()
       i = i + 1
     elseif arg[i] == "--info" then
       args.info = true
+      i = i + 1
+    elseif arg[i] == "--profiler" then
+      args.profiler = true
       i = i + 1
     else
       i = i + 1
@@ -372,6 +375,13 @@ if args.info then
       )
     )
   end
+end
+
+-- Profiler
+local prof = nil
+if args.profiler then
+  prof = ins.Profiler(0, 0)
+  prof:start()
 end
 
 local times = {}
@@ -515,4 +525,10 @@ end
 if ins.has_device("gpu") and args.device ~= "gpu" and args.device ~= "all" then
   print("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本")
 end
+
+if args.profiler then
+  prof:stop()
+  prof:report()
+end
+
 print("\n完成！")

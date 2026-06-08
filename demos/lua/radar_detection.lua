@@ -295,6 +295,7 @@ local args = {
   iterations = 0,
   timer = false,
   info = false,
+  profiler = false,
 }
 
 local i = 1
@@ -312,6 +313,8 @@ while i <= #arg do
     args.timer = true
   elseif arg[i] == "--info" then
     args.info = true
+  elseif arg[i] == "--profiler" then
+    args.profiler = true
   end
   i = i + 1
 end
@@ -374,6 +377,13 @@ if args.info then
       )
     )
   end
+end
+
+-- Profiler
+local prof = nil
+if args.profiler then
+  prof = ins.Profiler(0, 0)
+  prof:start()
 end
 
 -- 帧循环
@@ -527,4 +537,10 @@ else
   print(string.format("  总帧数: %d", n_frames))
   print(string.format("  平均每帧: %.2f ms  FPS: %.2f", avg_ms, fps))
 end
+
+if args.profiler then
+  prof:stop()
+  prof:report()
+end
+
 print("\n完成！")

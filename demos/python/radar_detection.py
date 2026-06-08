@@ -317,6 +317,7 @@ def parse_args():
     p.add_argument("--output", type=str, default=".", help="其他输出目录")
     p.add_argument("--timer", action="store_true", help="显示详细时序")
     p.add_argument("--info", action="store_true", help="显示设备内存信息")
+    p.add_argument("--profiler", action="store_true", help="显示算子级时序")
     return p.parse_args()
 
 
@@ -369,6 +370,11 @@ if __name__ == "__main__":
             print(
                 f"[Memory] GPU: total={gpu_total//1024//1024}MB used={(gpu_total-gpu_free)//1024//1024}MB"
             )
+
+    prof = None
+    if args.profiler:
+        prof = ins.Profiler("cpu", 0)  # CPU device
+        prof.start()
 
     device_all = args.device == "all"
     times_cpu = []
@@ -493,4 +499,9 @@ if __name__ == "__main__":
 
     if has_gpu and args.device == "cpu":
         print("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本")
+
+    if prof:
+        prof.stop()
+        prof.report()
+
     print("\n完成！")

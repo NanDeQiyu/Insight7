@@ -362,6 +362,7 @@ def parse_args():
     p.add_argument("--output", type=str, default=".", help="其他输出目录")
     p.add_argument("--timer", action="store_true", help="显示详细时序")
     p.add_argument("--info", action="store_true", help="显示设备内存信息")
+    p.add_argument("--profiler", action="store_true", help="显示算子级时序")
     return p.parse_args()
 
 
@@ -391,6 +392,11 @@ if __name__ == "__main__":
     n_scales = len(_CWT_WAVELETS)
     print(f"[特征]  FM解调 + STFT + CWT(morlet2, {n_scales} scales) + 自相关")
     print(f"[检测]  峰值查找(order={PEAK_ORDER}) + 卡尔曼滤波")
+
+    prof = None
+    if args.profiler:
+        prof = ins.Profiler("cpu", 0)  # CPU device
+        prof.start()
 
     # --info: 打印设备内存信息
     has_gpu = ins.has_device("gpu")
@@ -525,4 +531,9 @@ if __name__ == "__main__":
 
     if has_gpu and args.device == "cpu":
         print("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本")
+
+    if prof:
+        prof.stop()
+        prof.report()
+
     print("\n完成！")
