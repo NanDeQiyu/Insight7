@@ -197,14 +197,18 @@ end
 # ============================================================
 # 运行一帧
 # ============================================================
-function run_frame(seed_val)
+function run_frame(seed_val; timer=false, noise=nothing)
     GC.enable(false)
 
     # [1] 合成信号
     t0 = time()
-    Insight.seed(seed_val)
-    noise = Insight.randn(Int64[N_SAMPLES], Insight.float64) * NOISE_STD
-    composite = _COMPOSITE_BASE + noise
+    if noise !== nothing
+        composite = _COMPOSITE_BASE + noise
+    else
+        Insight.seed(seed_val)
+        noise = Insight.randn(Int64[N_SAMPLES], Insight.float64) * NOISE_STD
+        composite = _COMPOSITE_BASE + noise
+    end
     t_gen = time() - t0
 
     # [2] 去趋势 + 带通滤波
@@ -274,20 +278,43 @@ function run_frame(seed_val)
     total_ms = (t_gen + t_filt + t_spline + t_demod + t_stft +
                 t_cwt + t_corr + t_peak + t_kalman) * 1000
 
+    t_gen_ms = t_gen * 1000
+    t_filt_ms = t_filt * 1000
+    t_spline_ms = t_spline * 1000
+    t_demod_ms = t_demod * 1000
+    t_stft_ms = t_stft * 1000
+    t_cwt_ms = t_cwt * 1000
+    t_corr_ms = t_corr * 1000
+    t_peak_ms = t_peak * 1000
+    t_kalman_ms = t_kalman * 1000
+
+    if timer
+        println("    gen: $(Base.round(t_gen_ms, digits=2)) ms")
+        println("    filt: $(Base.round(t_filt_ms, digits=2)) ms")
+        println("    spline: $(Base.round(t_spline_ms, digits=2)) ms")
+        println("    demod: $(Base.round(t_demod_ms, digits=2)) ms")
+        println("    stft: $(Base.round(t_stft_ms, digits=2)) ms")
+        println("    cwt: $(Base.round(t_cwt_ms, digits=2)) ms")
+        println("    corr: $(Base.round(t_corr_ms, digits=2)) ms")
+        println("    peak: $(Base.round(t_peak_ms, digits=2)) ms")
+        println("    kalman: $(Base.round(t_kalman_ms, digits=2)) ms")
+    end
+
     return (
         total_ms = total_ms,
-        t_gen_ms = t_gen * 1000,
-        t_filt_ms = t_filt * 1000,
-        t_spline_ms = t_spline * 1000,
-        t_demod_ms = t_demod * 1000,
-        t_stft_ms = t_stft * 1000,
-        t_cwt_ms = t_cwt * 1000,
-        t_corr_ms = t_corr * 1000,
-        t_peak_ms = t_peak * 1000,
-        t_kalman_ms = t_kalman * 1000,
+        t_gen_ms = t_gen_ms,
+        t_filt_ms = t_filt_ms,
+        t_spline_ms = t_spline_ms,
+        t_demod_ms = t_demod_ms,
+        t_stft_ms = t_stft_ms,
+        t_cwt_ms = t_cwt_ms,
+        t_corr_ms = t_corr_ms,
+        t_peak_ms = t_peak_ms,
+        t_kalman_ms = t_kalman_ms,
         n_peaks_max = length(peaks_max),
         n_peaks_min = length(peaks_min),
         params = params,
+        smoothed = smoothed,
     )
 end
 
@@ -295,7 +322,7 @@ end
 # CLI 参数解析
 # ============================================================
 function parse_args()
-    args = Dict("device" => "cpu", "seed" => 42, "iterations" => 0)
+    args = Dict("device" => "cpu", "seed" => 42, "iterations" => 0, "timer" => false, "info" => false)
     i = 1
     while i <= length(ARGS)
         if ARGS[i] == "--device" && i < length(ARGS)
@@ -307,6 +334,12 @@ function parse_args()
         elseif ARGS[i] == "--iterations" && i < length(ARGS)
             args["iterations"] = parse(Int, ARGS[i+1])
             i += 2
+        elseif ARGS[i] == "--timer"
+            args["timer"] = true
+            i += 1
+        elseif ARGS[i] == "--info"
+            args["info"] = true
+            i += 1
         else
             i += 1
         end
@@ -328,45 +361,86 @@ println("\n[配置]  采样率: $(FS/1e3) kHz  信号长度: $N_SAMPLES 点  时
 
 init_cache(args["device"])
 
+if args["device"] == "all"
+    if !Insight.has_device(Int64(1))
+        println("[WARN] --device all 但无 GPU 可用, 降级为 CPU 模式")
+        args["device"] = "cpu"
+    end
+end
+
+if args["info"]
+    cpu_total, cpu_free = Insight.device_memory_info(Int64(0), Int64(0))
+    println("[Memory] CPU: total=$(cpu_total ÷ (1024*1024))MB used=$((cpu_total - cpu_free) ÷ (1024*1024))MB")
+    if Insight.has_device(Int64(1))
+        gpu_total, gpu_free = Insight.device_memory_info(Int64(1), Int64(0))
+        println("[Memory] GPU: total=$(gpu_total ÷ (1024*1024))MB used=$((gpu_total - gpu_free) ÷ (1024*1024))MB")
+    end
+end
+
 println("\n[波形]  chirp($F0_CHIRP-$F1_CHIRP Hz) + gausspulse($FC_GAUSS Hz) + sawtooth($FREQ_SAW Hz) + noise")
 println("[滤波]  FIR 带通 $BP_LOW-$BP_HIGH Hz, $NUMTAPS 阶")
 println("[特征]  FM解调 + STFT + CWT(morlet2, $(_CWT_WAVELETS |> length) scales) + 自相关")
 println("[检测]  峰值查找(order=$PEAK_ORDER) + 卡尔曼滤波")
 
+device_flag = args["device"]
+timer_flag = args["timer"]
 times = Float64[]
 for frame in 0:(n_frames-1)
-    r = run_frame(args["seed"] + frame)
-    push!(times, r.total_ms)
+    if device_flag == "all"
+        # Generate noise on CPU once so CPU and GPU use identical input
+        Insight.seed(args["seed"] + frame)
+        cpu_noise = Insight.randn(Int64[N_SAMPLES], Insight.float64) * NOISE_STD
 
-    if n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 || frame == n_frames - 1
-        params_str = "无"
-        if length(r.params) > 0
-            params_str = "峰值@$(r.params[1][1]) f=$(round(r.params[1][2], digits=1))Hz"
+        cpu_r = run_frame(args["seed"] + frame; timer=timer_flag, noise=cpu_noise)
+        gpu_noise = Insight.to(cpu_noise, Int64(1))
+        gpu_r = run_frame(args["seed"] + frame; timer=timer_flag, noise=gpu_noise)
+        push!(times, cpu_r.total_ms)
+        cpu_scpu = Insight.to(cpu_r.smoothed, Int64(0))
+        gpu_scpu = Insight.to(gpu_r.smoothed, Int64(0))
+        diff_arr = Insight.abs(cpu_scpu - gpu_scpu)
+        max_diff = Insight.item(Insight.max(diff_arr), 0)
+        println("  帧 $(lpad(frame, 4))/$n_frames | CPU: $(lpad(round(cpu_r.total_ms, digits=2), 8)) ms | GPU: $(lpad(round(gpu_r.total_ms, digits=2), 8)) ms | max_diff=$(max_diff)")
+    else
+        r = run_frame(args["seed"] + frame; timer=timer_flag)
+        push!(times, r.total_ms)
+
+        if n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 || frame == n_frames - 1
+            params_str = "无"
+            if length(r.params) > 0
+                params_str = "峰值@$(r.params[1][1]) f=$(round(r.params[1][2], digits=1))Hz"
+            end
+
+            if timer_flag
+                println("  帧 $(lpad(frame, 4))/$n_frames | $(lpad(round(r.total_ms, digits=2), 8)) ms | " *
+                        "gen $(lpad(round(r.t_gen_ms, digits=1), 5)) " *
+                        "filt $(lpad(round(r.t_filt_ms, digits=1), 5)) " *
+                        "spl $(lpad(round(r.t_spline_ms, digits=1), 5)) " *
+                        "demod $(lpad(round(r.t_demod_ms, digits=1), 5)) " *
+                        "stft $(lpad(round(r.t_stft_ms, digits=1), 5)) " *
+                        "cwt $(lpad(round(r.t_cwt_ms, digits=1), 5)) " *
+                        "corr $(lpad(round(r.t_corr_ms, digits=1), 5)) " *
+                        "peak $(lpad(round(r.t_peak_ms, digits=1), 5)) " *
+                        "kalman $(lpad(round(r.t_kalman_ms, digits=1), 5)) | " *
+                        "极大值 $(r.n_peaks_max) 极小值 $(r.n_peaks_min) | $params_str")
+            else
+                println("  帧 $(lpad(frame, 4))/$n_frames | $(lpad(round(r.total_ms, digits=2), 8)) ms | " *
+                        "极大值 $(r.n_peaks_max) 极小值 $(r.n_peaks_min) | $params_str")
+            end
         end
-        println("  帧 $(lpad(frame, 4))/$n_frames | $(lpad(round(r.total_ms, digits=2), 8)) ms | " *
-                "gen $(lpad(round(r.t_gen_ms, digits=1), 5)) " *
-                "filt $(lpad(round(r.t_filt_ms, digits=1), 5)) " *
-                "spl $(lpad(round(r.t_spline_ms, digits=1), 5)) " *
-                "demod $(lpad(round(r.t_demod_ms, digits=1), 5)) " *
-                "stft $(lpad(round(r.t_stft_ms, digits=1), 5)) " *
-                "cwt $(lpad(round(r.t_cwt_ms, digits=1), 5)) " *
-                "corr $(lpad(round(r.t_corr_ms, digits=1), 5)) " *
-                "peak $(lpad(round(r.t_peak_ms, digits=1), 5)) " *
-                "kalman $(lpad(round(r.t_kalman_ms, digits=1), 5)) | " *
-                "极大值 $(r.n_peaks_max) 极小值 $(r.n_peaks_min) | $params_str")
     end
 end
 
 avg_ms = sum(times) / length(times)
 fps = 1000.0 / avg_ms
 
+summary_device = device_flag == "all" ? "CPU+GPU" : (device_flag == "gpu" ? "GPU" : "CPU")
 println("\n  " * "=" ^ 50)
-println("  性能总结 ($(args["device"] == "gpu" ? "GPU" : "CPU"))")
+println("  性能总结 ($summary_device)")
 println("  " * "=" ^ 50)
 println("  总帧数: $n_frames")
 println("  平均每帧: $(round(avg_ms, digits=2)) ms  FPS: $(round(fps, digits=2))")
 
-if Insight.has_device(Int64(1)) && args["device"] != "gpu"
+if Insight.has_device(Int64(1)) && device_flag != "gpu" && device_flag != "all"
     println("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本")
 end
 println("\n完成！")

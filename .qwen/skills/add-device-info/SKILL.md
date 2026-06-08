@@ -143,6 +143,136 @@ function device_name(device_id::Int=0)::String
 end
 ```
 
+## Step 4a: device_memory_info — Extended API (v2, PR #46)
+
+The original `device_memory()` convenience wrapper returns a `DeviceMemoryInfo` struct.
+A lower-level `device_memory_info()` function was added to support C API dispatch:
+
+### C API (`include/insight/c_api/memory.h`)
+```cpp
+C_Status insight_device_memory_info(int32_t device_type, int32_t device_id,
+                                    size_t *total, size_t *free);
+```
+
+### C++ API (`include/insight/core/place.h`)
+```cpp
+static void device_memory_info(DeviceKind kind, int device_id,
+                               size_t *total, size_t *free);
+```
+
+### CPU Backend Implementation (⚠️ Common Pitfall: VmRSS Bug)
+
+**Use MemTotal + MemAvailable, NOT VmRSS!**
+
+The original buggy implementation returned VmRSS (process RSS, ~200MB) as
+`total_memory` and MemAvailable (~800GB) as `free_memory`. This caused
+`used = total - free` to underflow since `total < free`, producing negative
+used memory in all language bindings.
+
+✅ **Correct Linux implementation** (reads `/proc/meminfo`):
+```cpp
+std::ifstream proc_mem("/proc/meminfo");
+std::string line;
+size_t mem_total = 0, mem_free = 0;
+while (std::getline(proc_mem, line)) {
+  if (line.find("MemTotal:") == 0) {
+    std::istringstream iss(line.substr(9));
+    iss >> mem_total;
+    mem_total *= 1024;  // kB → bytes
+  } else if (line.find("MemAvailable:") == 0) {
+    std::istringstream iss(line.substr(13));
+    iss >> mem_free;
+    mem_free *= 1024;  // kB → bytes
+  }
+  if (mem_total > 0 && mem_free > 0) break;
+}
+```
+
+✅ **Correct Windows implementation** (uses `GlobalMemoryStatusEx` only, no `GetProcessMemoryInfo`):
+```cpp
+MEMORYSTATUSEX mem_stat;
+mem_stat.dwLength = sizeof(mem_stat);
+GlobalMemoryStatusEx(&mem_stat);
+*total_memory = static_cast<size_t>(mem_stat.ullTotalPhys);
+*free_memory = static_cast<size_t>(mem_stat.ullAvailPhys);
+```
+
+**Why VmRSS was wrong**: GPU backends (CUDA) return device-global total/free
+(e.g. 80GB total / 40GB free). For consistency, CPU must also return
+system-global total/available RAM, not per-process RSS. The `used = total - free`
+computation in the demo layer is only valid when total ≥ free.
+
+### Language Binding Signatures
+
+**CRITICAL: Parameter types differ per language!**
+
+| Language | Call Signature | Notes |
+|----------|---------------|-------|
+| C++ | `device_memory_info(DeviceKind::CPU, 0, &total, &free)` | Uses enum + pointer |
+| Python | `ins.device_memory_info(0, 0)` → returns `(total, free)` | **0=CPU, 1=GPU** — int, not string! |
+| Lua | `ins.device_memory_info(0, 0)` → returns `total, free` | **0=CPU, 1=GPU** — int, not string! |
+| Julia | `Insight.device_memory_info(Int64(0), Int64(0))` → returns `(total, free)` | **Int64 not Int32!** |
+
+```python
+# ✅ CORRECT Python usage
+cpu_total, cpu_free = ins.device_memory_info(0, 0)   # CPU
+gpu_total, gpu_free = ins.device_memory_info(1, 0)   # GPU
+```
+
+```lua
+-- ✅ CORRECT Lua usage
+local cpu_total, cpu_free = ins.device_memory_info(0, 0)   -- CPU
+local gpu_total, gpu_free = ins.device_memory_info(1, 0)   -- GPU
+```
+
+```julia
+# ❌ WRONG — Int32 arguments
+cpu_total, cpu_free = Insight.device_memory_info(Int32(0), Int32(0))  # MethodError!
+
+# ✅ CORRECT — Int64 arguments
+cpu_total, cpu_free = Insight.device_memory_info(Int64(0), Int64(0))
+gpu_total, gpu_free = Insight.device_memory_info(Int64(1), Int64(0))
+```
+
+### Python binding implementation
+```cpp
+m.def("device_memory_info",
+    [](int device_kind, int device_id) {
+      size_t total = 0, free = 0;
+      DeviceKind dk = (device_kind == 1) ? DeviceKind::GPU : DeviceKind::CPU;
+      device_memory_info(dk, device_id, &total, &free);
+      return py::make_tuple(total, free);
+    },
+    py::arg("device_kind") = 0, py::arg("device_id") = 0);
+```
+
+### Lua binding implementation
+```cpp
+m["device_memory_info"] = [](int device_kind, int device_id) {
+  size_t total = 0, free = 0;
+  DeviceKind dk = (device_kind == 1) ? DeviceKind::GPU : DeviceKind::CPU;
+  device_memory_info(dk, device_id, &total, &free);
+  return std::make_tuple(total, free);
+};
+```
+
+### Julia C API wrapper
+```cpp
+extern "C" void insight_jl_device_memory_info(
+    int64_t device_kind, int64_t device_id,
+    int64_t *total, int64_t *free) {
+  size_t t = 0, f = 0;
+  DeviceKind dk = (device_kind == 1) ? DeviceKind::GPU : DeviceKind::CPU;
+  device_memory_info(dk, (int)device_id, &t, &f);
+  *total = (int64_t)t;
+  *free = (int64_t)f;
+}
+```
+
+Note: Julia C API uses `int64_t` (matching `Int64`), NOT `int32_t` (matching `Int32`).
+This is because the Insight Julia binding uses `Int64` for all `device_memory_info`
+parameters due to how `ccall` types are defined in `Insight.jl`.
+
 ## Step 5: Test
 
 ```python

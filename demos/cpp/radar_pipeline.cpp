@@ -12,6 +12,7 @@
 #include "insight/ops/signal.h"
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -67,19 +68,20 @@ static Place _place;
 // CLI 参数
 // ============================================================
 struct Args {
-  bool use_gpu = false;
+  std::string device = "default";
   int seed = 42;
   int iterations = 0;
   std::string plot;
   std::string output = ".";
+  bool timer = false;
+  bool info = false;
 };
 
 static Args parse_args(int argc, char *argv[]) {
   Args args;
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--device") == 0 && i + 1 < argc) {
-      args.use_gpu = (std::strcmp(argv[i + 1], "gpu") == 0);
-      ++i;
+      args.device = argv[++i];
     } else if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
       args.seed = std::atoi(argv[++i]);
     } else if (std::strcmp(argv[i], "--iterations") == 0 && i + 1 < argc) {
@@ -88,6 +90,10 @@ static Args parse_args(int argc, char *argv[]) {
       args.plot = argv[++i];
     } else if (std::strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
       args.output = argv[++i];
+    } else if (std::strcmp(argv[i], "--timer") == 0) {
+      args.timer = true;
+    } else if (std::strcmp(argv[i], "--info") == 0) {
+      args.info = true;
     }
   }
   return args;
@@ -277,14 +283,22 @@ struct FrameResult {
   std::vector<int> peaks_max, peaks_min;
 };
 
-static FrameResult run_frame(int seed_val, Place place) {
+static FrameResult run_frame(int seed_val, Place place,
+                             Array *external_noise = nullptr) {
   FrameResult r;
   auto t_start = std::chrono::high_resolution_clock::now();
 
   // [1] 合成信号
   auto t0 = std::chrono::high_resolution_clock::now();
-  seed(seed_val);
-  Array noise = randn({N_SAMPLES}, DType::F64, place) * NOISE_STD;
+  Array noise;
+  if (external_noise) {
+    noise = *external_noise;
+    if (noise.place() != place)
+      noise = noise.to(place);
+  } else {
+    seed(seed_val);
+    noise = randn({N_SAMPLES}, DType::F64, place) * NOISE_STD;
+  }
   Array composite = _COMPOSITE_BASE + noise;
   auto t1 = std::chrono::high_resolution_clock::now();
   r.t_gen_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -375,13 +389,20 @@ int main(int argc, char *argv[]) {
   init();
   Args args = parse_args(argc, argv);
 
+  // Device resolution
+  std::string eff_device = args.device;
+  if (eff_device == "default") {
+    eff_device = has_device(DeviceKind::GPU) ? "gpu" : "cpu";
+  }
+  bool use_gpu = (eff_device == "gpu") && has_device(DeviceKind::GPU);
+  bool do_all = (eff_device == "all");
   Place place = CPUPlace();
-  bool use_gpu = args.use_gpu && has_device(DeviceKind::GPU);
   if (use_gpu) {
     load_backend("cuda");
     place = GPUPlace(0);
   }
-  set_device(place);
+  if (!do_all)
+    set_device(place);
 
   int n_frames = args.iterations > 0 ? args.iterations : 1;
 
@@ -390,19 +411,131 @@ int main(int argc, char *argv[]) {
   printf("============================================================\n");
   printf("\n[配置]  采样率: %.1f kHz  信号长度: %lld 点  时长: %.1fs  "
          "设备: %s  帧数: %d\n",
-         FS / 1e3, (long long)N_SAMPLES, DURATION, use_gpu ? "GPU" : "CPU",
-         n_frames);
+         FS / 1e3, (long long)N_SAMPLES, DURATION,
+         do_all ? "all" : (use_gpu ? "GPU" : "CPU"), n_frames);
 
-  init_cache(place);
+  if (do_all && !has_device(DeviceKind::GPU)) {
+    printf("[警告] GPU 不可用，--device all 退化为仅 CPU\n");
+    do_all = false;
+    eff_device = "cpu";
+    place = CPUPlace();
+  }
 
-  printf("\n[波形]  chirp(%.0f-%.0fHz) + gausspulse(%.0fHz) "
-         "+ sawtooth(%.0fHz) + noise\n",
-         F0_CHIRP, F1_CHIRP, FC_GAUSS, FREQ_SAW);
-  printf("[滤波]  FIR 带通 %.0f-%.0fHz, %lld 阶\n", BP_LOW, BP_HIGH,
-         (long long)NUMTAPS);
-  printf("[特征]  FM解调 + STFT + CWT(morlet2, %d scales) + 自相关\n",
-         (int)_CWT_WAVELETS.size());
-  printf("[检测]  峰值查找(order=%d) + 卡尔曼滤波\n", PEAK_ORDER);
+  // 初始化缓存 (单设备模式)
+  if (!do_all) {
+    init_cache(place);
+
+    printf("\n[波形]  chirp(%.0f-%.0fHz) + gausspulse(%.0fHz) "
+           "+ sawtooth(%.0fHz) + noise\n",
+           F0_CHIRP, F1_CHIRP, FC_GAUSS, FREQ_SAW);
+    printf("[滤波]  FIR 带通 %.0f-%.0fHz, %lld 阶\n", BP_LOW, BP_HIGH,
+           (long long)NUMTAPS);
+    printf("[特征]  FM解调 + STFT + CWT(morlet2, %d scales) + 自相关\n",
+           (int)_CWT_WAVELETS.size());
+    printf("[检测]  峰值查找(order=%d) + 卡尔曼滤波\n", PEAK_ORDER);
+  }
+
+  // --info 模式
+  if (args.info) {
+    auto cpu_mem = device_memory_info(DeviceKind::CPU, 0);
+    printf("[Memory] CPU: total=%zuMB used=%zuMB\n",
+           cpu_mem.total / (1024 * 1024),
+           (cpu_mem.total - cpu_mem.free) / (1024 * 1024));
+    if (has_device(DeviceKind::GPU)) {
+      auto gpu_mem = device_memory_info(DeviceKind::GPU, 0);
+      printf("[Memory] GPU: total=%zuMB used=%zuMB\n",
+             gpu_mem.total / (1024 * 1024),
+             (gpu_mem.total - gpu_mem.free) / (1024 * 1024));
+    }
+  }
+
+  // ========================================================
+  // --device all: 双设备比较
+  // ========================================================
+  if (do_all) {
+    printf("\n[双设备比较] CPU vs GPU\n\n");
+
+    Place cpu_place = CPUPlace();
+    Place gpu_place = GPUPlace(0);
+
+    std::vector<double> cpu_times, gpu_times;
+
+    for (int frame = 0; frame < n_frames; ++frame) {
+      // Generate noise once on CPU
+      init_cache(cpu_place);
+      seed(args.seed + frame);
+      Array cpu_noise = randn({N_SAMPLES}, DType::F64, cpu_place) * NOISE_STD;
+
+      // CPU
+      FrameResult cpu_result =
+          run_frame(args.seed + frame, cpu_place, &cpu_noise);
+      cpu_times.push_back(cpu_result.total_ms);
+
+      // GPU with same noise
+      Array gpu_noise = cpu_noise.to(gpu_place);
+      init_cache(gpu_place);
+      FrameResult gpu_result =
+          run_frame(args.seed + frame, gpu_place, &gpu_noise);
+      gpu_times.push_back(gpu_result.total_ms);
+
+      // 比较 smoothed
+      Array gpu_smoothed_cpu = gpu_result.smoothed;
+      if (gpu_smoothed_cpu.place().kind() != DeviceKind::CPU)
+        gpu_smoothed_cpu = gpu_result.smoothed.to(CPUPlace());
+      Array diff = abs(cpu_result.smoothed - gpu_smoothed_cpu);
+      double max_diff_val = max(diff).item<double>();
+
+      bool print_frame = (n_frames == 1 || frame == 0 ||
+                          (frame + 1) % 10 == 0 || frame == n_frames - 1);
+
+      if (print_frame) {
+        if (args.timer) {
+          printf("  帧 %4d/%d | CPU: %8.2f ms (gen %5.1f filt %5.1f spl %5.1f "
+                 "demod %5.1f stft %5.1f cwt %5.1f corr %5.1f peak %5.1f "
+                 "kalman %5.1f) | GPU: %8.2f ms (gen %5.1f filt %5.1f "
+                 "spl %5.1f demod %5.1f stft %5.1f cwt %5.1f corr %5.1f "
+                 "peak %5.1f kalman %5.1f) | max_diff=%.2e\n",
+                 frame, n_frames, cpu_result.total_ms, cpu_result.t_gen_ms,
+                 cpu_result.t_filt_ms, cpu_result.t_spline_ms,
+                 cpu_result.t_demod_ms, cpu_result.t_stft_ms,
+                 cpu_result.t_cwt_ms, cpu_result.t_corr_ms,
+                 cpu_result.t_peak_ms, cpu_result.t_kalman_ms,
+                 gpu_result.total_ms, gpu_result.t_gen_ms, gpu_result.t_filt_ms,
+                 gpu_result.t_spline_ms, gpu_result.t_demod_ms,
+                 gpu_result.t_stft_ms, gpu_result.t_cwt_ms,
+                 gpu_result.t_corr_ms, gpu_result.t_peak_ms,
+                 gpu_result.t_kalman_ms, max_diff_val);
+        } else {
+          printf("  帧 %4d/%d | CPU: %8.2f ms | GPU: %8.2f ms | "
+                 "max_diff=%.2e\n",
+                 frame, n_frames, cpu_result.total_ms, gpu_result.total_ms,
+                 max_diff_val);
+        }
+      }
+    }
+
+    double cpu_sum = 0, gpu_sum = 0;
+    for (auto t : cpu_times)
+      cpu_sum += t;
+    for (auto t : gpu_times)
+      gpu_sum += t;
+    double cpu_avg = cpu_sum / cpu_times.size();
+    double gpu_avg = gpu_sum / gpu_times.size();
+
+    printf("\n  ==================================================\n");
+    printf("  性能总结 (CPU vs GPU)\n");
+    printf("  ==================================================\n");
+    printf("  总帧数: %d\n", n_frames);
+    printf("  CPU 平均每帧: %.2f ms  FPS: %.2f\n", cpu_avg, 1000.0 / cpu_avg);
+    printf("  GPU 平均每帧: %.2f ms  FPS: %.2f\n", gpu_avg, 1000.0 / gpu_avg);
+    printf("  加速比: %.2fx\n", cpu_avg / gpu_avg);
+    printf("\n完成！\n");
+    return 0;
+  }
+
+  // ========================================================
+  // 单设备模式 (原有逻辑)
+  // ========================================================
 
   std::vector<double> times;
   for (int frame = 0; frame < n_frames; ++frame) {
@@ -419,14 +552,20 @@ int main(int argc, char *argv[]) {
                  r.params[0].second);
         params_str = buf;
       }
-      printf("  帧 %4d/%d | %8.2f ms | "
-             "gen %5.1f filt %5.1f spl %5.1f demod %5.1f "
-             "stft %5.1f cwt %5.1f corr %5.1f peak %5.1f kalman %5.1f | "
-             "极大值 %d 极小值 %d | %s\n",
-             frame, n_frames, r.total_ms, r.t_gen_ms, r.t_filt_ms,
-             r.t_spline_ms, r.t_demod_ms, r.t_stft_ms, r.t_cwt_ms, r.t_corr_ms,
-             r.t_peak_ms, r.t_kalman_ms, r.n_peaks_max, r.n_peaks_min,
-             params_str.c_str());
+      if (args.timer) {
+        printf("  帧 %4d/%d | %8.2f ms | "
+               "gen %5.1f filt %5.1f spl %5.1f demod %5.1f "
+               "stft %5.1f cwt %5.1f corr %5.1f peak %5.1f kalman %5.1f | "
+               "极大值 %d 极小值 %d | %s\n",
+               frame, n_frames, r.total_ms, r.t_gen_ms, r.t_filt_ms,
+               r.t_spline_ms, r.t_demod_ms, r.t_stft_ms, r.t_cwt_ms,
+               r.t_corr_ms, r.t_peak_ms, r.t_kalman_ms, r.n_peaks_max,
+               r.n_peaks_min, params_str.c_str());
+      } else {
+        printf("  帧 %4d/%d | %8.2f ms | 极大值 %d 极小值 %d | %s\n", frame,
+               n_frames, r.total_ms, r.n_peaks_max, r.n_peaks_min,
+               params_str.c_str());
+      }
     }
   }
 

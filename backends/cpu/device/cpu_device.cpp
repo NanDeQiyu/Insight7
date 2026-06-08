@@ -141,8 +141,7 @@ static C_Status cpu_device_memory_set(C_Device device, void *ptr,
 static C_Status cpu_device_memory_stats(C_Device device, size_t *total_memory,
                                         size_t *free_memory) {
 #ifdef _WIN32
-  // Windows: use GlobalMemoryStatusEx for system-wide,
-  // GetProcessMemoryInfo for process-level
+  // Windows: use GlobalMemoryStatusEx for system-wide stats
   MEMORYSTATUSEX mem_stat;
   mem_stat.dwLength = sizeof(mem_stat);
   if (!GlobalMemoryStatusEx(&mem_stat)) {
@@ -152,52 +151,34 @@ static C_Status cpu_device_memory_stats(C_Device device, size_t *total_memory,
       *free_memory = 0;
     return C_FAILED;
   }
-  // Process-level memory
-  PROCESS_MEMORY_COUNTERS pmc;
-  if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
-    if (total_memory)
-      *total_memory = static_cast<size_t>(pmc.WorkingSetSize);
-    if (free_memory)
-      *free_memory = mem_stat.ullAvailPhys > pmc.WorkingSetSize
-                         ? mem_stat.ullAvailPhys - pmc.WorkingSetSize
-                         : 0;
-  } else {
-    if (total_memory)
-      *total_memory = 0;
-    if (free_memory)
-      *free_memory = static_cast<size_t>(mem_stat.ullAvailPhys);
-  }
+  if (total_memory)
+    *total_memory = static_cast<size_t>(mem_stat.ullTotalPhys);
+  if (free_memory)
+    *free_memory = static_cast<size_t>(mem_stat.ullAvailPhys);
 #else
-  // Linux: read /proc/self/status for VmRSS and /proc/meminfo for free
-  std::ifstream proc_self("/proc/self/status");
-  std::string line;
-  size_t vm_rss = 0;
-  if (proc_self.is_open()) {
-    while (std::getline(proc_self, line)) {
-      if (line.find("VmRSS:") == 0) {
-        std::istringstream iss(line.substr(6));
-        iss >> vm_rss;  // in kB
-        vm_rss *= 1024; // convert to bytes
-        break;
-      }
-    }
-  }
-
-  size_t mem_free = 0;
+  // Linux: read /proc/meminfo for MemTotal and MemAvailable
   std::ifstream proc_mem("/proc/meminfo");
+  std::string line;
+  size_t mem_total = 0;
+  size_t mem_free = 0;
   if (proc_mem.is_open()) {
     while (std::getline(proc_mem, line)) {
-      if (line.find("MemAvailable:") == 0) {
+      if (line.find("MemTotal:") == 0) {
+        std::istringstream iss(line.substr(9));
+        iss >> mem_total;  // in kB
+        mem_total *= 1024; // convert to bytes
+      } else if (line.find("MemAvailable:") == 0) {
         std::istringstream iss(line.substr(13));
         iss >> mem_free;  // in kB
         mem_free *= 1024; // convert to bytes
-        break;
       }
+      if (mem_total > 0 && mem_free > 0)
+        break;
     }
   }
 
   if (total_memory)
-    *total_memory = vm_rss;
+    *total_memory = mem_total;
   if (free_memory)
     *free_memory = mem_free;
 #endif

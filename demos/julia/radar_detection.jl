@@ -87,9 +87,15 @@ function get_target_params(frame_idx, total_frames)
     return delays, dopplers
 end
 
-function simulate_echoes(delays, dopplers)
-    noise_r = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
-    noise_i = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+function simulate_echoes(delays, dopplers; noise_r=nothing, noise_i=nothing)
+    local nr, ni
+    if noise_r !== nothing && noise_i !== nothing
+        nr = noise_r
+        ni = noise_i
+    else
+        nr = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+        ni = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+    end
     pulses = Insight.zeros(Int64[N_PULSES, N], Insight.complex128)
 
     for k in 1:length(delays)
@@ -106,7 +112,7 @@ function simulate_echoes(delays, dopplers)
         rot_2d = Insight.reshape(rot, Int64[N_PULSES, 1])
         pulses = pulses + delayed_2d * rot_2d
     end
-    pulses = pulses + Insight.to_complex(noise_r, noise_i)
+    pulses = pulses + Insight.to_complex(nr, ni)
     return pulses
 end
 
@@ -161,7 +167,7 @@ function extract_targets(energy, det)
     return targets, length(candidates)
 end
 
-function run_frame(delays, dopplers, _device, seed)
+function run_frame(delays, dopplers, _device, seed; noise_r=nothing, noise_i=nothing, timer=false)
     if _device == "gpu" && Insight.has_device(Int64(1))
         Insight.load_backend("cuda")
         Insight.set_device(Insight.GPUPlace(0))
@@ -171,7 +177,7 @@ function run_frame(delays, dopplers, _device, seed)
     Insight.seed(seed)
 
     t0 = time()
-    pulses = simulate_echoes(delays, dopplers)
+    pulses = simulate_echoes(delays, dopplers; noise_r=noise_r, noise_i=noise_i)
     t1 = time()
 
     pc = Insight.signal.pulse_compression(pulses, _TEMPLATE)
@@ -197,7 +203,16 @@ function run_frame(delays, dopplers, _device, seed)
         dist = rng_jl[r]
         if 0 <= dist <= MAX_UNAMBIG_RANGE; push!(valid, (d, r)); end
     end
-    return valid, raw_count, (t5 - t0) * 1000
+
+    if timer
+        println("    simulate: $(Base.round((t1 - t0) * 1000, digits=2)) ms")
+        println("    pulse_compress: $(Base.round((t2 - t1) * 1000, digits=2)) ms")
+        println("    doppler: $(Base.round((t3 - t2) * 1000, digits=2)) ms")
+        println("    cfar: $(Base.round((t4 - t3) * 1000, digits=2)) ms")
+        println("    extract: $(Base.round((t5 - t4) * 1000, digits=2)) ms")
+    end
+
+    return valid, raw_count, (t5 - t0) * 1000, energy, pulses
 end
 
 # ============================================================
@@ -205,11 +220,14 @@ end
 # ============================================================
 function main()
     local device = "cpu"; local seed = Int32(42); local iterations = Int32(0)
+    local timer_flag = false; local info_flag = false
     local i = 1
     while i <= length(ARGS)
         if ARGS[i] == "--device" && i < length(ARGS); device = ARGS[i+1]; i += 1
         elseif ARGS[i] == "--seed" && i < length(ARGS); seed = parse(Int32, ARGS[i+1]); i += 1
         elseif ARGS[i] == "--iterations" && i < length(ARGS); iterations = parse(Int32, ARGS[i+1]); i += 1
+        elseif ARGS[i] == "--timer"; timer_flag = true
+        elseif ARGS[i] == "--info"; info_flag = true
         end
         i += 1
     end
@@ -220,7 +238,23 @@ function main()
     println("=" ^ 60)
     println("\n[配置] 采样率: $(FS/1e6) MHz  脉冲: $(N_PULSES)  设备: $(device)  种子: $(seed)  帧数: $(n_frames)")
 
-    init_cache(device)
+    if device == "all"
+        if !Insight.has_device(Int64(1))
+            println("[WARN] --device all 但无 GPU 可用, 降级为 CPU 模式")
+            device = "cpu"
+        end
+    end
+
+    init_cache(device == "all" ? "cpu" : device)
+
+    if info_flag
+        cpu_total, cpu_free = Insight.device_memory_info(Int64(0), Int64(0))
+        println("[Memory] CPU: total=$(cpu_total ÷ (1024*1024))MB used=$((cpu_total - cpu_free) ÷ (1024*1024))MB")
+        if Insight.has_device(Int64(1))
+            gpu_total, gpu_free = Insight.device_memory_info(Int64(1), Int64(0))
+            println("[Memory] GPU: total=$(gpu_total ÷ (1024*1024))MB used=$((gpu_total - gpu_free) ÷ (1024*1024))MB")
+        end
+    end
 
     println("\n[波形分析] 计算模糊函数...")
     local ambg = Insight.signal.ambgfun(_TEMPLATE, FS, 1.0 / T_PRF)
@@ -238,18 +272,44 @@ function main()
     GC.enable(false)
     for frame in 0:n_frames-1
         local delays, dopplers = get_target_params(frame, n_frames)
-        local targets, raw_count, total_ms = run_frame(delays, dopplers, device, seed)
-        push!(times, total_ms)
 
-        if n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 || frame == n_frames - 1
-            local targets_str = ""
-            for (k, (d, r)) in enumerate(targets)
-                if k > 1; targets_str *= "; "; end
-                targets_str *= "距离 $(Base.round(Int, rng_jl[r]))m 多普勒 $(Base.round(Int, dop_jl[d]))Hz"
+        if device == "all"
+            # CPU 缓存 + 噪声（一次性生成，双后端共用）
+            init_cache("cpu")
+            Insight.seed(seed)
+            cpu_noise_r = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+            cpu_noise_i = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+
+            local cpu_targets, cpu_raw_count, cpu_ms, cpu_energy, cpu_pulses = run_frame(delays, dopplers, "cpu", seed; noise_r=cpu_noise_r, noise_i=cpu_noise_i, timer=timer_flag)
+
+            # GPU run: 复用 CPU 缓存，不重新生成
+            local gpu_noise_r = Insight.to(cpu_noise_r, Int64(1))
+            local gpu_noise_i = Insight.to(cpu_noise_i, Int64(1))
+            global _S_TX = Insight.to(_S_TX, Int64(1))
+            global _TEMPLATE = Insight.to(_TEMPLATE, Int64(1))
+            global _HAMMING = Insight.to(_HAMMING, Int64(1))
+            global _SLOW_TIMES = Insight.to(_SLOW_TIMES, Int64(1))
+            local gpu_targets, gpu_raw_count, gpu_ms, gpu_energy, gpu_pulses = run_frame(delays, dopplers, "gpu", seed; noise_r=gpu_noise_r, noise_i=gpu_noise_i, timer=timer_flag)
+            push!(times, cpu_ms)
+            local cpu_p_cpu = Insight.to(cpu_pulses, Int64(0))
+            local gpu_p_cpu = Insight.to(gpu_pulses, Int64(0))
+            local diff_arr = Insight.abs(cpu_p_cpu - gpu_p_cpu)
+            local max_diff = Insight.item(Insight.max(diff_arr), 0)
+            println("  帧 $(Base.lpad(frame, 4))/$(n_frames) | CPU: $(Base.lpad(Base.round(cpu_ms, digits=2), 8)) ms | GPU: $(Base.lpad(Base.round(gpu_ms, digits=2), 8)) ms | max_diff=$(max_diff)")
+        else
+            local targets, raw_count, total_ms, _, _ = run_frame(delays, dopplers, device, seed; timer=timer_flag)
+            push!(times, total_ms)
+
+            if n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 || frame == n_frames - 1
+                local targets_str = ""
+                for (k, (d, r)) in enumerate(targets)
+                    if k > 1; targets_str *= "; "; end
+                    targets_str *= "距离 $(Base.round(Int, rng_jl[r]))m 多普勒 $(Base.round(Int, dop_jl[d]))Hz"
+                end
+                if targets_str == ""; targets_str = "无"; end
+                println("  帧 $(Base.lpad(frame, 4))/$(n_frames) | $(Base.lpad(Base.round(total_ms, digits=2), 8)) ms | " *
+                        "检测 $(Base.lpad(raw_count, 4)) → $(length(targets)) 目标 | $(targets_str)")
             end
-            if targets_str == ""; targets_str = "无"; end
-            println("  帧 $(Base.lpad(frame, 4))/$(n_frames) | $(Base.lpad(Base.round(total_ms, digits=2), 8)) ms | " *
-                    "检测 $(Base.lpad(raw_count, 4)) → $(length(targets)) 目标 | $(targets_str)")
         end
     end
     GC.enable(true)
@@ -257,8 +317,9 @@ function main()
 
     local avg_ms = sum(times) / length(times)
     local fps = 1000.0 / avg_ms
+    local summary_device = device == "all" ? "CPU+GPU" : uppercase(device)
     println("\n  =================================================")
-    println("  性能总结 ($(uppercase(device)))")
+    println("  性能总结 ($summary_device)")
     println("  =================================================")
     println("  总帧数: $(n_frames)")
     println("  平均每帧: $(Base.round(avg_ms, digits=2)) ms  FPS: $(Base.round(fps, digits=2))")
