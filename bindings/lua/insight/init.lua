@@ -525,4 +525,98 @@ M._place_docs = "CPUPlace() for CPU, GPUPlace(id) for GPU"
 --   local b = ins.cast(a, ins.int32)
 M._dtype_docs = "See DType documentation above"
 
+-- ========================================================================
+-- Timer class (Penlight class)
+-- ========================================================================
+
+-- Try to load Penlight class system
+local has_class, pl_class = pcall(require, "pl.class")
+
+if has_class then
+  -- Penlight-based Timer class
+  local Timer = pl_class:new()
+
+  function Timer:_init(device_type, device_id)
+    if device_type == nil or device_id == nil then
+      error("Timer: device_type and device_id are required. " .. "Usage: Timer(0, 0) for CPU, Timer(1, 0) for GPU:0")
+    end
+    if type(device_type) ~= "number" or type(device_id) ~= "number" then
+      error("Timer: device_type and device_id must be numbers")
+    end
+    self._handle = M.timer_create(device_type, device_id)
+    if self._handle == nil then
+      error("Timer: failed to create timer (device backend not available)")
+    end
+    self._started = false
+  end
+
+  function Timer:start()
+    M.timer_start(self._handle)
+    self._started = true
+  end
+
+  function Timer:stop()
+    M.timer_stop(self._handle)
+    self._started = false
+  end
+
+  function Timer:elapsed()
+    return M.timer_elapsed_ms(self._handle)
+  end
+
+  function Timer:reset()
+    -- Destroy old handle and create new one
+    -- (The timer handle stays valid, just reuse it)
+    -- For CPU/GPU, reset doesn't need special handling
+    self._started = false
+  end
+
+  function Timer:__gc()
+    if self._handle then
+      M.timer_destroy(self._handle)
+      self._handle = nil
+    end
+  end
+
+  -- Register the Timer class in the insight module
+  M.Timer = Timer
+else
+  -- Fallback: table-based Timer without Penlight
+  --- Create a new Timer.
+  -- @function Timer
+  -- @tparam number device_type 0 for CPU, 1 for GPU
+  -- @tparam number device_id Device ID (0 for first device)
+  -- @treturn table Timer object with start/stop/elapsed methods
+  function M.Timer(device_type, device_id)
+    if device_type == nil or device_id == nil then
+      error("Timer: device_type and device_id are required")
+    end
+    local handle = M.timer_create(device_type, device_id)
+    if handle == nil then
+      error("Timer: failed to create timer (device backend not available)")
+    end
+    return {
+      _handle = handle,
+      _started = false,
+      start = function(self)
+        M.timer_start(self._handle)
+        self._started = true
+      end,
+      stop = function(self)
+        M.timer_stop(self._handle)
+        self._started = false
+      end,
+      elapsed = function(self)
+        return M.timer_elapsed_ms(self._handle)
+      end,
+      __gc = function(self)
+        if self._handle then
+          M.timer_destroy(self._handle)
+          self._handle = nil
+        end
+      end,
+    }
+  end
+end
+
 return M

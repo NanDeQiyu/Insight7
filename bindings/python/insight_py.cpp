@@ -10,6 +10,7 @@
 #include <pybind11/stl.h>
 
 #include "insight/c_api/array.h"
+#include "insight/c_api/profiler.h"
 #include "insight/core/array.h"
 #include "insight/core/dtype.h"
 #include "insight/core/place.h"
@@ -3018,4 +3019,36 @@ PYBIND11_MODULE(_insight, m) {
          const std::string &norm) { return fft::irfftn(x, s, axes, norm); },
       py::arg("x"), py::arg("s") = std::vector<int64_t>{},
       py::arg("axes") = std::vector<int>{}, py::arg("norm") = "backward");
+
+  // ==================================================================
+  // Profiler / Timer
+  // ==================================================================
+
+  m.def("timer_create", [](int32_t device_type, int32_t device_id) {
+    InsightPlace place = {device_type, device_id};
+    InsightTimer timer = nullptr;
+    C_Status status = insight_timer_create(&place, &timer);
+    if (status != C_SUCCESS) {
+      throw std::runtime_error("timer_create: failed to create timer");
+    }
+    return reinterpret_cast<uintptr_t>(timer);
+  });
+
+  m.def("timer_destroy", [](uintptr_t handle) {
+    insight_timer_destroy(reinterpret_cast<InsightTimer>(handle));
+  });
+
+  m.def("timer_start", [](uintptr_t handle) {
+    insight_timer_start(reinterpret_cast<InsightTimer>(handle));
+  });
+
+  m.def("timer_stop", [](uintptr_t handle) {
+    insight_timer_stop(reinterpret_cast<InsightTimer>(handle));
+  });
+
+  m.def("timer_elapsed_ms", [](uintptr_t handle) {
+    float ms = 0.0f;
+    insight_timer_elapsed_ms(reinterpret_cast<InsightTimer>(handle), &ms);
+    return static_cast<double>(ms);
+  });
 }

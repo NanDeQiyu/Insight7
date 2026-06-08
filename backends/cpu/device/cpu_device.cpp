@@ -1,5 +1,6 @@
 // backends/cpu/device/cpu_device.cpp
 #include "insight/c_api/device_ext.h"
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -7,6 +8,11 @@
 #include "../registry/cpu_registry.h"
 
 static thread_local std::string cpu_last_error_str;
+
+// CPU event implementation using std::chrono
+struct CpuEvent {
+  std::chrono::high_resolution_clock::time_point timestamp;
+};
 
 extern "C" {
 
@@ -196,35 +202,53 @@ static C_Status cpu_stream_wait_event(C_Device device, C_Stream stream,
 }
 
 // ========================================================================
-// Event Management (Required - CPU events are no-ops)
+// Event Management (Required - CPU events use std::chrono)
 // ========================================================================
 
 static C_Status cpu_create_event(C_Device device, C_Event *event) {
-  if (event)
-    *event = nullptr;
+  if (!event)
+    return C_FAILED;
+  auto *e = new (std::nothrow) CpuEvent();
+  if (!e)
+    return C_FAILED;
+  *event = reinterpret_cast<C_Event>(e);
   return C_SUCCESS;
 }
 
 static C_Status cpu_destroy_event(C_Device device, C_Event event) {
+  if (!event)
+    return C_FAILED;
+  delete reinterpret_cast<CpuEvent *>(event);
   return C_SUCCESS;
 }
 
 static C_Status cpu_record_event(C_Device device, C_Stream stream,
                                  C_Event event) {
+  if (!event)
+    return C_FAILED;
+  auto *e = reinterpret_cast<CpuEvent *>(event);
+  e->timestamp = std::chrono::high_resolution_clock::now();
   return C_SUCCESS;
 }
 
 static C_Status cpu_query_event(C_Device device, C_Event event) {
+  // CPU events are always completed immediately after record
   return C_SUCCESS;
 }
 
 static C_Status cpu_synchronize_event(C_Device device, C_Event event) {
+  // CPU events need no synchronization (synchronous by nature)
   return C_SUCCESS;
 }
 
 static C_Status cpu_elapsed_time(C_Event start, C_Event end, float *ms) {
-  if (ms)
-    *ms = 0.0f;
+  if (!start || !end || !ms)
+    return C_FAILED;
+  auto *s = reinterpret_cast<CpuEvent *>(start);
+  auto *e = reinterpret_cast<CpuEvent *>(end);
+  auto duration =
+      std::chrono::duration<float, std::milli>(e->timestamp - s->timestamp);
+  *ms = duration.count();
   return C_SUCCESS;
 }
 

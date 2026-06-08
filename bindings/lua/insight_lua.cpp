@@ -24,6 +24,7 @@
 #endif
 
 #include "insight/c_api/array.h"
+#include "insight/c_api/profiler.h"
 #include "insight/core/array.h"
 #include "insight/core/dtype.h"
 #include "insight/core/place.h"
@@ -2595,6 +2596,42 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
   };
   m["ix_"] = [](sol::table arrays) {
     return ins::ix_(table_to_arrays(arrays));
+  };
+
+  // ================================================================
+  // Profiler / Timer
+  // ================================================================
+
+  m["timer_create"] = [](int device_type, int device_id) -> void * {
+    InsightPlace place;
+    place.device_type = static_cast<int32_t>(device_type);
+    place.device_id = static_cast<int32_t>(device_id);
+    InsightTimer timer = nullptr;
+    C_Status status = insight_timer_create(&place, &timer);
+    if (status != C_SUCCESS) {
+      return nullptr;
+    }
+    return reinterpret_cast<void *>(timer);
+  };
+
+  m["timer_destroy"] = [](void *handle) {
+    if (handle != nullptr) {
+      insight_timer_destroy(reinterpret_cast<InsightTimer>(handle));
+    }
+  };
+
+  m["timer_start"] = [](void *handle) {
+    insight_timer_start(reinterpret_cast<InsightTimer>(handle));
+  };
+
+  m["timer_stop"] = [](void *handle) {
+    insight_timer_stop(reinterpret_cast<InsightTimer>(handle));
+  };
+
+  m["timer_elapsed_ms"] = [](void *handle) -> double {
+    float ms = 0.0f;
+    insight_timer_elapsed_ms(reinterpret_cast<InsightTimer>(handle), &ms);
+    return static_cast<double>(ms);
   };
 
   // Push module table onto stack

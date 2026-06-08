@@ -1600,4 +1600,42 @@ void insight_jl_close() {
 }
 #endif
 
+// ============================================================================
+// Profiler / Timer
+// ============================================================================
+
+#include "insight/c_api/profiler.h"
+
+void *insight_jl_timer_create(int32_t device_type, int32_t device_id) {
+  InsightPlace place;
+  place.device_type = device_type;
+  place.device_id = device_id;
+  InsightTimer timer = nullptr;
+  C_Status status = insight_timer_create(&place, &timer);
+  if (status != C_SUCCESS) {
+    return nullptr;
+  }
+  return reinterpret_cast<void *>(timer);
+}
+
+void insight_jl_timer_destroy(void *handle) {
+  if (handle != nullptr) {
+    insight_timer_destroy(reinterpret_cast<InsightTimer>(handle));
+  }
+}
+
+void insight_jl_timer_start(void *handle) {
+  insight_timer_start(reinterpret_cast<InsightTimer>(handle));
+}
+
+void insight_jl_timer_stop(void *handle) {
+  insight_timer_stop(reinterpret_cast<InsightTimer>(handle));
+}
+
+double insight_jl_timer_elapsed_ms(void *handle) {
+  float ms = 0.0f;
+  insight_timer_elapsed_ms(reinterpret_cast<InsightTimer>(handle), &ms);
+  return static_cast<double>(ms);
+}
+
 } // extern "C"
