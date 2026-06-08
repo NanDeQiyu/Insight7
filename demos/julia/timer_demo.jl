@@ -5,6 +5,7 @@ Timer Demo — Verifies the Timer API works correctly.
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "bindings", "julia", "src"))
 
 using Insight
+using Insight: Timer, timer_start, timer_stop, timer_elapsed_ms, timer_destroy
 
 # CPU Timer
 let

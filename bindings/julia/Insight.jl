@@ -77,6 +77,8 @@ export Array, zeros, ones, full, arange, linspace, eye,
        device_name, gpu_version, driver_version, compute_capability,
        device_memory, gpu_count, load_backend,
        get_device, set_device,
+       # Profiler / Timer
+       Timer, timer_start, timer_stop, timer_elapsed_ms, timer_destroy,
        # Signal submodule
        signal
 
