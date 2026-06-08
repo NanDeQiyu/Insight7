@@ -1,9 +1,12 @@
 // backends/cuda/device/cuda_device.cpp
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "insight/c_api/device_ext.h"
 #include "insight/c_api/dtype.h"
@@ -621,29 +624,137 @@ static C_Status cuda_get_device_name(C_Device device, char *buf,
 }
 
 // ========================================================================
-// Profiler (Optional)
+// Profiler (Optional - CUDA profiler using std::chrono)
 // ========================================================================
+
+struct CudaProfilerEvent {
+  std::string name;
+  size_t calls = 0;
+  double total_ms = 0.0;
+  double min_ms = 1e18;
+  double max_ms = 0.0;
+};
+
+struct CudaProfiler {
+  std::string name;
+  int device_id;
+  std::chrono::high_resolution_clock::time_point event_start;
+  std::string current_event_name;
+  bool in_event = false;
+  bool running = false;
+  std::unordered_map<std::string, CudaProfilerEvent> events;
+  std::vector<C_ProfilerEvent> report_cache;
+};
 
 static C_Status cuda_profiler_create(C_Profiler *prof, const char *name,
                                      int device_id) {
-  if (prof)
-    *prof = nullptr; // CUDA profiler uses nvtx/cupti externally
+  if (!prof)
+    return C_FAILED;
+  auto *p = new (std::nothrow) CudaProfiler();
+  if (!p)
+    return C_FAILED;
+  if (name)
+    p->name = name;
+  p->device_id = device_id;
+  *prof = reinterpret_cast<C_Profiler>(p);
   return C_SUCCESS;
 }
 
-static C_Status cuda_profiler_destroy(C_Profiler prof) { return C_SUCCESS; }
-
-static C_Status cuda_profiler_start(C_Profiler prof) { return C_SUCCESS; }
-
-static C_Status cuda_profiler_stop(C_Profiler prof) { return C_SUCCESS; }
-
-static C_Status cuda_profiler_reset(C_Profiler prof) { return C_SUCCESS; }
-
-static C_Status cuda_profiler_begin_event(C_Profiler prof, const char *name) {
-  return C_SUCCESS; // Use nvtx for detailed profiling
+static C_Status cuda_profiler_destroy(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  delete reinterpret_cast<CudaProfiler *>(prof);
+  return C_SUCCESS;
 }
 
-static C_Status cuda_profiler_end_event(C_Profiler prof) { return C_SUCCESS; }
+static C_Status cuda_profiler_start(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  reinterpret_cast<CudaProfiler *>(prof)->running = true;
+  return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_stop(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  reinterpret_cast<CudaProfiler *>(prof)->running = false;
+  return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_reset(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  auto *p = reinterpret_cast<CudaProfiler *>(prof);
+  p->events.clear();
+  p->report_cache.clear();
+  p->in_event = false;
+  return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_begin_event(C_Profiler prof, const char *name) {
+  if (!prof || !name)
+    return C_FAILED;
+  auto *p = reinterpret_cast<CudaProfiler *>(prof);
+  if (!p->running)
+    return C_SUCCESS;
+  p->current_event_name = name;
+  p->event_start = std::chrono::high_resolution_clock::now();
+  p->in_event = true;
+  return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_end_event(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  auto *p = reinterpret_cast<CudaProfiler *>(prof);
+  if (!p->running || !p->in_event)
+    return C_SUCCESS;
+  auto end = std::chrono::high_resolution_clock::now();
+  double ms =
+      std::chrono::duration<double, std::milli>(end - p->event_start).count();
+  p->in_event = false;
+
+  auto &ev = p->events[p->current_event_name];
+  ev.name = p->current_event_name;
+  ev.calls++;
+  ev.total_ms += ms;
+  if (ms < ev.min_ms)
+    ev.min_ms = ms;
+  if (ms > ev.max_ms)
+    ev.max_ms = ms;
+  return C_SUCCESS;
+}
+
+static C_Status cuda_profiler_get_events(C_Profiler prof,
+                                         C_ProfilerEvent **events,
+                                         size_t *count) {
+  if (!prof || !events || !count)
+    return C_FAILED;
+  auto *p = reinterpret_cast<CudaProfiler *>(prof);
+
+  for (auto &e : p->report_cache) {
+    if (e.name) {
+      free(const_cast<char *>(e.name));
+      e.name = nullptr;
+    }
+  }
+  p->report_cache.clear();
+
+  for (auto &kv : p->events) {
+    auto &src = kv.second;
+    C_ProfilerEvent ev;
+    ev.name = strdup(src.name.c_str());
+    ev.calls = src.calls;
+    ev.total_ms = static_cast<float>(src.total_ms);
+    ev.min_ms = static_cast<float>(src.min_ms < 1e17 ? src.min_ms : 0.0f);
+    ev.max_ms = static_cast<float>(src.max_ms);
+    p->report_cache.push_back(ev);
+  }
+
+  *events = p->report_cache.data();
+  *count = p->report_cache.size();
+  return C_SUCCESS;
+}
 
 // ========================================================================
 // InitPluginGPU - GPU Backend Entry Point
@@ -725,6 +836,7 @@ INSIGHT_GPU_API C_Status InitPluginGPU(CustomRuntimeParams *params) {
   iface->profiler_reset = cuda_profiler_reset;
   iface->profiler_begin_event = cuda_profiler_begin_event;
   iface->profiler_end_event = cuda_profiler_end_event;
+  iface->profiler_get_events = cuda_profiler_get_events;
 
   // Error
   iface->get_last_error = gpu_get_last_error;

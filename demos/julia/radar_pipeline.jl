@@ -197,7 +197,7 @@ end
 # ============================================================
 # 运行一帧
 # ============================================================
-function run_frame(seed_val; timer=false, noise=nothing)
+function run_frame(seed_val; timer=false, noise=nothing, profiler=nothing)
     GC.enable(false)
 
     # [1] 合成信号
@@ -206,46 +206,62 @@ function run_frame(seed_val; timer=false, noise=nothing)
         composite = _COMPOSITE_BASE + noise
     else
         Insight.seed(seed_val)
+        if profiler !== nothing; Insight.profiler_begin_event(profiler, "randn"); end
         noise = Insight.randn(Int64[N_SAMPLES], Insight.float64) * NOISE_STD
+        if profiler !== nothing; Insight.profiler_end_event(profiler); end
         composite = _COMPOSITE_BASE + noise
     end
     t_gen = time() - t0
 
     # [2] 去趋势 + 带通滤波
     t0 = time()
+    if profiler !== nothing; Insight.profiler_begin_event(profiler, "detrend"); end
     detrended = Insight.signal.detrend(composite)
+    if profiler !== nothing; Insight.profiler_end_event(profiler); end
+    if profiler !== nothing; Insight.profiler_begin_event(profiler, "fir_filter"); end
     filtered_full = Insight.signal.fftconvolve(detrended, _TAPS, mode="full")
+    if profiler !== nothing; Insight.profiler_end_event(profiler); end
     half = fld(NUMTAPS, 2)
     filtered = Insight.slice(filtered_full, 1, half + 1, half + N_SAMPLES + 1)
     t_filt = time() - t0
 
     # [3] 高斯平滑
     t0 = time()
+    if profiler !== nothing; Insight.profiler_begin_event(profiler, "gauss_smooth"); end
     smoothed = Insight.signal.fftconvolve(filtered, _GAUSS_KERNEL, mode="same")
+    if profiler !== nothing; Insight.profiler_end_event(profiler); end
     t_spline = time() - t0
 
     # [4] FM 解调
     t0 = time()
+    if profiler !== nothing; Insight.profiler_begin_event(profiler, "hilbert"); end
     analytic = Insight.signal.hilbert(smoothed)
+    if profiler !== nothing; Insight.profiler_end_event(profiler); end
     inst_phase = Insight.unwrap(Insight.angle_fn(analytic))
     inst_freq = gradient(inst_phase, 1.0 / FS) / (2.0 * π)
     t_demod = time() - t0
 
     # [5] STFT
     t0 = time()
+    if profiler !== nothing; Insight.profiler_begin_event(profiler, "stft"); end
     stft_result = Insight.signal.stft(smoothed, fs=FS, nperseg=NPERSEG, noverlap=NOVERLAP)
+    if profiler !== nothing; Insight.profiler_end_event(profiler); end
     t_stft = time() - t0
 
     # [6] CWT
     t0 = time()
+    if profiler !== nothing; Insight.profiler_begin_event(profiler, "cwt"); end
     cwt_matrix = cwt_fast(smoothed)
+    if profiler !== nothing; Insight.profiler_end_event(profiler); end
     t_cwt = time() - t0
 
     # [7] 自相关
     t0 = time()
+    if profiler !== nothing; Insight.profiler_begin_event(profiler, "correlate"); end
     seg_len = Base.min(N_SAMPLES, 512)
     seg = Insight.slice(smoothed, 1, 1, seg_len + 1)
     autocorr_full = Insight.signal.correlate(seg, seg, mode="full")
+    if profiler !== nothing; Insight.profiler_end_event(profiler); end
     mid = fld(Insight.numel(autocorr_full), 2)
     autocorr = Insight.slice(autocorr_full, 1, mid + 1, Insight.numel(autocorr_full) + 1)
     norm_val = Insight.item(Insight.to(autocorr, 0), 0)
@@ -256,14 +272,18 @@ function run_frame(seed_val; timer=false, noise=nothing)
 
     # [8] 峰值查找
     t0 = time()
+    if profiler !== nothing; Insight.profiler_begin_event(profiler, "peak_finding"); end
     smoothed_vec = Insight.to_data(Insight.to(smoothed, 0))
     peaks_max, peaks_min = find_peaks_simple(smoothed_vec)
+    if profiler !== nothing; Insight.profiler_end_event(profiler); end
     t_peak = time() - t0
 
     # [9] 卡尔曼滤波
     t0 = time()
+    if profiler !== nothing; Insight.profiler_begin_event(profiler, "kalman"); end
     inst_freq_vec = Insight.to_data(Insight.to(inst_freq, 0))
     smoothed_freq = kalman_smooth(inst_freq_vec)
+    if profiler !== nothing; Insight.profiler_end_event(profiler); end
     params = []
     for p in peaks_max
         if p >= 1 && p <= length(smoothed_freq)
@@ -322,7 +342,7 @@ end
 # CLI 参数解析
 # ============================================================
 function parse_args()
-    args = Dict("device" => "cpu", "seed" => 42, "iterations" => 0, "timer" => false, "info" => false)
+    args = Dict("device" => "cpu", "seed" => 42, "iterations" => 0, "timer" => false, "info" => false, "profiler" => false)
     i = 1
     while i <= length(ARGS)
         if ARGS[i] == "--device" && i < length(ARGS)
@@ -339,6 +359,9 @@ function parse_args()
             i += 1
         elseif ARGS[i] == "--info"
             args["info"] = true
+            i += 1
+        elseif ARGS[i] == "--profiler"
+            args["profiler"] = true
             i += 1
         else
             i += 1
@@ -360,6 +383,13 @@ println("=" ^ 60)
 println("\n[配置]  采样率: $(FS/1e3) kHz  信号长度: $N_SAMPLES 点  时长: $(DURATION)s  设备: $(args["device"])  帧数: $n_frames")
 
 init_cache(args["device"])
+
+# 创建 Profiler
+local jl_prof = nothing
+if args["profiler"]
+    jl_prof = Insight.Profiler(Int64(0), Int64(0))
+    Insight.profiler_start(jl_prof)
+end
 
 if args["device"] == "all"
     if !Insight.has_device(Int64(1))
@@ -391,9 +421,9 @@ for frame in 0:(n_frames-1)
         Insight.seed(args["seed"] + frame)
         cpu_noise = Insight.randn(Int64[N_SAMPLES], Insight.float64) * NOISE_STD
 
-        cpu_r = run_frame(args["seed"] + frame; timer=timer_flag, noise=cpu_noise)
+        cpu_r = run_frame(args["seed"] + frame; timer=timer_flag, noise=cpu_noise, profiler=jl_prof)
         gpu_noise = Insight.to(cpu_noise, Int64(1))
-        gpu_r = run_frame(args["seed"] + frame; timer=timer_flag, noise=gpu_noise)
+        gpu_r = run_frame(args["seed"] + frame; timer=timer_flag, noise=gpu_noise, profiler=jl_prof)
         push!(times, cpu_r.total_ms)
         cpu_scpu = Insight.to(cpu_r.smoothed, Int64(0))
         gpu_scpu = Insight.to(gpu_r.smoothed, Int64(0))
@@ -401,7 +431,7 @@ for frame in 0:(n_frames-1)
         max_diff = Insight.item(Insight.max(diff_arr), 0)
         println("  帧 $(lpad(frame, 4))/$n_frames | CPU: $(lpad(round(cpu_r.total_ms, digits=2), 8)) ms | GPU: $(lpad(round(gpu_r.total_ms, digits=2), 8)) ms | max_diff=$(max_diff)")
     else
-        r = run_frame(args["seed"] + frame; timer=timer_flag)
+        r = run_frame(args["seed"] + frame; timer=timer_flag, profiler=jl_prof)
         push!(times, r.total_ms)
 
         if n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 || frame == n_frames - 1
@@ -428,6 +458,13 @@ for frame in 0:(n_frames-1)
             end
         end
     end
+end
+
+# Profiler 报告
+if args["profiler"] && jl_prof !== nothing
+    Insight.profiler_stop(jl_prof)
+    Insight.profiler_report(jl_prof)
+    Insight.profiler_destroy(jl_prof)
 end
 
 avg_ms = sum(times) / length(times)

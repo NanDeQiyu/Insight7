@@ -2,6 +2,9 @@
 #pragma once
 #include "insight/c_api/profiler.h"
 #include "insight/core/place.h"
+#include <cstdio>
+#include <string>
+#include <vector>
 
 namespace ins {
 
@@ -26,23 +29,10 @@ namespace ins {
  */
 class Timer {
 public:
-  /**
-   * @brief Create a timer for the specified device.
-   *
-   * @param place Device to measure on (CPUPlace or GPUPlace)
-   */
   explicit Timer(const Place &place = CPUPlace());
-
-  /**
-   * @brief Destroy the timer and release event resources.
-   */
   ~Timer();
-
-  // Non-copyable
   Timer(const Timer &) = delete;
   Timer &operator=(const Timer &) = delete;
-
-  // Moveable
   Timer(Timer &&other) noexcept
       : impl_(other.impl_), place_(other.place_), started_(other.started_) {
     other.impl_ = nullptr;
@@ -58,26 +48,93 @@ public:
     }
     return *this;
   }
-
-  /// Record the start event on the device.
   void start();
-
-  /// Record the stop event and synchronize.
   void stop();
-
-  /// Get elapsed time between start and stop in milliseconds.
   float elapsed_ms() const;
-
-  /// Reset the timer for reuse.
   void reset();
-
-  /// Check if the timer has been started and not yet stopped.
   bool started() const;
 
 private:
   InsightTimer impl_ = nullptr;
   Place place_;
   bool started_ = false;
+};
+
+/**
+ * @brief Lightweight profiler for operator-level timing.
+ *
+ * Uses the HAL profiler interface to record begin/end event pairs and
+ * accumulate statistics (calls, total/avg/min/max) per named event.
+ *
+ * Usage:
+ * @code
+ *   Profiler prof(place);
+ *   prof.start();
+ *   {
+ *     ProfileBlock _(prof, "fft");
+ *     auto X = fft::fft(x);
+ *   }
+ *   {
+ *     ProfileBlock _(prof, "mul");
+ *     auto Y = mul(X, y);
+ *   }
+ *   prof.stop();
+ *   prof.report();  // prints table to stdout
+ * @endcode
+ */
+class Profiler {
+public:
+  explicit Profiler(const Place &place = CPUPlace());
+  ~Profiler();
+  Profiler(const Profiler &) = delete;
+  Profiler &operator=(const Profiler &) = delete;
+
+  /// Start recording events
+  void start();
+  /// Stop recording events
+  void stop();
+  /// Clear all recorded data
+  void reset();
+  /// Begin a named event
+  void begin_event(const char *name);
+  /// End the current event
+  void end_event();
+  /**
+   * @brief Print a formatted report to a file.
+   *
+   * Output:
+   *   Event           Calls  Total(ms)   Avg(ms)   Max(ms)
+   *   ────────────────────────────────────────────────────
+   *   fft                10     89.34      8.93     12.45
+   */
+  void report(FILE *fp = stdout);
+
+private:
+  C_Profiler impl_ = nullptr;
+};
+
+/**
+ * @brief RAII guard for Profiler::begin_event/end_event.
+ *
+ * Automatically calls begin_event on construction and end_event on
+ * destruction, ensuring correct pairing even with exceptions.
+ *
+ * Usage:
+ * @code
+ *   Profiler prof(place);
+ *   prof.start();
+ *   {
+ *     ProfileBlock _(prof, "my_op");
+ *     // ... work ...
+ *   }  // end_event called automatically
+ * @endcode
+ */
+struct ProfileBlock {
+  Profiler &prof;
+  explicit ProfileBlock(Profiler &p, const char *name) : prof(p) {
+    prof.begin_event(name);
+  }
+  ~ProfileBlock() { prof.end_event(); }
 };
 
 } // namespace ins

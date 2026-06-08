@@ -619,4 +619,128 @@ else
   end
 end
 
+-- ========================================================================
+-- Profiler class
+-- ========================================================================
+
+if has_class then
+  -- Penlight-based Profiler class
+  local Profiler = pl_class:new()
+
+  function Profiler:_init(device_kind, device_id)
+    device_kind = device_kind or 0
+    device_id = device_id or 0
+    self._handle = M.profiler_create(device_kind, device_id)
+    if self._handle == nil then
+      error("Profiler: failed to create profiler (device backend not available)")
+    end
+  end
+
+  function Profiler:start()
+    M.profiler_start(self._handle)
+  end
+
+  function Profiler:stop()
+    M.profiler_stop(self._handle)
+  end
+
+  function Profiler:reset()
+    M.profiler_reset(self._handle)
+  end
+
+  function Profiler:begin_event(name)
+    M.profiler_begin_event(self._handle, name)
+  end
+
+  function Profiler:end_event()
+    M.profiler_end_event(self._handle)
+  end
+
+  function Profiler:get_events()
+    return M.profiler_get_events(self._handle)
+  end
+
+  function Profiler:report()
+    local events = self:get_events()
+    if #events == 0 then
+      print("  [Profiler] no events recorded")
+      return
+    end
+    print("")
+    print(string.format("  %-24s %7s %12s %10s %10s", "Event", "Calls", "Total(ms)", "Avg(ms)", "Max(ms)"))
+    print("  " .. string.rep("─", 63))
+    for _, ev in ipairs(events) do
+      local avg = ev.total_ms / ev.calls
+      print(string.format("  %-24s %7d %12.3f %10.4f %10.4f", ev.name, ev.calls, ev.total_ms, avg, ev.max_ms))
+    end
+    print("")
+  end
+
+  function Profiler:__gc()
+    if self._handle then
+      M.profiler_destroy(self._handle)
+      self._handle = nil
+    end
+  end
+
+  M.Profiler = Profiler
+else
+  -- Fallback: table-based Profiler without Penlight
+  --- Create a new Profiler.
+  -- @function Profiler
+  -- @tparam[opt] number device_kind 0 for CPU (default), 1 for GPU
+  -- @tparam[opt] number device_id Device ID (default 0)
+  -- @treturn table Profiler object with start/stop/reset/begin_event/end_event/get_events/report methods
+  function M.Profiler(device_kind, device_id)
+    device_kind = device_kind or 0
+    device_id = device_id or 0
+    local handle = M.profiler_create(device_kind, device_id)
+    if handle == nil then
+      error("Profiler: failed to create profiler (device backend not available)")
+    end
+    return {
+      _handle = handle,
+      start = function(self)
+        M.profiler_start(self._handle)
+      end,
+      stop = function(self)
+        M.profiler_stop(self._handle)
+      end,
+      reset = function(self)
+        M.profiler_reset(self._handle)
+      end,
+      begin_event = function(self, name)
+        M.profiler_begin_event(self._handle, name)
+      end,
+      end_event = function(self)
+        M.profiler_end_event(self._handle)
+      end,
+      get_events = function(self)
+        return M.profiler_get_events(self._handle)
+      end,
+      report = function(self)
+        local events = self:get_events()
+        if #events == 0 then
+          print("  [Profiler] no events recorded")
+          return
+        end
+        print("")
+        print(string.format("  %-24s %7s %12s %10s %10s", "Event", "Calls", "Total(ms)", "Avg(ms)", "Max(ms)"))
+        print("  " .. string.rep("─", 63))
+        for _, ev in ipairs(events) do
+          local avg = ev.total_ms / ev.calls
+          print(string.format("  %-24s %7d %12.3f %10.4f %10.4f", ev.name, ev.calls, ev.total_ms, avg, ev.max_ms))
+        end
+        print("")
+      end,
+      __gc = function(self)
+        if self._handle then
+          M.profiler_destroy(self._handle)
+          self._handle = nil
+        end
+      end,
+    }
+  end
+end
+
 return M

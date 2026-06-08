@@ -1646,4 +1646,105 @@ double insight_jl_timer_elapsed_ms(void *handle) {
   return static_cast<double>(ms);
 }
 
+// ============================================================================
+// Profiler
+// ============================================================================
+
+void *insight_jl_profiler_create(int32_t device_type, int32_t device_id,
+                                 const char *name) {
+  InsightPlace place;
+  place.device_type = device_type;
+  place.device_id = device_id;
+  C_Profiler prof = nullptr;
+  C_Status status = insight_profiler_create(&place, name, &prof);
+  if (status != C_SUCCESS) {
+    return nullptr;
+  }
+  return reinterpret_cast<void *>(prof);
+}
+
+void insight_jl_profiler_destroy(void *handle) {
+  if (handle != nullptr) {
+    insight_profiler_destroy(reinterpret_cast<C_Profiler>(handle));
+  }
+}
+
+void insight_jl_profiler_start(void *handle) {
+  if (handle != nullptr) {
+    insight_profiler_start(reinterpret_cast<C_Profiler>(handle));
+  }
+}
+
+void insight_jl_profiler_stop(void *handle) {
+  if (handle != nullptr) {
+    insight_profiler_stop(reinterpret_cast<C_Profiler>(handle));
+  }
+}
+
+void insight_jl_profiler_reset(void *handle) {
+  if (handle != nullptr) {
+    insight_profiler_reset(reinterpret_cast<C_Profiler>(handle));
+  }
+}
+
+void insight_jl_profiler_begin_event(void *handle, const char *name) {
+  if (handle != nullptr) {
+    insight_profiler_begin_event(reinterpret_cast<C_Profiler>(handle), name);
+  }
+}
+
+void insight_jl_profiler_end_event(void *handle) {
+  if (handle != nullptr) {
+    insight_profiler_end_event(reinterpret_cast<C_Profiler>(handle));
+  }
+}
+
+char *insight_jl_profiler_get_events(void *handle) {
+  if (handle == nullptr) {
+    char *empty = static_cast<char *>(std::malloc(3));
+    if (empty)
+      std::strcpy(empty, "[]");
+    return empty;
+  }
+  C_Profiler prof = reinterpret_cast<C_Profiler>(handle);
+  C_ProfilerEvent *events = nullptr;
+  size_t count = 0;
+  C_Status status = insight_profiler_get_events(prof, &events, &count);
+  if (status != C_SUCCESS || count == 0) {
+    char *empty = static_cast<char *>(std::malloc(3));
+    if (empty)
+      std::strcpy(empty, "[]");
+    return empty;
+  }
+  // Build JSON string
+  std::string json = "[";
+  for (size_t i = 0; i < count; ++i) {
+    if (i > 0)
+      json += ",";
+    json += "{\"name\":\"";
+    json += events[i].name ? events[i].name : "";
+    json += "\",\"calls\":";
+    json += std::to_string(events[i].calls);
+    json += ",\"total_ms\":";
+    json += std::to_string(events[i].total_ms);
+    json += ",\"min_ms\":";
+    json += std::to_string(events[i].min_ms);
+    json += ",\"max_ms\":";
+    json += std::to_string(events[i].max_ms);
+    json += "}";
+  }
+  json += "]";
+  char *result = static_cast<char *>(std::malloc(json.size() + 1));
+  if (result) {
+    std::strcpy(result, json.c_str());
+  }
+  return result;
+}
+
+void insight_jl_profiler_free_json(char *json_str) {
+  if (json_str != nullptr) {
+    std::free(json_str);
+  }
+}
+
 } // extern "C"

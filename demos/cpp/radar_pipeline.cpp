@@ -4,6 +4,7 @@
 // 编译: cmake .. -DINSIGHT_BUILD_DEMOS=ON && make -j24
 // 运行: ./feature_extraction --device gpu --seed 42 --iterations 50
 
+#include "insight/core/profiler.h"
 #include "insight/insight.h"
 #include "insight/ops/fft.h"
 #include "insight/ops/indexing.h"
@@ -75,6 +76,7 @@ struct Args {
   std::string output = ".";
   bool timer = false;
   bool info = false;
+  bool profiler = false;
 };
 
 static Args parse_args(int argc, char *argv[]) {
@@ -94,6 +96,8 @@ static Args parse_args(int argc, char *argv[]) {
       args.timer = true;
     } else if (std::strcmp(argv[i], "--info") == 0) {
       args.info = true;
+    } else if (std::strcmp(argv[i], "--profiler") == 0) {
+      args.profiler = true;
     }
   }
   return args;
@@ -284,7 +288,8 @@ struct FrameResult {
 };
 
 static FrameResult run_frame(int seed_val, Place place,
-                             Array *external_noise = nullptr) {
+                             Array *external_noise = nullptr,
+                             ins::Profiler *prof = nullptr) {
   FrameResult r;
   auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -297,7 +302,11 @@ static FrameResult run_frame(int seed_val, Place place,
       noise = noise.to(place);
   } else {
     seed(seed_val);
+    if (prof)
+      prof->begin_event("randn");
     noise = randn({N_SAMPLES}, DType::F64, place) * NOISE_STD;
+    if (prof)
+      prof->end_event();
   }
   Array composite = _COMPOSITE_BASE + noise;
   auto t1 = std::chrono::high_resolution_clock::now();
@@ -305,8 +314,16 @@ static FrameResult run_frame(int seed_val, Place place,
 
   // [2] 去趋势 + 带通滤波
   t0 = std::chrono::high_resolution_clock::now();
+  if (prof)
+    prof->begin_event("detrend");
   Array detrended = signal::detrend(composite);
+  if (prof)
+    prof->end_event();
+  if (prof)
+    prof->begin_event("fir_filter");
   Array filtered_full = signal::fftconvolve(detrended, _TAPS, "full");
+  if (prof)
+    prof->end_event();
   int64_t half = NUMTAPS / 2;
   Array filtered = filtered_full[Slice(half, half + N_SAMPLES)];
   t1 = std::chrono::high_resolution_clock::now();
@@ -314,13 +331,21 @@ static FrameResult run_frame(int seed_val, Place place,
 
   // [3] 高斯平滑
   t0 = std::chrono::high_resolution_clock::now();
+  if (prof)
+    prof->begin_event("gauss_smooth");
   r.smoothed = signal::fftconvolve(filtered, _GAUSS_KERNEL, "same");
+  if (prof)
+    prof->end_event();
   t1 = std::chrono::high_resolution_clock::now();
   r.t_spline_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
   // [4] FM 解调
   t0 = std::chrono::high_resolution_clock::now();
+  if (prof)
+    prof->begin_event("hilbert");
   Array analytic = signal::hilbert(r.smoothed);
+  if (prof)
+    prof->end_event();
   Array inst_phase = unwrap(angle(analytic));
   r.inst_freq = gradient(inst_phase, 1.0 / FS) / (2.0 * M_PI);
   t1 = std::chrono::high_resolution_clock::now();
@@ -328,22 +353,34 @@ static FrameResult run_frame(int seed_val, Place place,
 
   // [5] STFT
   t0 = std::chrono::high_resolution_clock::now();
+  if (prof)
+    prof->begin_event("stft");
   auto stft_result = signal::stft(r.smoothed, FS, "hann", NPERSEG, NOVERLAP);
+  if (prof)
+    prof->end_event();
   r.Zxx = stft_result.Sxx;
   t1 = std::chrono::high_resolution_clock::now();
   r.t_stft_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
   // [6] CWT
   t0 = std::chrono::high_resolution_clock::now();
+  if (prof)
+    prof->begin_event("cwt");
   r.cwt_matrix = cwt_fast(r.smoothed);
+  if (prof)
+    prof->end_event();
   t1 = std::chrono::high_resolution_clock::now();
   r.t_cwt_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
   // [7] 自相关
   t0 = std::chrono::high_resolution_clock::now();
+  if (prof)
+    prof->begin_event("correlate");
   int64_t seg_len = std::min(N_SAMPLES, int64_t(512));
   Array seg = r.smoothed[Slice(0, seg_len)];
   Array autocorr_full = signal::correlate(seg, seg, "full");
+  if (prof)
+    prof->end_event();
   int64_t mid = autocorr_full.numel() / 2;
   r.autocorr = autocorr_full[Slice(mid, autocorr_full.numel())];
   double norm_val = r.autocorr.to(CPUPlace()).data<double>()[0];
@@ -354,10 +391,14 @@ static FrameResult run_frame(int seed_val, Place place,
 
   // [8] 峰值查找
   t0 = std::chrono::high_resolution_clock::now();
+  if (prof)
+    prof->begin_event("peak_finding");
   Array smoothed_cpu = r.smoothed.to(CPUPlace());
   std::vector<double> smoothed_vec(smoothed_cpu.data<double>(),
                                    smoothed_cpu.data<double>() + N_SAMPLES);
   find_peaks_simple(smoothed_vec, r.peaks_max, r.peaks_min, PEAK_ORDER);
+  if (prof)
+    prof->end_event();
   r.n_peaks_max = (int)r.peaks_max.size();
   r.n_peaks_min = (int)r.peaks_min.size();
   t1 = std::chrono::high_resolution_clock::now();
@@ -365,10 +406,14 @@ static FrameResult run_frame(int seed_val, Place place,
 
   // [9] 卡尔曼滤波
   t0 = std::chrono::high_resolution_clock::now();
+  if (prof)
+    prof->begin_event("kalman");
   Array inst_freq_cpu = r.inst_freq.to(CPUPlace());
   std::vector<double> inst_freq_vec(inst_freq_cpu.data<double>(),
                                     inst_freq_cpu.data<double>() + N_SAMPLES);
   r.smoothed_freq = kalman_smooth(inst_freq_vec);
+  if (prof)
+    prof->end_event();
   for (int p : r.peaks_max) {
     if (p >= 0 && p < (int)r.smoothed_freq.size())
       r.params.emplace_back(p, r.smoothed_freq[p]);
@@ -537,9 +582,19 @@ int main(int argc, char *argv[]) {
   // 单设备模式 (原有逻辑)
   // ========================================================
 
+  // 创建 Profiler
+  ins::Profiler prof(place);
+  if (args.profiler)
+    prof.start();
+
   std::vector<double> times;
   for (int frame = 0; frame < n_frames; ++frame) {
-    FrameResult r = run_frame(args.seed + frame, place);
+    if (args.profiler)
+      prof.begin_event("frame");
+    FrameResult r = run_frame(args.seed + frame, place, nullptr,
+                              args.profiler ? &prof : nullptr);
+    if (args.profiler)
+      prof.end_event();
     times.push_back(r.total_ms);
 
     bool print_frame = (n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 ||
@@ -567,6 +622,12 @@ int main(int argc, char *argv[]) {
                params_str.c_str());
       }
     }
+  }
+
+  // Profiler 报告
+  if (args.profiler) {
+    prof.stop();
+    prof.report();
   }
 
   double sum = 0;

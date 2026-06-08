@@ -2639,6 +2639,70 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     return static_cast<double>(ms);
   };
 
+  // ── Profiler bindings ──────────────────────────────────────────────
+
+  m["profiler_create"] = [](int device_type, int device_id,
+                            sol::optional<const char *> name) -> void * {
+    InsightPlace place;
+    place.device_type = static_cast<int32_t>(device_type);
+    place.device_id = static_cast<int32_t>(device_id);
+    C_Profiler prof = nullptr;
+    C_Status status =
+        insight_profiler_create(&place, name.value_or(nullptr), &prof);
+    if (status != C_SUCCESS) {
+      return nullptr;
+    }
+    return reinterpret_cast<void *>(prof);
+  };
+
+  m["profiler_destroy"] = [](void *handle) {
+    if (handle != nullptr) {
+      insight_profiler_destroy(reinterpret_cast<C_Profiler>(handle));
+    }
+  };
+
+  m["profiler_start"] = [](void *handle) {
+    insight_profiler_start(reinterpret_cast<C_Profiler>(handle));
+  };
+
+  m["profiler_stop"] = [](void *handle) {
+    insight_profiler_stop(reinterpret_cast<C_Profiler>(handle));
+  };
+
+  m["profiler_reset"] = [](void *handle) {
+    insight_profiler_reset(reinterpret_cast<C_Profiler>(handle));
+  };
+
+  m["profiler_begin_event"] = [](void *handle, const char *name) {
+    insight_profiler_begin_event(reinterpret_cast<C_Profiler>(handle), name);
+  };
+
+  m["profiler_end_event"] = [](void *handle) {
+    insight_profiler_end_event(reinterpret_cast<C_Profiler>(handle));
+  };
+
+  m["profiler_get_events"] = [](void *handle,
+                                sol::this_state ts) -> sol::table {
+    C_ProfilerEvent *events = nullptr;
+    size_t count = 0;
+    C_Status status = insight_profiler_get_events(
+        reinterpret_cast<C_Profiler>(handle), &events, &count);
+    sol::state_view lv(ts);
+    sol::table result = lv.create_table(static_cast<int>(count));
+    if (status == C_SUCCESS && events != nullptr) {
+      for (size_t i = 0; i < count; i++) {
+        sol::table ev = lv.create_table();
+        ev["name"] = events[i].name ? std::string(events[i].name) : "";
+        ev["calls"] = static_cast<int>(events[i].calls);
+        ev["total_ms"] = events[i].total_ms;
+        ev["min_ms"] = events[i].min_ms;
+        ev["max_ms"] = events[i].max_ms;
+        result[i + 1] = ev;
+      }
+    }
+    return result;
+  };
+
   // Push module table onto stack
   sol::stack::push(lua, m);
   return 1;

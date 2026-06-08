@@ -129,8 +129,8 @@ try:
     # Core types (wrapped with docstrings)
     from .types import DType, Place, Shape, Slice, CPUPlace, GPUPlace
 
-    # Timer
-    from .timer import Timer
+    # Timer / Profiler
+    from .timer import Timer, Profiler, ProfileBlock
     from .array import Array
 
     # Wrapper modules — each provides docstrings and argument validation
@@ -302,6 +302,9 @@ __all__ = [
     "GPUPlace",
     # Timer
     "Timer",
+    # Profiler
+    "Profiler",
+    "ProfileBlock",
     # Dtypes
     "float32",
     "float64",
