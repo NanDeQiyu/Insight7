@@ -1378,6 +1378,14 @@ void insight_jl_vectorstrength(const Array *events, double period,
   *out_phase = result.second;
 }
 
+// lombscargle: returns Array
+Array *insight_jl_lombscargle(const Array *x, const Array *y,
+                              const Array *freqs) {
+  static thread_local Array result;
+  result = signal::lombscargle(*x, *y, *freqs);
+  return &result;
+}
+
 // choose_conv_method: returns method string via static buffer
 const char *insight_jl_choose_conv_method(const Array *in1, const Array *in2,
                                           const char *mode) {

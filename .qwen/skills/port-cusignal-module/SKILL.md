@@ -430,3 +430,36 @@ cmake .. -DINSIGHT_WITH_CUDA=ON
 cmake --build . -j$(nproc)
 ctest -R "Signal" --output-on-failure
 ```
+
+## cuSignal Appendix Coverage (2026-06-07)
+
+All 12 categories from the competition appendix are now covered:
+
+| Category | Functions | Status |
+|----------|-----------|--------|
+| bsplines | cubic, gauss_spline, quadratic | ✅ All implemented |
+| correlate | correlate, correlate2d | ✅ All implemented |
+| demod | fm_demod | ✅ Implemented |
+| estimation | kalmanfilter | ✅ KalmanFilter class |
+| filter_design | firwin, firwin2 | ✅ All implemented |
+| filtering | channelize_poly, detrend, firfilter, freq_shift, hilbert, hilbert2, lfilter_zi, sosfilt, wiener, decimate, resample, resample_poly, upfirdn | ✅ All implemented |
+| peak_finding | argrelextrema | ✅ Implemented |
+| radartools | ambgfun, ca_cfar, cfar_alpha, pulse_compression, pulse_doppler | ✅ All implemented |
+| spectral | csd, istft, lombscargle, spectrogram, stft, vectorstrength | ✅ All implemented |
+| waveforms | chirp, gausspulse, sawtooth, square, unit_impulse | ✅ All implemented |
+| wavelets | cwt, morlet, morlet2 | ✅ All implemented |
+| windows | qmf, ricker, chebwin, general_cosine, general_gaussian, hamming, kaiser, parzen, taylor, triang | ✅ All implemented |
+
+**Note**: `firfilter2` and `channelize_poly` are not in the original scipy.signal API but are cuSignal-specific extensions.
+
+### Missing Operators (Added 2026-06-07)
+
+These operators were missing and added as composite implementations:
+- `lombscargle`: Frontend only (backend kernels existed)
+- `istft`: Overlap-add synthesis
+- `sosfilt`: Cascade biquad (Direct Form II transposed)
+- `upfirdn`: Upsample + FIR filter + downsample
+- `channelize_poly`: Polyphase channelizer
+- `qmf`: Quadrature mirror filter pair
+
+All are composite implementations using existing primitives (FFT, convolution, elementwise ops).

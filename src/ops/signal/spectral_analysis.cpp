@@ -334,6 +334,129 @@ SpectrogramResult stft(const Array &x, double fs, const std::string &window,
 }
 
 // ============================================================================
+// istft
+// ============================================================================
+
+Array istft(const Array &Zxx, double fs, const std::string &window,
+            int64_t nperseg, int64_t noverlap, int64_t nfft) {
+  INS_CHECK(Zxx.defined(), "istft: Zxx is undefined");
+  INS_CHECK(Zxx.shape().ndim() == 2, "istft: Zxx must be 2D");
+
+  int64_t n_freq = Zxx.shape().dims()[0];   // frequency bins
+  int64_t n_frames = Zxx.shape().dims()[1]; // time frames
+
+  // Infer nfft from frequency bins: onesided -> nfft = 2*(n_freq-1)
+  if (nfft <= 0)
+    nfft = 2 * (n_freq - 1);
+  if (nperseg <= 0)
+    nperseg = nfft;
+  if (noverlap <= 0)
+    noverlap = nperseg / 2;
+
+  // Get analysis window
+  Array win = get_window(window, nperseg, false);
+
+  // Inverse FFT each frame
+  int64_t hop = nperseg - noverlap;
+  Place dev = Zxx.place();
+
+  // Create full spectrum (mirror conjugate for onesided)
+  // onesided: n_freq = nfft/2+1, need to mirror to get full nfft
+  std::vector<Array> segments;
+  segments.reserve(n_frames);
+
+  for (int64_t i = 0; i < n_frames; ++i) {
+    // Extract column i as a 1D array
+    // Zxx is [n_freq x n_frames], column i = Zxx[0:n_freq, i]
+    std::vector<std::complex<double>> col_data(n_freq);
+    Array Zxx_cpu = Zxx.to(CPUPlace());
+    const std::complex<double> *z_data = Zxx_cpu.data<std::complex<double>>();
+    for (int64_t j = 0; j < n_freq; ++j) {
+      col_data[j] = z_data[j * n_frames + i];
+    }
+    Array col = to_array(col_data, DType::C64, CPUPlace());
+
+    // Reconstruct full spectrum from one-sided
+    Array full_spec;
+    if (n_freq == nfft / 2 + 1 && nfft > 2) {
+      // Mirror: conj(X[nfft-k]) = conj(X[k]) for k=1..nfft/2-1
+      std::vector<Array> parts;
+      parts.push_back(col); // [0..nfft/2]
+
+      // Mirror part: reverse and conjugate, skip DC and Nyquist
+      Array mirrored = col[Slice(1, n_freq - 1)]; // skip DC and Nyquist
+      mirrored = conj(mirrored);
+      // Reverse
+      mirrored = flip(mirrored, 0);
+      parts.push_back(mirrored);
+
+      full_spec = concat(parts, 0);
+    } else {
+      full_spec = col;
+    }
+
+    // IFFT
+    Array segment = fft::ifft(full_spec, nfft);
+    // Take real part
+    segment = real(segment);
+    // Truncate to nperseg
+    if (segment.numel() > nperseg) {
+      segment = segment[Slice(0, nperseg)];
+    }
+
+    // Apply window (synthesis window / analysis window squared)
+    segment = segment * win;
+    segments.push_back(segment);
+  }
+
+  // Overlap-add synthesis
+  int64_t n_total = (n_frames - 1) * hop + nperseg;
+  Array output = zeros({n_total}, DType::F64, dev);
+  Array norm = zeros({n_total}, DType::F64, dev);
+
+  for (int64_t i = 0; i < n_frames; ++i) {
+    int64_t start = i * hop;
+    // Ensure segment is F64
+    if (segments[i].dtype() != DType::F64)
+      segments[i] = segments[i].to(DType::F64);
+    // Add segment to output
+    Array out_slice = output[Slice(start, start + nperseg)];
+    out_slice = out_slice + segments[i];
+    output[Slice(start, start + nperseg)] = out_slice;
+
+    // Add window squared to norm
+    Array win_sq = win * win;
+    if (win_sq.dtype() != DType::F64)
+      win_sq = win_sq.to(DType::F64);
+    Array norm_slice = norm[Slice(start, start + nperseg)];
+    norm_slice = norm_slice + win_sq;
+    norm[Slice(start, start + nperseg)] = norm_slice;
+  }
+
+  // Normalize: divide by sum of squared windows
+  // Avoid division by zero
+  Array norm_cpu = norm.to(CPUPlace());
+  Array out_cpu = output.to(CPUPlace());
+  double *norm_data = norm_cpu.data<double>();
+  double *out_data = out_cpu.data<double>();
+  for (int64_t i = 0; i < n_total; ++i) {
+    if (std::abs(norm_data[i]) > 1e-10) {
+      out_data[i] /= norm_data[i];
+    }
+  }
+
+  // Copy back to original device
+  if (dev.kind() == DeviceKind::GPU) {
+    output = to_array(std::vector<double>(out_data, out_data + n_total),
+                      DType::F64, dev);
+  } else {
+    output = out_cpu;
+  }
+
+  return output;
+}
+
+// ============================================================================
 // vectorstrength
 // ============================================================================
 
@@ -358,6 +481,54 @@ std::pair<double, double> vectorstrength(const Array &events, double period) {
   double angle = std::atan2(imag_sum, real_sum);
 
   return {strength, angle};
+}
+
+// ============================================================================
+// lombscargle
+// ============================================================================
+
+Array lombscargle(const Array &x, const Array &y, const Array &freqs) {
+  INS_CHECK(x.defined(), "lombscargle: x is undefined");
+  INS_CHECK(y.defined(), "lombscargle: y is undefined");
+  INS_CHECK(freqs.defined(), "lombscargle: freqs is undefined");
+  INS_CHECK(x.shape().ndim() == 1, "lombscargle: x must be 1D");
+  INS_CHECK(y.shape().ndim() == 1, "lombscargle: y must be 1D");
+  INS_CHECK(freqs.shape().ndim() == 1, "lombscargle: freqs must be 1D");
+  INS_CHECK(x.numel() == y.numel(),
+            "lombscargle: x and y must have the same length");
+
+  Place dev = x.place();
+  DType dtype = x.dtype();
+  INS_CHECK(dtype == DType::F32 || dtype == DType::F64,
+            "lombscargle: x must be F32 or F64");
+
+  // Ensure all inputs are on the same device and dtype
+  Array x_c = x;
+  Array y_c = y;
+  Array f_c = freqs;
+  if (x_c.dtype() != dtype)
+    x_c = x_c.to(dtype);
+  if (y_c.dtype() != dtype)
+    y_c = y_c.to(dtype);
+  if (f_c.dtype() != dtype)
+    f_c = f_c.to(dtype);
+
+  if (x_c.place() != dev)
+    x_c = x_c.to(dev);
+  if (y_c.place() != dev)
+    y_c = y_c.to(dev);
+  if (f_c.place() != dev)
+    f_c = f_c.to(dev);
+
+  // Allocate output
+  Array out(f_c.shape(), dtype, dev);
+
+  // Dispatch to backend
+  ops().launch("signal_lombscargle", dev, dtype,
+               {x_c.layout_ptr(), y_c.layout_ptr(), f_c.layout_ptr()},
+               {out.layout_ptr()});
+
+  return out;
 }
 
 } // namespace signal

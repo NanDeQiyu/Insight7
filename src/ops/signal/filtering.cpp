@@ -784,5 +784,247 @@ Array wiener(const Array &im, const std::vector<int64_t> &mysize,
   return result;
 }
 
+// ============================================================================
+// sosfilt — second-order sections filtering
+// ============================================================================
+
+Array sosfilt(const Array &x, const Array &sos) {
+  INS_CHECK(x.defined(), "sosfilt: x is undefined");
+  INS_CHECK(sos.defined(), "sosfilt: sos is undefined");
+  INS_CHECK(x.shape().ndim() == 1, "sosfilt: x must be 1D");
+  INS_CHECK(sos.shape().ndim() == 2, "sosfilt: sos must be 2D");
+  INS_CHECK(sos.shape().dims()[1] == 6,
+            "sosfilt: sos must have 6 columns [b0,b1,b2,a0,a1,a2]");
+
+  Place cpu = CPUPlace();
+  Array x_cpu = x.to(cpu).to(DType::F64);
+  Array sos_cpu = sos.to(cpu).to(DType::F64);
+
+  int64_t n = x.numel();
+  int64_t n_sections = sos.shape().dims()[0];
+
+  // Get raw data pointers
+  const double *x_data = x_cpu.data<double>();
+  const double *sos_data = sos_cpu.data<double>();
+
+  // Create output array
+  std::vector<double> y(n);
+  std::vector<double> temp(n);
+
+  // Copy input to working buffer
+  for (int64_t i = 0; i < n; ++i)
+    y[i] = x_data[i];
+
+  // Apply each biquad section in cascade
+  for (int64_t s = 0; s < n_sections; ++s) {
+    const double *section = sos_data + s * 6;
+    double b0 = section[0], b1 = section[1], b2 = section[2];
+    double a0 = section[3], a1 = section[4], a2 = section[5];
+
+    // Normalize by a0
+    if (std::abs(a0) > 1e-30) {
+      b0 /= a0;
+      b1 /= a0;
+      b2 /= a0;
+      a1 /= a0;
+      a2 /= a0;
+    }
+
+    // Direct Form II transposed
+    double w1 = 0, w2 = 0;
+    for (int64_t i = 0; i < n; ++i) {
+      double xi = y[i];
+      double wi = xi - a1 * w1 - a2 * w2;
+      temp[i] = b0 * wi + b1 * w1 + b2 * w2;
+      w2 = w1;
+      w1 = wi;
+    }
+
+    // Swap buffers
+    y.swap(temp);
+  }
+
+  // Convert back to original dtype
+  if (x.dtype() == DType::F32) {
+    std::vector<float> y_f32(n);
+    for (int64_t i = 0; i < n; ++i)
+      y_f32[i] = static_cast<float>(y[i]);
+    Array result = to_array(y_f32, DType::F32, cpu);
+    if (x.place().kind() != DeviceKind::CPU)
+      result = result.to(x.place());
+    return result;
+  }
+
+  Array result = to_array(y, DType::F64, cpu);
+  if (x.place().kind() != DeviceKind::CPU)
+    result = result.to(x.place());
+  return result;
+}
+
+// ============================================================================
+// upfirdn — upsample, FIR filter, downsample
+// ============================================================================
+
+Array upfirdn(const Array &h, const Array &x, int64_t p, int64_t q) {
+  INS_CHECK(h.defined(), "upfirdn: h is undefined");
+  INS_CHECK(x.defined(), "upfirdn: x is undefined");
+  INS_CHECK(h.shape().ndim() == 1, "upfirdn: h must be 1D");
+  INS_CHECK(x.shape().ndim() == 1, "upfirdn: x must be 1D");
+  INS_CHECK(p >= 1, "upfirdn: p must be >= 1");
+  INS_CHECK(q >= 1, "upfirdn: q must be >= 1");
+
+  Place cpu = CPUPlace();
+  DType work_dtype = (x.dtype() == DType::F32) ? DType::F32 : DType::F64;
+  Array h_cpu = h.to(cpu).to(work_dtype);
+  Array x_cpu = x.to(cpu).to(work_dtype);
+
+  int64_t h_len = h.numel();
+  int64_t x_len = x.numel();
+
+  // Upsample: insert zeros between samples
+  int64_t up_len = x_len * p;
+  std::vector<double> up_data(up_len, 0.0);
+  const double *x_data = x_cpu.data<double>();
+  for (int64_t i = 0; i < x_len; ++i) {
+    up_data[i * p] = x_data[i];
+  }
+
+  // Apply FIR filter (direct convolution)
+  const double *h_data = h_cpu.data<double>();
+  int64_t conv_len = up_len + h_len - 1;
+  std::vector<double> conv_data(conv_len, 0.0);
+
+  for (int64_t i = 0; i < conv_len; ++i) {
+    double sum = 0.0;
+    int64_t k_start = std::max(int64_t(0), i - up_len + 1);
+    int64_t k_end = std::min(h_len - 1, i);
+    for (int64_t k = k_start; k <= k_end; ++k) {
+      int64_t j = i - k;
+      if (j >= 0 && j < up_len) {
+        sum += h_data[k] * up_data[j];
+      }
+    }
+    conv_data[i] = sum;
+  }
+
+  // Downsample: take every q-th sample, with offset for filter delay
+  int64_t offset = h_len - 1;
+  int64_t n_out = (conv_len - offset + q - 1) / q;
+  std::vector<double> result_data;
+  result_data.reserve(n_out);
+
+  for (int64_t i = offset; i < conv_len; i += q) {
+    result_data.push_back(conv_data[i]);
+  }
+
+  if (work_dtype == DType::F32) {
+    std::vector<float> result_f32(result_data.size());
+    for (size_t i = 0; i < result_data.size(); ++i)
+      result_f32[i] = static_cast<float>(result_data[i]);
+    Array result = to_array(result_f32, DType::F32, cpu);
+    if (x.place().kind() != DeviceKind::CPU)
+      result = result.to(x.place());
+    return result;
+  }
+
+  Array result = to_array(result_data, DType::F64, cpu);
+  if (x.place().kind() != DeviceKind::CPU)
+    result = result.to(x.place());
+  return result;
+}
+
+// ============================================================================
+// channelize_poly — polyphase channelizer
+// ============================================================================
+
+Array channelize_poly(const Array &x, const Array &h, int64_t n_channels) {
+  INS_CHECK(x.defined(), "channelize_poly: x is undefined");
+  INS_CHECK(h.defined(), "channelize_poly: h is undefined");
+  INS_CHECK(x.shape().ndim() == 1, "channelize_poly: x must be 1D");
+  INS_CHECK(h.shape().ndim() == 1, "channelize_poly: h must be 1D");
+  INS_CHECK(n_channels >= 1, "channelize_poly: n_channels must be >= 1");
+
+  Place cpu = CPUPlace();
+  DType work_dtype = (x.dtype() == DType::F32) ? DType::F32 : DType::F64;
+  Array x_cpu = x.to(cpu).to(work_dtype);
+  Array h_cpu = h.to(cpu).to(work_dtype);
+
+  int64_t x_len = x.numel();
+  int64_t h_len = h.numel();
+
+  // Number of output frames
+  int64_t n_frames = x_len / n_channels;
+
+  // Reshape prototype filter into polyphase matrix [n_channels x n_taps]
+  int64_t n_taps = (h_len + n_channels - 1) / n_channels;
+  // Pad h to n_channels * n_taps
+  int64_t h_padded_len = n_channels * n_taps;
+  std::vector<double> h_padded(h_padded_len, 0.0);
+  const double *h_data = h_cpu.data<double>();
+  for (int64_t i = 0; i < h_len; ++i)
+    h_padded[i] = h_data[i];
+
+  // Reshape into [n_channels x n_taps] (row-major: row k = h_padded[k],
+  // k+n_channels, k+2*n_channels, ...)
+  // polyphase[k][j] = h_padded[k + j * n_channels]
+
+  // Reshape input into [n_frames x n_channels]
+  const double *x_data = x_cpu.data<double>();
+
+  // Output: [n_channels x n_frames]
+  int64_t out_rows = n_channels;
+  int64_t out_cols = n_frames;
+  std::vector<double> out_data(out_rows * out_cols, 0.0);
+
+  // For each channel k, convolve polyphase filter k with input column k
+  for (int64_t k = 0; k < n_channels; ++k) {
+    // Extract polyphase filter for channel k
+    std::vector<double> h_k(n_taps);
+    for (int64_t j = 0; j < n_taps; ++j) {
+      int64_t idx = k + j * n_channels;
+      h_k[j] = (idx < h_padded_len) ? h_padded[idx] : 0.0;
+    }
+
+    // Extract input samples for channel k: x[k], x[k+n_channels],
+    // x[k+2*n_channels], ...
+    std::vector<double> x_k;
+    for (int64_t i = k; i < x_len; i += n_channels) {
+      x_k.push_back(x_data[i]);
+    }
+
+    // Convolve h_k with x_k
+    int64_t x_k_len = static_cast<int64_t>(x_k.size());
+    int64_t conv_len = x_k_len + n_taps - 1;
+
+    for (int64_t i = 0; i < out_cols; ++i) {
+      double sum = 0.0;
+      for (int64_t j = 0; j < n_taps; ++j) {
+        int64_t idx = i - j;
+        if (idx >= 0 && idx < x_k_len) {
+          sum += h_k[j] * x_k[idx];
+        }
+      }
+      out_data[k * out_cols + i] = sum;
+    }
+  }
+
+  if (work_dtype == DType::F32) {
+    std::vector<float> out_f32(out_data.size());
+    for (size_t i = 0; i < out_data.size(); ++i)
+      out_f32[i] = static_cast<float>(out_data[i]);
+    Array result = to_array(out_f32, DType::F32, cpu);
+    result = reshape(result, {out_rows, out_cols});
+    if (x.place().kind() != DeviceKind::CPU)
+      result = result.to(x.place());
+    return result;
+  }
+
+  Array result = to_array(out_data, DType::F64, cpu);
+  result = reshape(result, {out_rows, out_cols});
+  if (x.place().kind() != DeviceKind::CPU)
+    result = result.to(x.place());
+  return result;
+}
+
 } // namespace signal
 } // namespace ins

@@ -13,7 +13,9 @@ __all__ = [
     "coherence",
     "spectrogram",
     "stft",
+    "istft",
     "vectorstrength",
+    "lombscargle",
 ]
 
 
@@ -263,3 +265,41 @@ def vectorstrength(events, period):
         mean phase in radians.
     """
     return _signal.vectorstrength(events, period)
+
+
+def lombscargle(x, y, freqs):
+    """Compute the Lomb-Scargle periodogram.
+
+    Computes a frequency representation of irregularly-sampled data.
+    The periodogram measures the power at each frequency for signals
+    with non-uniform sampling.
+
+    Args:
+        x: 1D array of sample times.
+        y: 1D array of sample values (same length as x).
+        freqs: 1D array of frequencies to evaluate (in Hz).
+
+    Returns:
+        1D array of power spectral density at each frequency.
+    """
+    return _signal.lombscargle(x, y, freqs)
+
+
+def istft(Zxx, fs=1.0, window="hann", nperseg=0, noverlap=0, nfft=0):
+    """Compute the inverse Short-Time Fourier Transform (ISTFT).
+
+    Reconstructs a time-domain signal from its STFT representation using
+    overlap-add synthesis.
+
+    Args:
+        Zxx: STFT complex spectrogram (2D array).
+        fs: Sampling frequency. Default: 1.0.
+        window: Window used in STFT. Default: "hann".
+        nperseg: Segment length used in STFT. Default: inferred.
+        noverlap: Overlap used in STFT. Default: nperseg/2.
+        nfft: FFT length used in STFT. Default: inferred.
+
+    Returns:
+        Reconstructed time-domain signal.
+    """
+    return _signal.istft(Zxx, fs, window, nperseg, noverlap, nfft)

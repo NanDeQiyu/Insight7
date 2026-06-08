@@ -207,3 +207,135 @@ TEST_F(SignalSpectralTestCPU, VectorStrengthAntiSync) {
   auto [strength, phase] = signal::vectorstrength(ev, 1.0);
   EXPECT_NEAR(strength, 0.0, 1e-10);
 }
+
+// ========== lombscargle ==========
+
+TEST_F(SignalSpectralTestCPU, LombScargleBasic) {
+  // Generate a sinusoidal signal with uniform sampling
+  int64_t N = 100;
+  double fs = 10.0;      // 10 Hz sampling
+  double f_signal = 1.0; // 1 Hz signal
+  std::vector<double> t(N), y(N);
+  for (int64_t i = 0; i < N; ++i) {
+    t[i] = i / fs;
+    y[i] = std::sin(2.0 * M_PI * f_signal * t[i]);
+  }
+
+  // Evaluation frequencies
+  int64_t nf = 50;
+  std::vector<double> freqs(nf);
+  for (int64_t i = 0; i < nf; ++i) {
+    freqs[i] = 0.1 * (i + 1); // 0.1 to 5.0 Hz
+  }
+
+  Array t_arr = to_array(t);
+  Array y_arr = to_array(y);
+  Array f_arr = to_array(freqs);
+
+  Array power = signal::lombscargle(t_arr, y_arr, f_arr);
+
+  // Output should have same length as freqs
+  EXPECT_EQ(power.numel(), nf);
+
+  // Peak should be near the signal frequency (1 Hz)
+  const double *p = power.data<double>();
+  int64_t peak_idx = 0;
+  double peak_val = p[0];
+  for (int64_t i = 1; i < nf; ++i) {
+    if (p[i] > peak_val) {
+      peak_val = p[i];
+      peak_idx = i;
+    }
+  }
+  double peak_freq = freqs[peak_idx];
+  EXPECT_NEAR(peak_freq, f_signal, 0.3); // within 0.3 Hz of true freq
+}
+
+TEST_F(SignalSpectralTestCPU, LombScargleF32) {
+  int64_t N = 50;
+  std::vector<float> t(N), y(N), freqs(20);
+  for (int64_t i = 0; i < N; ++i) {
+    t[i] = static_cast<float>(i) * 0.1f;
+    y[i] = std::sin(2.0f * static_cast<float>(M_PI) * 2.0f * t[i]);
+  }
+  for (int64_t i = 0; i < 20; ++i) {
+    freqs[i] = 0.5f * (i + 1);
+  }
+
+  Array t_arr = to_array(t);
+  Array y_arr = to_array(y);
+  Array f_arr = to_array(freqs);
+
+  Array power = signal::lombscargle(t_arr, y_arr, f_arr);
+  EXPECT_EQ(power.numel(), 20);
+  EXPECT_EQ(power.dtype(), DType::F32);
+}
+
+TEST_F(SignalSpectralTestCPU, LombScargleConstantSignal) {
+  // Constant signal -> function should run without error
+  int64_t N = 50;
+  std::vector<double> t(N), y(N), freqs(10);
+  for (int64_t i = 0; i < N; ++i) {
+    t[i] = static_cast<double>(i) * 0.1;
+    y[i] = 5.0;
+  }
+  for (int64_t i = 0; i < 10; ++i) {
+    freqs[i] = 0.5 * (i + 1);
+  }
+
+  Array t_arr = to_array(t);
+  Array y_arr = to_array(y);
+  Array f_arr = to_array(freqs);
+
+  Array power = signal::lombscargle(t_arr, y_arr, f_arr);
+  EXPECT_EQ(power.numel(), 10);
+
+  // All values should be finite and non-negative
+  const double *p = power.data<double>();
+  for (int64_t i = 0; i < 10; ++i) {
+    EXPECT_TRUE(std::isfinite(p[i]));
+    EXPECT_GE(p[i], 0.0);
+  }
+}
+
+TEST_F(SignalSpectralTestCPU, LombScargleInvalidInput) {
+  Array x = to_array(std::vector<double>{1, 2, 3});
+  Array y = to_array(std::vector<double>{1, 2});
+  Array f = to_array(std::vector<double>{0.5});
+
+  // x and y must have same length
+  EXPECT_THROW(signal::lombscargle(x, y, f), std::exception);
+}
+
+// ========== istft ==========
+
+TEST_F(SignalSpectralTestCPU, IstftBasic) {
+  // Simple test: ISTFT should produce valid output
+  std::vector<std::complex<double>> spec_data = {
+      {1.0, 0.0}, {0.0, 1.0}, {-1.0, 0.0}, {0.0, -1.0}};
+  Array Zxx = to_array(spec_data, DType::C64, CPUPlace());
+  Zxx = reshape(Zxx, {2, 2});
+
+  Array result = signal::istft(Zxx, 1.0, "hann", 2, 1);
+
+  EXPECT_GT(result.numel(), 0);
+  EXPECT_EQ(result.shape().ndim(), 1);
+}
+
+TEST_F(SignalSpectralTestCPU, IstftRoundTrip) {
+  // Test istft with a manually created spectrogram
+  // 4 frequency bins, 3 time frames
+  std::vector<std::complex<double>> spec_data(12);
+  for (int i = 0; i < 12; ++i) {
+    spec_data[i] = std::complex<double>(static_cast<double>(i % 4),
+                                        static_cast<double>(i % 3));
+  }
+  Array Zxx = to_array(spec_data, DType::C64, CPUPlace());
+  Zxx = reshape(Zxx, {4, 3});
+
+  // nfft = 2*(4-1) = 6, nperseg = 6
+  Array result = signal::istft(Zxx, 1.0, "hann", 6, 3);
+
+  EXPECT_GT(result.numel(), 0);
+  EXPECT_EQ(result.shape().ndim(), 1);
+}

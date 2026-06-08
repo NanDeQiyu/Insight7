@@ -19,6 +19,9 @@ __all__ = [
     "resample_poly",
     "freq_shift",
     "wiener",
+    "sosfilt",
+    "upfirdn",
+    "channelize_poly",
 ]
 
 
@@ -201,3 +204,50 @@ def wiener(im, mysize=None, noise=-1):
     if noise != -1:
         kwargs["noise"] = noise
     return _signal.wiener(im, **kwargs)
+
+
+def sosfilt(x, sos):
+    """Filter data using second-order sections (SOS).
+
+    Applies a cascade of second-order (biquad) sections to the input signal.
+
+    Args:
+        x: Input signal (1D array).
+        sos: Second-order sections matrix (2D, shape [n_sections x 6]).
+
+    Returns:
+        Filtered signal (same length as x).
+    """
+    return _signal.sosfilt(x, sos)
+
+
+def upfirdn(h, x, p, q):
+    """Upsample, FIR filter, and downsample.
+
+    Args:
+        h: FIR filter coefficients (1D array).
+        x: Input signal (1D array).
+        p: Upsampling factor.
+        q: Downsampling factor.
+
+    Returns:
+        Filtered and resampled signal.
+    """
+    return _signal.upfirdn(h, x, p, q)
+
+
+def channelize_poly(x, h, n_channels):
+    """Polyphase channelizer.
+
+    Splits a broadband signal into multiple narrowband channels using
+    a polyphase filter bank.
+
+    Args:
+        x: Input signal (1D array).
+        h: Prototype lowpass filter (1D array).
+        n_channels: Number of channels.
+
+    Returns:
+        2D array [n_channels x n_frames] of channelized signals.
+    """
+    return _signal.channelize_poly(x, h, n_channels)

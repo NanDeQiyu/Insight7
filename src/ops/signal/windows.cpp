@@ -625,5 +625,35 @@ Array get_window(const std::string &window, double param, int64_t Nx,
   return get_window(window, Nx, fftbins);
 }
 
+// ============================================================================
+// qmf — Quadrature Mirror Filter
+// ============================================================================
+
+std::pair<Array, Array> qmf(const Array &h_low) {
+  INS_CHECK(h_low.defined(), "qmf: h_low is undefined");
+  INS_CHECK(h_low.shape().ndim() == 1, "qmf: h_low must be 1D");
+
+  Place cpu = CPUPlace();
+  int64_t n = h_low.numel();
+  Array h_cpu = h_low.to(cpu);
+
+  // Highpass filter: h_high[k] = (-1)^k * h_low[k]
+  // This is equivalent to modulating by exp(j*pi*k) = (-1)^k
+  std::vector<double> mod(n);
+  for (int64_t k = 0; k < n; ++k) {
+    mod[k] = (k % 2 == 0) ? 1.0 : -1.0;
+  }
+  Array mod_arr = to_array(mod, h_low.dtype(), cpu);
+
+  Array h_high = mul(h_cpu, mod_arr);
+
+  // Move back to original device
+  if (h_low.place().kind() != DeviceKind::CPU) {
+    h_high = h_high.to(h_low.place());
+  }
+
+  return {h_low, h_high};
+}
+
 } // namespace signal
 } // namespace ins

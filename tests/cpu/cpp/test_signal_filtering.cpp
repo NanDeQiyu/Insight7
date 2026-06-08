@@ -374,3 +374,127 @@ TEST_F(SignalFilteringTestCPU, FirfilterBasic) {
     EXPECT_NEAR(d[i], 0.0, 1e-10);
   }
 }
+
+// ========== sosfilt ==========
+
+TEST_F(SignalFilteringTestCPU, SosfiltSingleSection) {
+  // Single biquad: y[n] = x[n] (identity)
+  // sos = [1, 0, 0, 1, 0, 0] (b0=1, b1=0, b2=0, a0=1, a1=0, a2=0)
+  std::vector<double> sos_data = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+  Array sos = to_array(sos_data, DType::F64, CPUPlace());
+  sos = reshape(sos, {1, 6});
+
+  std::vector<double> x_data = {1.0, 2.0, 3.0, 4.0, 5.0};
+  Array x = to_array(x_data);
+
+  Array y = signal::sosfilt(x, sos);
+
+  const double *d = y.data<double>();
+  for (int64_t i = 0; i < 5; ++i) {
+    EXPECT_NEAR(d[i], x_data[i], 1e-10);
+  }
+}
+
+TEST_F(SignalFilteringTestCPU, SosfiltLowpass) {
+  // Simple lowpass biquad: y[n] = 0.5*x[n] + 0.5*x[n-1]
+  // b=[0.5, 0.5, 0], a=[1, 0, 0]
+  std::vector<double> sos_data = {0.5, 0.5, 0.0, 1.0, 0.0, 0.0};
+  Array sos = to_array(sos_data, DType::F64, CPUPlace());
+  sos = reshape(sos, {1, 6});
+
+  std::vector<double> x_data = {1.0, 0.0, 0.0, 0.0, 0.0};
+  Array x = to_array(x_data);
+
+  Array y = signal::sosfilt(x, sos);
+
+  const double *d = y.data<double>();
+  EXPECT_NEAR(d[0], 0.5, 1e-10);
+  EXPECT_NEAR(d[1], 0.5, 1e-10);
+  EXPECT_NEAR(d[2], 0.0, 1e-10);
+  EXPECT_NEAR(d[3], 0.0, 1e-10);
+  EXPECT_NEAR(d[4], 0.0, 1e-10);
+}
+
+TEST_F(SignalFilteringTestCPU, SosfiltCascade) {
+  // Two cascaded sections
+  // Section 1: gain=1, no feedback
+  // Section 2: gain=1, no feedback
+  std::vector<double> sos_data = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+                                  1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+  Array sos = to_array(sos_data, DType::F64, CPUPlace());
+  sos = reshape(sos, {2, 6});
+
+  std::vector<double> x_data = {1.0, 2.0, 3.0};
+  Array x = to_array(x_data);
+
+  Array y = signal::sosfilt(x, sos);
+
+  const double *d = y.data<double>();
+  for (int64_t i = 0; i < 3; ++i) {
+    EXPECT_NEAR(d[i], x_data[i], 1e-10);
+  }
+}
+
+// ========== upfirdn ==========
+
+TEST_F(SignalFilteringTestCPU, UpfirdnUpsampleOnly) {
+  // p=2, q=1, h=[1] -> upsample by 2
+  std::vector<double> h_data = {1.0};
+  std::vector<double> x_data = {1.0, 2.0, 3.0};
+  Array h = to_array(h_data);
+  Array x = to_array(x_data);
+
+  Array y = signal::upfirdn(h, x, 2, 1);
+
+  // Upsampled: [1, 0, 2, 0, 3, 0]
+  EXPECT_EQ(y.numel(), 6);
+  const double *d = y.data<double>();
+  EXPECT_NEAR(d[0], 1.0, 1e-10);
+  EXPECT_NEAR(d[1], 0.0, 1e-10);
+  EXPECT_NEAR(d[2], 2.0, 1e-10);
+  EXPECT_NEAR(d[3], 0.0, 1e-10);
+  EXPECT_NEAR(d[4], 3.0, 1e-10);
+  EXPECT_NEAR(d[5], 0.0, 1e-10);
+}
+
+TEST_F(SignalFilteringTestCPU, UpfirdnDownsampleOnly) {
+  // p=1, q=2, h=[1] -> downsample by 2
+  std::vector<double> h_data = {1.0};
+  std::vector<double> x_data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+  Array h = to_array(h_data);
+  Array x = to_array(x_data);
+
+  Array y = signal::upfirdn(h, x, 1, 2);
+
+  // Downsampled: [1, 3, 5]
+  const double *d = y.data<double>();
+  EXPECT_NEAR(d[0], 1.0, 1e-10);
+  EXPECT_NEAR(d[1], 3.0, 1e-10);
+  EXPECT_NEAR(d[2], 5.0, 1e-10);
+}
+
+// ========== channelize_poly ==========
+
+TEST_F(SignalFilteringTestCPU, ChannelizePolyBasic) {
+  // Simple test: 2 channels, 4 samples
+  std::vector<double> h_data = {1.0, 1.0, 1.0, 1.0}; // 4-tap filter
+  std::vector<double> x_data = {1.0, 2.0, 3.0, 4.0}; // 4 samples
+
+  Array h = to_array(h_data);
+  Array x = to_array(x_data);
+
+  Array y = signal::channelize_poly(x, h, 2);
+
+  // Should produce 2x2 output
+  EXPECT_EQ(y.shape().ndim(), 2);
+  EXPECT_EQ(y.shape().dims()[0], 2);
+  EXPECT_EQ(y.shape().dims()[1], 2);
+}
+
+TEST_F(SignalFilteringTestCPU, ChannelizePolyInvalidInput) {
+  Array h = to_array(std::vector<double>{1.0, 1.0});
+  Array x = to_array(std::vector<double>{1.0, 2.0, 3.0});
+
+  // n_channels must be >= 1
+  EXPECT_THROW(signal::channelize_poly(x, h, 0), std::exception);
+}

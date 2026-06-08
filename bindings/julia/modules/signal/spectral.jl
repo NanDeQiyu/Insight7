@@ -142,3 +142,18 @@ function vectorstrength(events::InsightArray, period::Float64)
           events, period, strength_ref, phase_ref)
     return (strength=strength_ref[], phase=phase_ref[])
 end
+
+"""
+    lombscargle(x::InsightArray, y::InsightArray, freqs::InsightArray) -> InsightArray
+
+Compute the Lomb-Scargle periodogram. Returns power spectral density at each frequency.
+"""
+function lombscargle(x::InsightArray, y::InsightArray, freqs::InsightArray)
+    ptr = ccall((:insight_jl_lombscargle, LIB_INSIGHT), Ptr{Cvoid},
+                (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}),
+                x, y, freqs)
+    if ptr == C_NULL
+        error("lombscargle failed")
+    end
+    return InsightArray(ptr)
+end

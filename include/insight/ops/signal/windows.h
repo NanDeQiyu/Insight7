@@ -202,5 +202,21 @@ Array chebwin(int64_t M, double at, bool sym = true);
 Array taylor(int64_t M, int64_t nbar = 4, double sll = -30.0, bool norm = true,
              bool sym = true);
 
+// ============================================================================
+// Quadrature Mirror Filter
+// ============================================================================
+
+/**
+ * @brief Returns a Quadrature Mirror Filter (QMF) pair.
+ *
+ * Constructs the lowpass and highpass filters for a quadrature mirror
+ * filter bank. The highpass filter is a frequency-shifted and
+ * time-reversed version of the lowpass filter.
+ *
+ * @param h_low Lowpass filter coefficients (1D)
+ * @return Pair of {lowpass, highpass} filter arrays
+ */
+std::pair<Array, Array> qmf(const Array &h_low);
+
 } // namespace signal
 } // namespace ins
