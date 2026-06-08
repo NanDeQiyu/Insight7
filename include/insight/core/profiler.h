@@ -131,10 +131,12 @@ private:
  */
 struct ProfileBlock {
   Profiler &prof;
-  explicit ProfileBlock(Profiler &p, const char *name) : prof(p) {
-    prof.begin_event(name);
+  ProfileBlock(Profiler &p, const char *name_) : prof(p) {
+    prof.begin_event(name_);
   }
   ~ProfileBlock() { prof.end_event(); }
+  ProfileBlock(const ProfileBlock &) = delete;
+  ProfileBlock &operator=(const ProfileBlock &) = delete;
 };
 
 } // namespace ins
