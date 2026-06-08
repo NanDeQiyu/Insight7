@@ -192,54 +192,102 @@ end
 -- ============================================================
 -- 运行一帧
 -- ============================================================
-local function run_frame(seed_val, external_noise)
+local function run_frame(seed_val, external_noise, prof)
   -- [1] 合成信号
   local t0 = os.clock()
   ins.seed(seed_val)
   local noise
+  if prof then
+    prof:begin_event("randn")
+  end
   if external_noise then
     noise = external_noise
   else
     noise = ins.randn({ N_SAMPLES }, ins.float64, _PLACE) * NOISE_STD
+  end
+  if prof then
+    prof:end_event()
   end
   local composite = _COMPOSITE_BASE + noise
   local t_gen = os.clock() - t0
 
   -- [2] 去趋势 + 带通滤波
   t0 = os.clock()
+  if prof then
+    prof:begin_event("detrend")
+  end
   local detrended = ins.signal.detrend(composite)
+  if prof then
+    prof:end_event()
+  end
+  if prof then
+    prof:begin_event("fir_filter")
+  end
   local filtered_full = ins.signal.fftconvolve(detrended, _TAPS, "full")
+  if prof then
+    prof:end_event()
+  end
   local half = math.floor(NUMTAPS / 2)
   local filtered = ins.slice(filtered_full, 1, half + 1, half + N_SAMPLES + 1)
   local t_filt = os.clock() - t0
 
   -- [3] 高斯平滑
   t0 = os.clock()
+  if prof then
+    prof:begin_event("gauss_smooth")
+  end
   local smoothed = ins.signal.fftconvolve(filtered, _GAUSS_KERNEL, "same")
+  if prof then
+    prof:end_event()
+  end
   local t_spline = os.clock() - t0
 
   -- [4] FM 解调
   t0 = os.clock()
+  if prof then
+    prof:begin_event("hilbert")
+  end
   local analytic = ins.signal.hilbert(smoothed)
+  if prof then
+    prof:end_event()
+  end
   local inst_phase = ins.unwrap(ins.angle(analytic))
   local inst_freq = gradient(inst_phase, 1.0 / FS) / (2.0 * PI)
   local t_demod = os.clock() - t0
 
   -- [5] STFT
   t0 = os.clock()
+  if prof then
+    prof:begin_event("stft")
+  end
   local stft_result = ins.signal.stft(smoothed, FS, "hann", NPERSEG, NOVERLAP)
+  if prof then
+    prof:end_event()
+  end
   local t_stft = os.clock() - t0
 
   -- [6] CWT
   t0 = os.clock()
+  if prof then
+    prof:begin_event("cwt")
+  end
   local cwt_matrix = cwt_fast(smoothed)
+  if prof then
+    prof:end_event()
+  end
   local t_cwt = os.clock() - t0
 
   -- [7] 自相关
   t0 = os.clock()
+  if prof then
+    prof:begin_event("correlate")
+  end
   local seg_len = math.min(N_SAMPLES, 512)
   local seg = ins.slice(smoothed, 1, 1, seg_len + 1)
   local autocorr_full = ins.signal.correlate(seg, seg, "full")
+  if prof then
+    prof:end_event()
+  end
   local mid = math.floor(autocorr_full.numel / 2)
   local autocorr = ins.slice(autocorr_full, 1, mid + 1, autocorr_full.numel + 1)
   local norm_val = autocorr:to(ins.CPUPlace()):get(0)
@@ -250,14 +298,26 @@ local function run_frame(seed_val, external_noise)
 
   -- [8] 峰值查找
   t0 = os.clock()
+  if prof then
+    prof:begin_event("peak_finding")
+  end
   local smoothed_list = smoothed:to(ins.CPUPlace()):table()
   local peaks_max, peaks_min = find_peaks_simple(smoothed_list, PEAK_ORDER)
+  if prof then
+    prof:end_event()
+  end
   local t_peak = os.clock() - t0
 
   -- [9] 卡尔曼滤波
   t0 = os.clock()
+  if prof then
+    prof:begin_event("kalman")
+  end
   local inst_freq_list = inst_freq:to(ins.CPUPlace()):table()
   local smoothed_freq = kalman_smooth(inst_freq_list)
+  if prof then
+    prof:end_event()
+  end
   local params = {}
   for _, p in ipairs(peaks_max) do
     if p >= 1 and p <= #smoothed_freq then
@@ -365,6 +425,10 @@ if args.info then
       math.floor((cpu_total - cpu_free) / (1024 * 1024))
     )
   )
+  -- Try loading GPU backend for info display (works even with --device cpu)
+  if not ins.has_device("gpu") then
+    pcall(ins.load_backend, "cuda")
+  end
   if ins.has_device("gpu") then
     local gpu_total, gpu_free = ins.device_memory_info(1, 0)
     print(
@@ -397,13 +461,13 @@ if args.device == "all" then
     local cpu_noise = ins.randn({ N_SAMPLES }, ins.float64, _PLACE) * NOISE_STD
 
     -- CPU run
-    local cpu_r = run_frame(args.seed + frame, cpu_noise)
+    local cpu_r = run_frame(args.seed + frame, cpu_noise, prof)
 
     if ins.has_device("gpu") then
       -- GPU run with same noise
       local gpu_noise = cpu_noise:to(ins.GPUPlace(0))
       init_cache("gpu")
-      local gpu_r = run_frame(args.seed + frame, gpu_noise)
+      local gpu_r = run_frame(args.seed + frame, gpu_noise, prof)
 
       -- Compare smoothed signal
       local cpu_smoothed = cpu_r.smoothed
@@ -435,7 +499,7 @@ if args.device == "all" then
 else
   -- Normal single-device mode
   for frame = 0, n_frames - 1 do
-    local r = run_frame(args.seed + frame)
+    local r = run_frame(args.seed + frame, nil, prof)
     times[#times + 1] = r.total_ms
 
     if n_frames == 1 or frame == 0 or (frame + 1) % 10 == 0 or frame == n_frames - 1 then

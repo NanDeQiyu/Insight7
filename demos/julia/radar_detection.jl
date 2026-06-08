@@ -118,26 +118,34 @@ end
 
 function extract_targets(energy, det)
     top_n = 2; cluster_threshold = 3.0
+    NP_const = 32  # N_PULSES
+    N_const = 1000  # N
     idx = Insight.nonzero(det)
     if idx.ptr == C_NULL
         return Tuple{Int64,Int64}[], 0
     end
     n_det = Insight.shape(idx)
-    if length(n_det) < 2 || n_det[1] == 0
+    if length(n_det) < 2 || n_det[2] == 0
         return Tuple{Int64,Int64}[], 0
     end
-    n_nonzero = n_det[1]  # shape returns reversed dims: [n_nonzero, 2]
+    n_nonzero = n_det[2]  # shape returns reversed dims: [2, n_nonzero]
 
-    # 批量 GPU→CPU 传输 nonzero 索引 + 逐元素读取能量值 (避免全 32K to_data)
+    # 批量 GPU→CPU 传输 nonzero 索引
     idx_cpu = Insight.to(idx, Int64(0))
     eng_cpu = Insight.to(energy, Int64(0))
-    idx_jl = Base.permutedims(Insight.to_data(idx_cpu), (2, 1))  # [2, n_nonzero]
+    # to_data returns column-major: (2, n_nonzero)
+    idx_jl = Insight.to_data(idx_cpu)  # [2, n_nonzero] in column-major
 
     candidates = Tuple{Int64,Int64,Float64}[]
     for k in 1:n_nonzero
-        di = Int64(idx_jl[1, k] + 1)  # 0-based → 1-based
-        ri = Int64(idx_jl[2, k] + 1)
-        v = Insight.item_flat(eng_cpu, (di - 1) * N + (ri - 1))  # 只取检测点!
+        di_raw = Int64(idx_jl[1, k])
+        ri_raw = Int64(idx_jl[2, k])
+        if di_raw < 0 || di_raw >= NP_const || ri_raw < 0 || ri_raw >= N_const
+            continue  # skip invalid indices
+        end
+        di = di_raw + 1
+        ri = ri_raw + 1
+        v = Insight.item_flat(eng_cpu, di_raw * N_const + ri_raw)
         push!(candidates, (di, ri, v))
     end
     if length(candidates) == 0; return Tuple{Int64,Int64}[], 0; end
@@ -167,7 +175,7 @@ function extract_targets(energy, det)
     return targets, length(candidates)
 end
 
-function run_frame(delays, dopplers, _device, seed; noise_r=nothing, noise_i=nothing, timer=false)
+function run_frame(delays, dopplers, _device, seed; noise_r=nothing, noise_i=nothing, timer=false, prof=nothing)
     if _device == "gpu" && Insight.has_device(Int64(1))
         Insight.load_backend("cuda")
         Insight.set_device(Insight.GPUPlace(0))
@@ -177,24 +185,34 @@ function run_frame(delays, dopplers, _device, seed; noise_r=nothing, noise_i=not
     Insight.seed(seed)
 
     t0 = time()
+    if prof !== nothing; Insight.profiler_begin_event(prof, "echo_simulation"); end
     pulses = simulate_echoes(delays, dopplers; noise_r=noise_r, noise_i=noise_i)
+    if prof !== nothing; Insight.profiler_end_event(prof); end
     t1 = time()
 
+    if prof !== nothing; Insight.profiler_begin_event(prof, "pulse_compression"); end
     pc = Insight.signal.pulse_compression(pulses, _TEMPLATE)
+    if prof !== nothing; Insight.profiler_end_event(prof); end
     t2 = time()
 
+    if prof !== nothing; Insight.profiler_begin_event(prof, "doppler"); end
     mean_pc = Insight.mean(pc, axis=0, keepdims=true)
     pc_ac = pc - mean_pc
     spec = Insight.signal.pulse_doppler(pc_ac * _HAMMING, "", Int64(N_PULSES))
     shifted = spec / Float64(N_PULSES)
+    if prof !== nothing; Insight.profiler_end_event(prof); end
     t3 = time()
 
     r2 = Insight.real_part(shifted); i2 = Insight.imag_part(shifted)
     energy = r2 * r2 + i2 * i2
+    if prof !== nothing; Insight.profiler_begin_event(prof, "ca_cfar"); end
     cfar_result = Insight.signal.ca_cfar(energy, Int32[4, 4], Int32[12, 12], 1e-6)
+    if prof !== nothing; Insight.profiler_end_event(prof); end
     t4 = time()
 
+    if prof !== nothing; Insight.profiler_begin_event(prof, "target_extraction"); end
     targets, raw_count = extract_targets(energy, cfar_result[2])
+    if prof !== nothing; Insight.profiler_end_event(prof); end
     t5 = time()
 
     valid = Tuple{Int64,Int64}[]
@@ -221,6 +239,7 @@ end
 function main()
     local device = "cpu"; local seed = Int32(42); local iterations = Int32(0)
     local timer_flag = false; local info_flag = false; local profiler_flag = false
+    local prof = nothing
     local i = 1
     while i <= length(ARGS)
         if ARGS[i] == "--device" && i < length(ARGS); device = ARGS[i+1]; i += 1
@@ -249,7 +268,7 @@ function main()
     init_cache(device == "all" ? "cpu" : device)
 
     if profiler_flag
-        global prof = Insight.Profiler(Int32(0), Int32(0))
+        prof = Insight.Profiler(Int32(0), Int32(0))
         Insight.profiler_start(prof)
     end
 
@@ -286,7 +305,7 @@ function main()
             cpu_noise_r = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
             cpu_noise_i = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
 
-            local cpu_targets, cpu_raw_count, cpu_ms, cpu_energy, cpu_pulses = run_frame(delays, dopplers, "cpu", seed; noise_r=cpu_noise_r, noise_i=cpu_noise_i, timer=timer_flag)
+            local cpu_targets, cpu_raw_count, cpu_ms, cpu_energy, cpu_pulses = run_frame(delays, dopplers, "cpu", seed; noise_r=cpu_noise_r, noise_i=cpu_noise_i, timer=timer_flag, prof=prof)
 
             # GPU run: 复用 CPU 缓存，不重新生成
             local gpu_noise_r = Insight.to(cpu_noise_r, Int64(1))
@@ -295,7 +314,7 @@ function main()
             global _TEMPLATE = Insight.to(_TEMPLATE, Int64(1))
             global _HAMMING = Insight.to(_HAMMING, Int64(1))
             global _SLOW_TIMES = Insight.to(_SLOW_TIMES, Int64(1))
-            local gpu_targets, gpu_raw_count, gpu_ms, gpu_energy, gpu_pulses = run_frame(delays, dopplers, "gpu", seed; noise_r=gpu_noise_r, noise_i=gpu_noise_i, timer=timer_flag)
+            local gpu_targets, gpu_raw_count, gpu_ms, gpu_energy, gpu_pulses = run_frame(delays, dopplers, "gpu", seed; noise_r=gpu_noise_r, noise_i=gpu_noise_i, timer=timer_flag, prof=prof)
             push!(times, cpu_ms)
             local cpu_p_cpu = Insight.to(cpu_pulses, Int64(0))
             local gpu_p_cpu = Insight.to(gpu_pulses, Int64(0))
@@ -303,7 +322,7 @@ function main()
             local max_diff = Insight.item(Insight.max(diff_arr), 0)
             println("  帧 $(Base.lpad(frame, 4))/$(n_frames) | CPU: $(Base.lpad(Base.round(cpu_ms, digits=2), 8)) ms | GPU: $(Base.lpad(Base.round(gpu_ms, digits=2), 8)) ms | max_diff=$(max_diff)")
         else
-            local targets, raw_count, total_ms, _, _ = run_frame(delays, dopplers, device, seed; timer=timer_flag)
+            local targets, raw_count, total_ms, _, _ = run_frame(delays, dopplers, device, seed; timer=timer_flag, prof=prof)
             push!(times, total_ms)
 
             if n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 || frame == n_frames - 1

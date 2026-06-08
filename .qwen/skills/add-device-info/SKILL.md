@@ -13,10 +13,37 @@ plugin architecture to user-facing APIs and language bindings.
 ## Architecture
 
 ```
-HAL (device_ext.h)  →  ins:: API (place.h/cpp)  →  Bindings (Python/Lua/Julia)
-  C_DeviceInterface      free functions               module-level functions
-  function pointers      namespace ins                ins.device_name("gpu")
+HAL (device_ext.h)  →  C API Wrapper  →  ins:: API  →  Bindings (Python/Lua/Julia)
+  C_DeviceInterface       ProfilerWrapper            free/classes      module-level
+  function pointers       stores iface ptr           (profiler.h)      ins.Profiler
 ```
+
+### C API Wrapper Pattern (for opaque handles)
+When the HAL returns an opaque handle (`C_Profiler`, `C_Event` etc.) and the
+frontend needs to call back into the HAL, create a wrapper struct:
+
+```cpp
+// src/core/profiler.cpp
+struct Wrapper {
+  C_Profiler handle;          // HAL backend's opaque handle
+  const C_DeviceInterface *iface;  // HAL interface pointer for dispatch
+};
+
+C_Status api_function(C_Profiler prof) {
+  auto *w = reinterpret_cast<Wrapper*>(prof);
+  return w->iface->some_function(w->handle);
+}
+```
+
+This is required because the HAL's opaque handles don't carry the interface
+pointer — only the backend plugin knows it at creation time. The C API layer
+must store it alongside the handle.
+
+### Exception Safety (Lua/sol2)
+sol2 does NOT automatically catch C++ exceptions from lambdas or raw
+`lua_pushcfunction` callbacks. A C++ exception escaping to LuaJIT shows as
+"C++ exception" and crashes the process. **All sol2 lambdas must wrap C++ calls
+in try/catch.**
 
 ## Step 1: HAL Layer (if new query needed)
 

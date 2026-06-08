@@ -225,7 +225,13 @@ def _extract_targets(energy, det, top_n=2, cluster_threshold=3.0):
 
 
 def run_detection(
-    device="cpu", seed=42, frame_idx=0, total_frames=1, external_noise_r=None, external_noise_i=None
+    device="cpu",
+    seed=42,
+    frame_idx=0,
+    total_frames=1,
+    external_noise_r=None,
+    external_noise_i=None,
+    prof=None,
 ):
     """
     运行一帧雷达检测 (全 GPU 优化版)。
@@ -247,21 +253,33 @@ def run_detection(
 
     # [1] 回波模拟 (全 GPU 向量化)
     t0 = time.time()
+    if prof:
+        prof.begin_event("echo_simulation")
     pulses = _simulate_echoes(target_delays, target_dopplers, external_noise_r, external_noise_i)
+    if prof:
+        prof.end_event()
     t_echo = time.time() - t0
 
     # [2] 脉冲压缩 (框架 API, batched FFT)
     t0 = time.time()
+    if prof:
+        prof.begin_event("pulse_compression")
     template = _S_TX[0:PULSE_LEN]
     pc = ins.signal.pulse_compression(pulses, template)
+    if prof:
+        prof.end_event()
     t_pc = time.time() - t0
 
     # [3] 去直流 + 多普勒处理 (框架 API)
     t0 = time.time()
+    if prof:
+        prof.begin_event("doppler")
     mean_pc = ins.mean(pc, axis=0, keepdims=True)
     pc_ac = pc - mean_pc
     spec = ins.signal.pulse_doppler(pc_ac * _HAMMING, window="", nfft=N_PULSES)
     doppler_shifted = spec / float(N_PULSES)
+    if prof:
+        prof.end_event()
     t_doppler = time.time() - t0
 
     # [4] 能量图
@@ -269,12 +287,20 @@ def run_detection(
 
     # [5] CA-CFAR 检测
     t0 = time.time()
+    if prof:
+        prof.begin_event("ca_cfar")
     _, det = ins.signal.ca_cfar(energy, [4, 4], [12, 12], 1e-6)
+    if prof:
+        prof.end_event()
     t_cfar = time.time() - t0
 
     # [6] 目标提取 (批量 GPU→CPU 传输)
     t0 = time.time()
+    if prof:
+        prof.begin_event("target_extraction")
     targets, raw_count = _extract_targets(energy, det, top_n=2, cluster_threshold=3.0)
+    if prof:
+        prof.end_event()
     t_local = time.time() - t0
 
     # [7] 有效距离筛选
@@ -391,7 +417,9 @@ if __name__ == "__main__":
             noise_i = ins.randn([N_PULSES, N], ins.float64, place=ins.CPUPlace()) * _NOISE_SIGMA
 
             # CPU run
-            cpu_result = run_detection("cpu", seed_val, frame, n_frames, noise_r, noise_i)
+            cpu_result = run_detection(
+                "cpu", seed_val, frame, n_frames, noise_r, noise_i, prof=prof
+            )
             times_cpu.append(cpu_result["total_ms"])
 
             # GPU run — 复用 CPU 缓存（传输到 GPU），不重新生成
@@ -405,7 +433,7 @@ if __name__ == "__main__":
                 gpu_noise_r = noise_r.to(gpu_pl)
                 gpu_noise_i = noise_i.to(gpu_pl)
                 gpu_result = run_detection(
-                    "gpu", seed_val, frame, n_frames, gpu_noise_r, gpu_noise_i
+                    "gpu", seed_val, frame, n_frames, gpu_noise_r, gpu_noise_i, prof=prof
                 )
                 times_gpu.append(gpu_result["total_ms"])
                 # 比较回波信号（pulse_compression 之前，应完全一致）
@@ -439,7 +467,7 @@ if __name__ == "__main__":
                         f"max_diff={max_diff:.2e}"
                     )
         else:
-            result = run_detection(args.device, seed_val, frame, n_frames)
+            result = run_detection(args.device, seed_val, frame, n_frames, prof=prof)
             t = result["total_ms"]
             if args.device == "gpu":
                 times_gpu.append(t)
