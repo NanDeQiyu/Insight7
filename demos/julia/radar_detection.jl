@@ -125,10 +125,10 @@ function extract_targets(energy, det)
         return Tuple{Int64,Int64}[], 0
     end
     n_det = Insight.shape(idx)
-    if length(n_det) < 2 || n_det[2] == 0
+    if length(n_det) < 2 || n_det[1] == 0 || n_det[2] == 0
         return Tuple{Int64,Int64}[], 0
     end
-    n_nonzero = n_det[2]  # shape returns reversed dims: [2, n_nonzero]
+    n_nonzero = Base.max(n_det[1], n_det[2])  # whichever is the count
 
     # 批量 GPU→CPU 传输 nonzero 索引
     idx_cpu = Insight.to(idx, Int64(0))
