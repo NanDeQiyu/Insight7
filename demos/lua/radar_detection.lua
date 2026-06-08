@@ -98,9 +98,15 @@ end
 -- ============================================================
 -- 向量化回波模拟
 -- ============================================================
-local function simulate_echoes(delays, dopplers)
-  local noise_r = ins.randn({ N_PULSES, N }, ins.float64, _PLACE) * _NOISE_SIGMA
-  local noise_i = ins.randn({ N_PULSES, N }, ins.float64, _PLACE) * _NOISE_SIGMA
+local function simulate_echoes(delays, dopplers, external_noise_r, external_noise_i)
+  local noise_r, noise_i
+  if external_noise_r and external_noise_i then
+    noise_r = external_noise_r
+    noise_i = external_noise_i
+  else
+    noise_r = ins.randn({ N_PULSES, N }, ins.float64, _PLACE) * _NOISE_SIGMA
+    noise_i = ins.randn({ N_PULSES, N }, ins.float64, _PLACE) * _NOISE_SIGMA
+  end
 
   local pulses = ins.zeros({ N_PULSES, N }, "complex128", _PLACE)
 
@@ -219,7 +225,7 @@ end
 -- ============================================================
 -- 单帧检测
 -- ============================================================
-local function run_frame(delays, dopplers, device, seed)
+local function run_frame(delays, dopplers, device, seed, external_noise_r, external_noise_i)
   if device == "gpu" and ins.has_device("gpu") then
     ins.load_backend("cuda")
     ins.set_device(ins.GPUPlace(0))
@@ -231,7 +237,7 @@ local function run_frame(delays, dopplers, device, seed)
   local t0 = os.clock()
 
   -- [1] Echo simulation
-  local pulses = simulate_echoes(delays, dopplers)
+  local pulses = simulate_echoes(delays, dopplers, external_noise_r, external_noise_i)
   local t1 = os.clock()
 
   -- [2] Pulse compression
@@ -275,6 +281,7 @@ local function run_frame(delays, dopplers, device, seed)
     cfar_ms = (t4 - t3) * 1000,
     local_ms = (t5 - t4) * 1000,
     energy = energy,
+    pulses = pulses,
   }
   return result
 end
@@ -379,19 +386,31 @@ if args.device == "all" then
   for frame = 0, n_frames - 1 do
     local delays, dopplers = get_target_params(frame, n_frames)
 
-    -- CPU run
+    -- Generate noise on CPU once (same noise for both runs)
     init_cache("cpu")
-    local cpu_result = run_frame(delays, dopplers, "cpu", args.seed)
+    ins.seed(args.seed)
+    local cpu_noise_r = ins.randn({ N_PULSES, N }, ins.float64, _PLACE) * _NOISE_SIGMA
+    local cpu_noise_i = ins.randn({ N_PULSES, N }, ins.float64, _PLACE) * _NOISE_SIGMA
+
+    -- CPU run
+    local cpu_result = run_frame(delays, dopplers, "cpu", args.seed, cpu_noise_r, cpu_noise_i)
 
     if ins.has_device("gpu") then
-      -- GPU run
-      init_cache("gpu")
-      local gpu_result = run_frame(delays, dopplers, "gpu", args.seed)
+      -- GPU run: 复用 CPU 缓存，不重新生成
+      local gpu_place = ins.GPUPlace(0)
+      local gpu_noise_r = cpu_noise_r:to(gpu_place)
+      local gpu_noise_i = cpu_noise_i:to(gpu_place)
+      _S_TX = _S_TX:to(gpu_place)
+      _TEMPLATE = _TEMPLATE:to(gpu_place)
+      _HAMMING = _HAMMING:to(gpu_place)
+      _SLOW_TIMES = _SLOW_TIMES:to(gpu_place)
+      _PLACE = gpu_place
+      local gpu_result = run_frame(delays, dopplers, "gpu", args.seed, gpu_noise_r, gpu_noise_i)
 
-      -- Compare
-      local cpu_energy = cpu_result.energy
-      local gpu_energy = gpu_result.energy:to(ins.CPUPlace())
-      local diff = ins.max(ins.abs(cpu_energy - gpu_energy))
+      -- Compare raw pulses (before pulse_compression — should be identical CPU vs GPU)
+      local cpu_pulses = cpu_result.pulses
+      local gpu_pulses = gpu_result.pulses:to(ins.CPUPlace())
+      local diff = ins.max(ins.abs(cpu_pulses - gpu_pulses))
       local max_diff = diff:item()
 
       cpu_times[#cpu_times + 1] = cpu_result.total_ms

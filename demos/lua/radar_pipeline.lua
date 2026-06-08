@@ -192,11 +192,16 @@ end
 -- ============================================================
 -- 运行一帧
 -- ============================================================
-local function run_frame(seed_val)
+local function run_frame(seed_val, external_noise)
   -- [1] 合成信号
   local t0 = os.clock()
   ins.seed(seed_val)
-  local noise = ins.randn({ N_SAMPLES }, ins.float64, _PLACE) * NOISE_STD
+  local noise
+  if external_noise then
+    noise = external_noise
+  else
+    noise = ins.randn({ N_SAMPLES }, ins.float64, _PLACE) * NOISE_STD
+  end
   local composite = _COMPOSITE_BASE + noise
   local t_gen = os.clock() - t0
 
@@ -376,14 +381,19 @@ local gpu_times = {}
 if args.device == "all" then
   -- Device comparison mode
   for frame = 0, n_frames - 1 do
-    -- CPU run
+    -- Generate noise on CPU once (same noise for both runs)
     init_cache("cpu")
-    local cpu_r = run_frame(args.seed + frame)
+    ins.seed(args.seed + frame)
+    local cpu_noise = ins.randn({ N_SAMPLES }, ins.float64, _PLACE) * NOISE_STD
+
+    -- CPU run
+    local cpu_r = run_frame(args.seed + frame, cpu_noise)
 
     if ins.has_device("gpu") then
-      -- GPU run
+      -- GPU run with same noise
+      local gpu_noise = cpu_noise:to(ins.GPUPlace(0))
       init_cache("gpu")
-      local gpu_r = run_frame(args.seed + frame)
+      local gpu_r = run_frame(args.seed + frame, gpu_noise)
 
       -- Compare smoothed signal
       local cpu_smoothed = cpu_r.smoothed

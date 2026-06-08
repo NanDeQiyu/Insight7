@@ -113,11 +113,17 @@ static void get_target_params(int frame_idx, int total_frames,
 // 向量化回波模拟
 // ============================================================
 static Array simulate_echoes(const std::vector<double> &delays,
-                             const std::vector<double> &dopplers, Place place) {
-  Array noise_r = mul(randn({N_PULSES, N}, DType::F64, place),
-                      full({1}, _NOISE_SIGMA, DType::F64, place));
-  Array noise_i = mul(randn({N_PULSES, N}, DType::F64, place),
-                      full({1}, _NOISE_SIGMA, DType::F64, place));
+                             const std::vector<double> &dopplers, Place place,
+                             const Array *external_noise_r = nullptr,
+                             const Array *external_noise_i = nullptr) {
+  Array noise_r = external_noise_r
+                      ? *external_noise_r
+                      : mul(randn({N_PULSES, N}, DType::F64, place),
+                            full({1}, _NOISE_SIGMA, DType::F64, place));
+  Array noise_i = external_noise_i
+                      ? *external_noise_i
+                      : mul(randn({N_PULSES, N}, DType::F64, place),
+                            full({1}, _NOISE_SIGMA, DType::F64, place));
 
   Array pulses = zeros({N_PULSES, N}, DType::C64, place);
 
@@ -257,13 +263,16 @@ struct FrameResult {
 
 static FrameResult run_frame(const std::vector<double> &delays,
                              const std::vector<double> &dopplers, Place place,
-                             int seed_val, int) {
+                             int seed_val, int,
+                             const Array *external_noise_r = nullptr,
+                             const Array *external_noise_i = nullptr) {
   seed(seed_val);
 
   auto t0 = std::chrono::high_resolution_clock::now();
 
   // [1] Echo simulation
-  Array pulses = simulate_echoes(delays, dopplers, place);
+  Array pulses = simulate_echoes(delays, dopplers, place, external_noise_r,
+                                 external_noise_i);
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // [2] Pulse compression
@@ -425,18 +434,25 @@ int main(int argc, char **argv) {
       std::vector<double> delays, dopplers;
       get_target_params(frame, n_frames, delays, dopplers);
 
-      // CPU
+      // 在 CPU 上生成噪声（只生成一次，CPU 和 GPU 共用）
       init_cache(cpu_place);
-      seed(args.seed);
-      FrameResult cpu_result =
-          run_frame(delays, dopplers, cpu_place, args.seed, frame);
+      seed(args.seed + frame);
+      Array cpu_noise_r = mul(randn({N_PULSES, N}, DType::F64, cpu_place),
+                              full({1}, _NOISE_SIGMA, DType::F64, cpu_place));
+      Array cpu_noise_i = mul(randn({N_PULSES, N}, DType::F64, cpu_place),
+                              full({1}, _NOISE_SIGMA, DType::F64, cpu_place));
+
+      // CPU run（用 CPU 噪声）
+      FrameResult cpu_result = run_frame(delays, dopplers, cpu_place, args.seed,
+                                         frame, &cpu_noise_r, &cpu_noise_i);
       cpu_times.push_back(cpu_result.total_ms);
 
-      // GPU
+      // GPU run（用同一份噪声，传输到 GPU）
+      Array gpu_noise_r = cpu_noise_r.to(gpu_place);
+      Array gpu_noise_i = cpu_noise_i.to(gpu_place);
       init_cache(gpu_place);
-      seed(args.seed);
-      FrameResult gpu_result =
-          run_frame(delays, dopplers, gpu_place, args.seed, frame);
+      FrameResult gpu_result = run_frame(delays, dopplers, gpu_place, args.seed,
+                                         frame, &gpu_noise_r, &gpu_noise_i);
       gpu_times.push_back(gpu_result.total_ms);
 
       // 比较 energy

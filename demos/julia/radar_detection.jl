@@ -87,9 +87,15 @@ function get_target_params(frame_idx, total_frames)
     return delays, dopplers
 end
 
-function simulate_echoes(delays, dopplers)
-    noise_r = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
-    noise_i = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+function simulate_echoes(delays, dopplers; noise_r=nothing, noise_i=nothing)
+    local nr, ni
+    if noise_r !== nothing && noise_i !== nothing
+        nr = noise_r
+        ni = noise_i
+    else
+        nr = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+        ni = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+    end
     pulses = Insight.zeros(Int64[N_PULSES, N], Insight.complex128)
 
     for k in 1:length(delays)
@@ -106,7 +112,7 @@ function simulate_echoes(delays, dopplers)
         rot_2d = Insight.reshape(rot, Int64[N_PULSES, 1])
         pulses = pulses + delayed_2d * rot_2d
     end
-    pulses = pulses + Insight.to_complex(noise_r, noise_i)
+    pulses = pulses + Insight.to_complex(nr, ni)
     return pulses
 end
 
@@ -161,7 +167,7 @@ function extract_targets(energy, det)
     return targets, length(candidates)
 end
 
-function run_frame(delays, dopplers, _device, seed, timer=false)
+function run_frame(delays, dopplers, _device, seed; noise_r=nothing, noise_i=nothing, timer=false)
     if _device == "gpu" && Insight.has_device(Int64(1))
         Insight.load_backend("cuda")
         Insight.set_device(Insight.GPUPlace(0))
@@ -171,7 +177,7 @@ function run_frame(delays, dopplers, _device, seed, timer=false)
     Insight.seed(seed)
 
     t0 = time()
-    pulses = simulate_echoes(delays, dopplers)
+    pulses = simulate_echoes(delays, dopplers; noise_r=noise_r, noise_i=noise_i)
     t1 = time()
 
     pc = Insight.signal.pulse_compression(pulses, _TEMPLATE)
@@ -206,7 +212,7 @@ function run_frame(delays, dopplers, _device, seed, timer=false)
         println("    extract: $(Base.round((t5 - t4) * 1000, digits=2)) ms")
     end
 
-    return valid, raw_count, (t5 - t0) * 1000, energy
+    return valid, raw_count, (t5 - t0) * 1000, energy, pulses
 end
 
 # ============================================================
@@ -232,14 +238,14 @@ function main()
     println("=" ^ 60)
     println("\n[配置] 采样率: $(FS/1e6) MHz  脉冲: $(N_PULSES)  设备: $(device)  种子: $(seed)  帧数: $(n_frames)")
 
-    init_cache(device)
-
     if device == "all"
         if !Insight.has_device(Int64(1))
             println("[WARN] --device all 但无 GPU 可用, 降级为 CPU 模式")
             device = "cpu"
         end
     end
+
+    init_cache(device == "all" ? "cpu" : device)
 
     if info_flag
         cpu_total, cpu_free = Insight.device_memory_info(Int64(0), Int64(0))
@@ -268,16 +274,30 @@ function main()
         local delays, dopplers = get_target_params(frame, n_frames)
 
         if device == "all"
-            local cpu_targets, cpu_raw_count, cpu_ms, cpu_energy = run_frame(delays, dopplers, "cpu", seed, timer_flag)
-            local gpu_targets, gpu_raw_count, gpu_ms, gpu_energy = run_frame(delays, dopplers, "gpu", seed, timer_flag)
+            # CPU 缓存 + 噪声（一次性生成，双后端共用）
+            init_cache("cpu")
+            Insight.seed(seed)
+            cpu_noise_r = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+            cpu_noise_i = Insight.randn(Int64[N_PULSES, N], Insight.float64) * _NOISE_SIGMA
+
+            local cpu_targets, cpu_raw_count, cpu_ms, cpu_energy, cpu_pulses = run_frame(delays, dopplers, "cpu", seed; noise_r=cpu_noise_r, noise_i=cpu_noise_i, timer=timer_flag)
+
+            # GPU run: 复用 CPU 缓存，不重新生成
+            local gpu_noise_r = Insight.to(cpu_noise_r, Int64(1))
+            local gpu_noise_i = Insight.to(cpu_noise_i, Int64(1))
+            global _S_TX = Insight.to(_S_TX, Int64(1))
+            global _TEMPLATE = Insight.to(_TEMPLATE, Int64(1))
+            global _HAMMING = Insight.to(_HAMMING, Int64(1))
+            global _SLOW_TIMES = Insight.to(_SLOW_TIMES, Int64(1))
+            local gpu_targets, gpu_raw_count, gpu_ms, gpu_energy, gpu_pulses = run_frame(delays, dopplers, "gpu", seed; noise_r=gpu_noise_r, noise_i=gpu_noise_i, timer=timer_flag)
             push!(times, cpu_ms)
-            local cpu_e_cpu = Insight.to(cpu_energy, Int64(0))
-            local gpu_e_cpu = Insight.to(gpu_energy, Int64(0))
-            local diff_arr = Insight.abs(cpu_e_cpu - gpu_e_cpu)
+            local cpu_p_cpu = Insight.to(cpu_pulses, Int64(0))
+            local gpu_p_cpu = Insight.to(gpu_pulses, Int64(0))
+            local diff_arr = Insight.abs(cpu_p_cpu - gpu_p_cpu)
             local max_diff = Insight.item(Insight.max(diff_arr), 0)
             println("  帧 $(Base.lpad(frame, 4))/$(n_frames) | CPU: $(Base.lpad(Base.round(cpu_ms, digits=2), 8)) ms | GPU: $(Base.lpad(Base.round(gpu_ms, digits=2), 8)) ms | max_diff=$(max_diff)")
         else
-            local targets, raw_count, total_ms, _ = run_frame(delays, dopplers, device, seed, timer_flag)
+            local targets, raw_count, total_ms, _, _ = run_frame(delays, dopplers, device, seed; timer=timer_flag)
             push!(times, total_ms)
 
             if n_frames == 1 || frame == 0 || (frame + 1) % 10 == 0 || frame == n_frames - 1

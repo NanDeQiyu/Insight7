@@ -197,14 +197,18 @@ end
 # ============================================================
 # 运行一帧
 # ============================================================
-function run_frame(seed_val; timer=false)
+function run_frame(seed_val; timer=false, noise=nothing)
     GC.enable(false)
 
     # [1] 合成信号
     t0 = time()
-    Insight.seed(seed_val)
-    noise = Insight.randn(Int64[N_SAMPLES], Insight.float64) * NOISE_STD
-    composite = _COMPOSITE_BASE + noise
+    if noise !== nothing
+        composite = _COMPOSITE_BASE + noise
+    else
+        Insight.seed(seed_val)
+        noise = Insight.randn(Int64[N_SAMPLES], Insight.float64) * NOISE_STD
+        composite = _COMPOSITE_BASE + noise
+    end
     t_gen = time() - t0
 
     # [2] 去趋势 + 带通滤波
@@ -383,8 +387,13 @@ timer_flag = args["timer"]
 times = Float64[]
 for frame in 0:(n_frames-1)
     if device_flag == "all"
-        cpu_r = run_frame(args["seed"] + frame; timer=timer_flag)
-        gpu_r = run_frame(args["seed"] + frame; timer=timer_flag)
+        # Generate noise on CPU once so CPU and GPU use identical input
+        Insight.seed(args["seed"] + frame)
+        cpu_noise = Insight.randn(Int64[N_SAMPLES], Insight.float64) * NOISE_STD
+
+        cpu_r = run_frame(args["seed"] + frame; timer=timer_flag, noise=cpu_noise)
+        gpu_noise = Insight.to(cpu_noise, Int64(1))
+        gpu_r = run_frame(args["seed"] + frame; timer=timer_flag, noise=gpu_noise)
         push!(times, cpu_r.total_ms)
         cpu_scpu = Insight.to(cpu_r.smoothed, Int64(0))
         gpu_scpu = Insight.to(gpu_r.smoothed, Int64(0))

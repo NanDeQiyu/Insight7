@@ -160,8 +160,47 @@ static void device_memory_info(DeviceKind kind, int device_id,
                                size_t *total, size_t *free);
 ```
 
-CPU backend implementation reads `/proc/self/status` (Linux) or
-`GetProcessMemoryInfo` (Windows). CUDA backend uses `cudaMemGetInfo`.
+### CPU Backend Implementation (⚠️ Common Pitfall: VmRSS Bug)
+
+**Use MemTotal + MemAvailable, NOT VmRSS!**
+
+The original buggy implementation returned VmRSS (process RSS, ~200MB) as
+`total_memory` and MemAvailable (~800GB) as `free_memory`. This caused
+`used = total - free` to underflow since `total < free`, producing negative
+used memory in all language bindings.
+
+✅ **Correct Linux implementation** (reads `/proc/meminfo`):
+```cpp
+std::ifstream proc_mem("/proc/meminfo");
+std::string line;
+size_t mem_total = 0, mem_free = 0;
+while (std::getline(proc_mem, line)) {
+  if (line.find("MemTotal:") == 0) {
+    std::istringstream iss(line.substr(9));
+    iss >> mem_total;
+    mem_total *= 1024;  // kB → bytes
+  } else if (line.find("MemAvailable:") == 0) {
+    std::istringstream iss(line.substr(13));
+    iss >> mem_free;
+    mem_free *= 1024;  // kB → bytes
+  }
+  if (mem_total > 0 && mem_free > 0) break;
+}
+```
+
+✅ **Correct Windows implementation** (uses `GlobalMemoryStatusEx` only, no `GetProcessMemoryInfo`):
+```cpp
+MEMORYSTATUSEX mem_stat;
+mem_stat.dwLength = sizeof(mem_stat);
+GlobalMemoryStatusEx(&mem_stat);
+*total_memory = static_cast<size_t>(mem_stat.ullTotalPhys);
+*free_memory = static_cast<size_t>(mem_stat.ullAvailPhys);
+```
+
+**Why VmRSS was wrong**: GPU backends (CUDA) return device-global total/free
+(e.g. 80GB total / 40GB free). For consistency, CPU must also return
+system-global total/available RAM, not per-process RSS. The `used = total - free`
+computation in the demo layer is only valid when total ≥ free.
 
 ### Language Binding Signatures
 

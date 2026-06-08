@@ -69,6 +69,7 @@ def _init_cache(device="cpu"):
     """一次性初始化: 生成 LFM 信号并预计算所有常数。"""
     global \
         _S_TX, \
+        _TEMPLATE, \
         _SIG_POWER, \
         _NOISE_SIGMA, \
         _DOPPLER_BINS, \
@@ -92,6 +93,7 @@ def _init_cache(device="cpu"):
     tau_arr = ins.full([1], TAU, ins.float64, place=_PLACE)
     mask = ins.cast(ins.less(t, tau_arr), ins.float64)
     _S_TX = s_tx * mask
+    _TEMPLATE = _S_TX[0:PULSE_LEN]
 
     # 缓存信号功率 (一次性计算)
     sig_power_arr = ins.mean(ins.real(_S_TX) ** 2 + ins.imag(_S_TX) ** 2)
@@ -125,14 +127,19 @@ def _get_target_params(frame_idx, total_frames):
     return delays, dopplers
 
 
-def _simulate_echoes(target_delays, target_dopplers):
+def _simulate_echoes(target_delays, target_dopplers, external_noise_r=None, external_noise_i=None):
     """
     全向量化回波模拟 (全 GPU, 零 Python 脉冲循环)。
     返回 [N_PULSES, N] complex128 回波信号。
+    external_noise_r/external_noise_i: 可选外部噪声数组，用于 --device all 模式共享随机噪声。
     """
     noise_sigma = _NOISE_SIGMA
-    noise_r = ins.randn([N_PULSES, N], ins.float64, place=_PLACE) * noise_sigma
-    noise_i = ins.randn([N_PULSES, N], ins.float64, place=_PLACE) * noise_sigma
+    if external_noise_r is not None and external_noise_i is not None:
+        noise_r = external_noise_r
+        noise_i = external_noise_i
+    else:
+        noise_r = ins.randn([N_PULSES, N], ins.float64, place=_PLACE) * noise_sigma
+        noise_i = ins.randn([N_PULSES, N], ins.float64, place=_PLACE) * noise_sigma
 
     pulses = ins.zeros([N_PULSES, N], ins.complex128, place=_PLACE)
     for delay, doppler in zip(target_delays, target_dopplers):
@@ -217,10 +224,13 @@ def _extract_targets(energy, det, top_n=2, cluster_threshold=3.0):
     return [(d, r) for d, r, _ in deduped[:top_n]], n_det
 
 
-def run_detection(device="cpu", seed=42, frame_idx=0, total_frames=1):
+def run_detection(
+    device="cpu", seed=42, frame_idx=0, total_frames=1, external_noise_r=None, external_noise_i=None
+):
     """
     运行一帧雷达检测 (全 GPU 优化版)。
     frame_idx / total_frames 控制目标位置线性插值。
+    external_noise_r/external_noise_i: 可选外部噪声数组，用于 --device all 模式共享随机噪声。
     """
     if device == "gpu" and ins.has_device("gpu"):
         ins.load_backend("cuda")
@@ -237,7 +247,7 @@ def run_detection(device="cpu", seed=42, frame_idx=0, total_frames=1):
 
     # [1] 回波模拟 (全 GPU 向量化)
     t0 = time.time()
-    pulses = _simulate_echoes(target_delays, target_dopplers)
+    pulses = _simulate_echoes(target_delays, target_dopplers, external_noise_r, external_noise_i)
     t_echo = time.time() - t0
 
     # [2] 脉冲压缩 (框架 API, batched FFT)
@@ -288,6 +298,7 @@ def run_detection(device="cpu", seed=42, frame_idx=0, total_frames=1):
         "range_bins": _RANGE_BINS,
         "energy": energy,
         "pc": pc,
+        "pulses": pulses,
         "device": device,
     }
 
@@ -367,19 +378,34 @@ if __name__ == "__main__":
         seed_val = args.seed + frame
 
         if device_all:
-            # CPU 运行
+            # 在 CPU 上一次性生成缓存和噪声（确保双后端基信号完全一致）
             _init_cache("cpu")
-            cpu_result = run_detection("cpu", seed_val, frame, n_frames)
+            ins.seed(seed_val)
+            noise_r = ins.randn([N_PULSES, N], ins.float64, place=ins.CPUPlace()) * _NOISE_SIGMA
+            noise_i = ins.randn([N_PULSES, N], ins.float64, place=ins.CPUPlace()) * _NOISE_SIGMA
+
+            # CPU run
+            cpu_result = run_detection("cpu", seed_val, frame, n_frames, noise_r, noise_i)
             times_cpu.append(cpu_result["total_ms"])
 
-            # GPU 运行
+            # GPU run — 复用 CPU 缓存（传输到 GPU），不重新生成
             if has_gpu:
-                _init_cache("gpu")
-                gpu_result = run_detection("gpu", seed_val, frame, n_frames)
+                gpu_pl = ins.GPUPlace(0)
+                _S_TX = _S_TX.to(gpu_pl)
+                _TEMPLATE = _TEMPLATE.to(gpu_pl)
+                _HAMMING = _HAMMING.to(gpu_pl)
+                _SLOW_TIMES = _SLOW_TIMES.to(gpu_pl)
+                _PLACE = gpu_pl
+                gpu_noise_r = noise_r.to(gpu_pl)
+                gpu_noise_i = noise_i.to(gpu_pl)
+                gpu_result = run_detection(
+                    "gpu", seed_val, frame, n_frames, gpu_noise_r, gpu_noise_i
+                )
                 times_gpu.append(gpu_result["total_ms"])
-                cpu_eng = cpu_result["energy"]
-                gpu_eng_cpu = gpu_result["energy"].to(ins.CPUPlace())
-                diff = ins.max(ins.abs(cpu_eng - gpu_eng_cpu))
+                # 比较回波信号（pulse_compression 之前，应完全一致）
+                cpu_sig = cpu_result["pulses"]
+                gpu_sig_cpu = gpu_result["pulses"].to(ins.CPUPlace())
+                diff = ins.max(ins.abs(cpu_sig - gpu_sig_cpu))
                 max_diff = float(diff)
             else:
                 print("  [警告] GPU 不可用，仅运行 CPU")

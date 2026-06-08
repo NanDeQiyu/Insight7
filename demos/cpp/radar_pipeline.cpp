@@ -283,14 +283,22 @@ struct FrameResult {
   std::vector<int> peaks_max, peaks_min;
 };
 
-static FrameResult run_frame(int seed_val, Place place) {
+static FrameResult run_frame(int seed_val, Place place,
+                             Array *external_noise = nullptr) {
   FrameResult r;
   auto t_start = std::chrono::high_resolution_clock::now();
 
   // [1] 合成信号
   auto t0 = std::chrono::high_resolution_clock::now();
-  seed(seed_val);
-  Array noise = randn({N_SAMPLES}, DType::F64, place) * NOISE_STD;
+  Array noise;
+  if (external_noise) {
+    noise = *external_noise;
+    if (noise.place() != place)
+      noise = noise.to(place);
+  } else {
+    seed(seed_val);
+    noise = randn({N_SAMPLES}, DType::F64, place) * NOISE_STD;
+  }
   Array composite = _COMPOSITE_BASE + noise;
   auto t1 = std::chrono::high_resolution_clock::now();
   r.t_gen_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -453,16 +461,21 @@ int main(int argc, char *argv[]) {
     std::vector<double> cpu_times, gpu_times;
 
     for (int frame = 0; frame < n_frames; ++frame) {
-      // CPU
+      // Generate noise once on CPU
       init_cache(cpu_place);
       seed(args.seed + frame);
-      FrameResult cpu_result = run_frame(args.seed + frame, cpu_place);
+      Array cpu_noise = randn({N_SAMPLES}, DType::F64, cpu_place) * NOISE_STD;
+
+      // CPU
+      FrameResult cpu_result =
+          run_frame(args.seed + frame, cpu_place, &cpu_noise);
       cpu_times.push_back(cpu_result.total_ms);
 
-      // GPU
+      // GPU with same noise
+      Array gpu_noise = cpu_noise.to(gpu_place);
       init_cache(gpu_place);
-      seed(args.seed + frame);
-      FrameResult gpu_result = run_frame(args.seed + frame, gpu_place);
+      FrameResult gpu_result =
+          run_frame(args.seed + frame, gpu_place, &gpu_noise);
       gpu_times.push_back(gpu_result.total_ms);
 
       // 比较 smoothed

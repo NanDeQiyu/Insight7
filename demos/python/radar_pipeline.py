@@ -234,12 +234,17 @@ def _cwt_fast(signal_arr):
     return ins.stack(result_rows, 0)
 
 
-def _run_frame(rng_seed=42):
-    """运行一帧特征提取管线。"""
+def _run_frame(rng_seed=42, external_noise=None):
+    """运行一帧特征提取管线。
+    external_noise: 可选外部噪声数组，用于 --device all 模式共享随机噪声。
+    """
     # [1] 合成信号
     t0 = time.time()
     ins.seed(rng_seed)
-    noise = ins.randn([N_SAMPLES], dtype=ins.float64, place=_PLACE) * NOISE_STD
+    if external_noise is not None:
+        noise = external_noise
+    else:
+        noise = ins.randn([N_SAMPLES], dtype=ins.float64, place=_PLACE) * NOISE_STD
     composite = _COMPOSITE_BASE + noise
     t_gen = time.time() - t0
 
@@ -408,15 +413,19 @@ if __name__ == "__main__":
         seed_val = args.seed + frame
 
         if device_all:
-            # CPU 运行
+            # Generate noise on CPU once so both runs use identical noise
             _init_cache("cpu")
-            cpu_result = _run_frame(rng_seed=seed_val)
+            cpu_noise = ins.randn([N_SAMPLES], ins.float64, place=ins.CPUPlace()) * NOISE_STD
+
+            # CPU run
+            cpu_result = _run_frame(rng_seed=seed_val, external_noise=cpu_noise)
             times_cpu.append(cpu_result["total_ms"])
 
-            # GPU 运行
+            # GPU run with same noise
             if has_gpu:
+                gpu_noise = cpu_noise.to(ins.GPUPlace(0))
                 _init_cache("gpu")
-                gpu_result = _run_frame(rng_seed=seed_val)
+                gpu_result = _run_frame(rng_seed=seed_val, external_noise=gpu_noise)
                 times_gpu.append(gpu_result["total_ms"])
                 cpu_sig = cpu_result["smoothed"]
                 gpu_sig_cpu = gpu_result["smoothed"].to(ins.CPUPlace())
