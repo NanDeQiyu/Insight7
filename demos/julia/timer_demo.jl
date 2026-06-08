@@ -22,12 +22,12 @@ let
 end
 
 # GPU Timer (if available)
-if is_device_available(DeviceKindGPU)
+if has_device(1)
     load_backend("cuda")
     t = Timer(1, 0)
     timer_start(t)
-    a = ones([256, 256], DTypeF32, GPUPlace(0))
-    b = full([256, 256], 2.0, DTypeF32, GPUPlace(0))
+    a = ones([256, 256], DTypeF32, GPUPlace())
+    b = full([256, 256], 2.0, DTypeF32, GPUPlace())
     c = add(a, b)
     timer_stop(t)
     ms = timer_elapsed_ms(t)
