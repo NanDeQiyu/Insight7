@@ -328,6 +328,11 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     auto info = ins::device_memory(device_id.value_or(0));
     return std::make_tuple(info.total, info.free);
   };
+  m["device_memory_info"] = [](int kind, sol::optional<int> device_id) {
+    auto info = ins::device_memory_info(static_cast<ins::DeviceKind>(kind),
+                                        device_id.value_or(0));
+    return std::make_tuple(info.total, info.free);
+  };
   m["gpu_count"] = []() {
     return static_cast<int>(ins::device_count(ins::DeviceKind::GPU));
   };

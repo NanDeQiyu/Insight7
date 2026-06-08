@@ -366,6 +366,15 @@ PYBIND11_MODULE(_insight, m) {
       py::arg("device_id") = 0,
       "Get GPU memory info as (total_bytes, free_bytes)");
   m.def(
+      "device_memory_info",
+      [](int32_t device_kind, int32_t device_id) {
+        auto info =
+            device_memory_info(static_cast<DeviceKind>(device_kind), device_id);
+        return py::make_tuple(info.total, info.free);
+      },
+      py::arg("device_kind"), py::arg("device_id") = 0,
+      "Get memory info for a device as (total_bytes, free_bytes)");
+  m.def(
       "device_count",
       []() { return static_cast<int>(device_count(DeviceKind::GPU)); },
       "Get the number of GPU devices");

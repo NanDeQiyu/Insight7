@@ -48,7 +48,7 @@ if(INSIGHT_USE_OPENBLAS)
                 /usr/include
                 /usr/local/include
                 ${OpenBLAS_INCLUDE_DIR}
-                "E:/code/insight/deps/OpenBLAS-0.3.33-x64/include"
+                ${CMAKE_PREFIX_PATH}
                 $ENV{OPENBLAS_HOME}/include
         )
         if(LAPACKE_INCLUDE_DIR)

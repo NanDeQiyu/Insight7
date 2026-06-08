@@ -132,6 +132,14 @@ void insight_jl_device_memory(int32_t device_id, size_t *total, size_t *free) {
   *free = info.free;
 }
 
+void insight_jl_device_memory_info(int32_t device_kind, int32_t device_id,
+                                   size_t *total, size_t *free) {
+  auto info =
+      device_memory_info(static_cast<DeviceKind>(device_kind), device_id);
+  *total = info.total;
+  *free = info.free;
+}
+
 int32_t insight_jl_gpu_count() {
   return static_cast<int>(device_count(DeviceKind::GPU));
 }
