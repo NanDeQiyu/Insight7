@@ -24,7 +24,7 @@ def main():
         t.start()
         a = ins.ones([256, 256], dtype=ins.float32, place=ins.GPUPlace(0))
         b = ins.full([256, 256], 2.0, dtype=ins.float32, place=ins.GPUPlace(0))
-        c = a + b
+        _ = a + b
         t.stop()
         ms = t.elapsed_ms()
         print(f"GPU timer: {ms:.3f} ms")

@@ -10,7 +10,8 @@ local function test_cpu()
   end
   t:start()
   local start = os.clock()
-  while os.clock() - start < 0.005 do end
+  while os.clock() - start < 0.005 do
+  end
   t:stop()
   local ms = t:elapsed()
   io.write(string.format("CPU timer: %.3f ms\n", ms))
@@ -28,8 +29,8 @@ if gpu_avail then
   pcall(ins.load_backend, "cuda")
   local gpu_t = ins.Timer(1, 0)
   gpu_t:start()
-  local a = ins.ones({256, 256}, ins.float32, ins.GPUPlace(0))
-  local b = ins.full({256, 256}, 2.0, ins.float32, ins.GPUPlace(0))
+  local a = ins.ones({ 256, 256 }, ins.float32, ins.GPUPlace(0))
+  local b = ins.full({ 256, 256 }, 2.0, ins.float32, ins.GPUPlace(0))
   local c = a + b
   gpu_t:stop()
   local gpu_ms = gpu_t:elapsed()

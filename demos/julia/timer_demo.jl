@@ -1,7 +1,7 @@
 #!/usr/bin/env julia
-"""
+#=
 Timer Demo — Verifies the Timer API works correctly.
-"""
+=#
 push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "bindings", "julia", "src"))
 
 using Insight
@@ -13,7 +13,7 @@ let
     sleep(0.005)
     timer_stop(t)
     ms = timer_elapsed_ms(t)
-    @printf "CPU timer: %.3f ms\n" ms
+    println(string("CPU timer: ", round(ms, digits=3), " ms"))
     if ms < 0.0 || ms > 100.0
         error("CPU timer out of range: $ms")
     end
@@ -30,7 +30,7 @@ if is_device_available(DeviceKindGPU)
     c = add(a, b)
     timer_stop(t)
     ms = timer_elapsed_ms(t)
-    @printf "GPU timer: %.3f ms\n" ms
+    println(string("GPU timer: ", round(ms, digits=3), " ms"))
     timer_destroy(t)
 else
     println("GPU timer: SKIPPED (GPU not available)")

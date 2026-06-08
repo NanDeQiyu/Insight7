@@ -86,9 +86,8 @@ C_Status insight_timer_stop(InsightTimer timer) {
   if (!timer || !timer->iface || !timer->iface->record_event)
     return C_FAILED;
 
-  C_Status status = timer->iface->record_event(&timer->device,
-                                               timer->default_stream,
-                                               timer->stop_event);
+  C_Status status = timer->iface->record_event(
+      &timer->device, timer->default_stream, timer->stop_event);
   if (status != C_SUCCESS)
     return status;
 
@@ -122,9 +121,11 @@ C_Status insight_timer_reset(InsightTimer timer) {
   timer->stop_event = nullptr;
 
   if (timer->iface->create_event) {
-    if (timer->iface->create_event(&timer->device, &timer->start_event) != C_SUCCESS)
+    if (timer->iface->create_event(&timer->device, &timer->start_event) !=
+        C_SUCCESS)
       return C_FAILED;
-    if (timer->iface->create_event(&timer->device, &timer->stop_event) != C_SUCCESS) {
+    if (timer->iface->create_event(&timer->device, &timer->stop_event) !=
+        C_SUCCESS) {
       timer->iface->destroy_event(&timer->device, timer->start_event);
       timer->start_event = nullptr;
       return C_FAILED;
@@ -142,8 +143,7 @@ C_Status insight_timer_reset(InsightTimer timer) {
 
 namespace ins {
 
-Timer::Timer(const Place &place)
-    : place_(place), started_(false) {
+Timer::Timer(const Place &place) : place_(place), started_(false) {
   InsightPlace p;
   p.device_type = (place.kind() == DeviceKind::GPU) ? INSIGHT_DEVICE_GPU
                                                     : INSIGHT_DEVICE_CPU;
@@ -151,7 +151,8 @@ Timer::Timer(const Place &place)
 
   if (insight_timer_create(&p, &impl_) != C_SUCCESS) {
     INS_THROW("Timer: failed to create timer for device ",
-              (place.kind() == DeviceKind::GPU ? "GPU" : "CPU"), ":", place.device_id());
+              (place.kind() == DeviceKind::GPU ? "GPU" : "CPU"), ":",
+              place.device_id());
   }
 }
 
@@ -161,19 +162,22 @@ Timer::~Timer() {
 }
 
 void Timer::start() {
-  if (!impl_) return;
+  if (!impl_)
+    return;
   if (insight_timer_start(impl_) == C_SUCCESS)
     started_ = true;
 }
 
 void Timer::stop() {
-  if (!impl_) return;
+  if (!impl_)
+    return;
   if (insight_timer_stop(impl_) == C_SUCCESS)
     started_ = false;
 }
 
 float Timer::elapsed_ms() const {
-  if (!impl_) return 0.0f;
+  if (!impl_)
+    return 0.0f;
   float ms = 0.0f;
   insight_timer_elapsed_ms(impl_, &ms);
   return ms;
@@ -184,8 +188,6 @@ void Timer::reset() {
     insight_timer_reset(impl_);
 }
 
-bool Timer::started() const {
-  return started_;
-}
+bool Timer::started() const { return started_; }
 
 } // namespace ins

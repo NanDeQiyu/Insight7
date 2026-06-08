@@ -1,5 +1,7 @@
 """Timer tests for Insight7 Python binding."""
+
 import time
+import pytest
 import insight as ins
 
 
@@ -18,7 +20,7 @@ def test_timer_cpu_measure():
     t.stop()
     ms = t.elapsed_ms()
     assert ms >= 0.0
-    assert ms < 100.0  # Should be ~5ms
+    assert ms < 100.0
 
 
 def test_timer_cpu_context_manager():
@@ -38,23 +40,20 @@ def test_timer_cpu_manual():
 
 
 def test_timer_invalid_place():
-    import pytest
     with pytest.raises(TypeError):
         ins.Timer("invalid")
     with pytest.raises(TypeError):
         ins.Timer(123)
 
 
+@pytest.mark.skipif(not ins.has_device("gpu"), reason="GPU not available")
 def test_timer_gpu():
-    if not ins.is_device_available("gpu"):
-        pytest.skip("GPU not available")
-    import insight as ins
     ins.load_backend("cuda")
     t = ins.Timer((1, 0))
     t.start()
     a = ins.ones([256, 256], dtype=ins.float32, place=ins.GPUPlace(0))
     b = ins.full([256, 256], 2.0, dtype=ins.float32, place=ins.GPUPlace(0))
-    c = a + b
+    _ = a + b
     t.stop()
     ms = t.elapsed_ms()
     assert ms >= 0.0

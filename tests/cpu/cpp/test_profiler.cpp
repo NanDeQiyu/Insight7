@@ -1,9 +1,9 @@
 // tests/cpu/cpp/test_profiler.cpp
-#include "gtest/gtest.h"
-#include "insight/c_api/profiler.h"
 #include "insight/c_api/place.h"
+#include "insight/c_api/profiler.h"
 #include "insight/core/profiler.h"
 #include "insight/insight.h"
+#include "gtest/gtest.h"
 #include <thread>
 
 class ProfilerTestCPU : public ::testing::Test {

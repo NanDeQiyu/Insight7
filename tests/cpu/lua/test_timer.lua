@@ -13,7 +13,8 @@ describe("Timer (CPU)", function()
     t:start()
     -- Busy wait for ~10ms
     local start = os.clock()
-    while os.clock() - start < 0.01 do end
+    while os.clock() - start < 0.01 do
+    end
     t:stop()
     local ms = t:elapsed()
     assert.is_true(ms >= 0.0)
@@ -24,7 +25,8 @@ describe("Timer (CPU)", function()
     local t = ins.Timer(0, 0)
     t:start()
     local start = os.clock()
-    while os.clock() - start < 0.005 do end
+    while os.clock() - start < 0.005 do
+    end
     t:stop()
     local ms = t:elapsed()
     assert.is_true(ms >= 0.0)

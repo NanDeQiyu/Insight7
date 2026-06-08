@@ -1,13 +1,13 @@
 // tests/cuda/cpp/test_profiler.cpp
-#include "gtest/gtest.h"
-#include "insight/c_api/profiler.h"
 #include "insight/c_api/place.h"
+#include "insight/c_api/profiler.h"
 #include "insight/core/array.h"
 #include "insight/core/place.h"
 #include "insight/core/profiler.h"
 #include "insight/insight.h"
 #include "insight/ops/creation.h"
 #include "insight/ops/elementwise.h"
+#include "gtest/gtest.h"
 #include <thread>
 
 using namespace ins;

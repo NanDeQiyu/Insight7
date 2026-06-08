@@ -31,7 +31,8 @@ int main() {
     ins::Timer timer(ins::GPUPlace(0));
     timer.start();
     ins::Array a = ins::ones({512, 512}, ins::DType::F32, ins::GPUPlace(0));
-    ins::Array b = ins::full({512, 512}, 2.0f, ins::DType::F32, ins::GPUPlace(0));
+    ins::Array b =
+        ins::full({512, 512}, 2.0f, ins::DType::F32, ins::GPUPlace(0));
     ins::Array c = ins::add(a, b);
     timer.stop();
     float ms = timer.elapsed_ms();
