@@ -246,6 +246,59 @@ C_Status insight_profiler_get_events(C_Profiler prof, C_ProfilerEvent **events,
 } // extern "C"
 
 // ========================================================================
+// C++ Timer class (uses C API)
+// ========================================================================
+
+namespace ins {
+
+Timer::Timer(const Place &place) : place_(place), started_(false) {
+  InsightPlace p;
+  p.device_type =
+      (place.kind() == DeviceKind::GPU) ? INSIGHT_DEVICE_GPU : INSIGHT_DEVICE_CPU;
+  p.device_id = place.device_id();
+  if (insight_timer_create(&p, &impl_) != C_SUCCESS) {
+    impl_ = nullptr;
+  }
+}
+
+Timer::~Timer() {
+  if (impl_)
+    insight_timer_destroy(impl_);
+}
+
+void Timer::start() {
+  if (impl_) {
+    insight_timer_start(impl_);
+    started_ = true;
+  }
+}
+
+void Timer::stop() {
+  if (impl_) {
+    insight_timer_stop(impl_);
+    started_ = false;
+  }
+}
+
+float Timer::elapsed_ms() const {
+  if (!impl_)
+    return 0.0f;
+  float ms = 0.0f;
+  insight_timer_elapsed_ms(impl_, &ms);
+  return ms;
+}
+
+void Timer::reset() {
+  if (impl_)
+    insight_timer_reset(impl_);
+  started_ = false;
+}
+
+bool Timer::started() const { return started_; }
+
+} // namespace ins
+
+// ========================================================================
 // C++ Profiler class (uses C API, which wraps HAL)
 // ========================================================================
 
