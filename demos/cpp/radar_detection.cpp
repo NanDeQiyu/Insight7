@@ -11,6 +11,7 @@
 #include "insight/ops/random.h"
 #include "insight/ops/reduction.h"
 #include "insight/ops/signal.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
