@@ -16,6 +16,14 @@ cmake-build-*/
 *.dylib
 *.a
 *.lib
+*.pyd
+
+# Build artifacts / logs
+stylua.zip
+stylua_redirect.html
+test_cpu_support.csv
+test_cuda_support.csv
+.qwen/
 
 # IDE files
 .vscode/

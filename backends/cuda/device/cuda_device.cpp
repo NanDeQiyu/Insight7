@@ -13,6 +13,11 @@
 
 #include "../registry/cuda_registry.h"
 
+#ifdef _MSC_VER
+#include <stdlib.h>
+#define strdup _strdup
+#endif
+
 // ========================================================================
 // Thread-local error storage
 // ========================================================================
