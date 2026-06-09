@@ -4,12 +4,14 @@
 // 编译: cmake .. -DINSIGHT_BUILD_DEMOS=ON && make -j24
 // 运行: ./radar_detection --device gpu --seed 42 --iterations 50
 
+#include "insight/core/profiler.h"
 #include "insight/insight.h"
 #include "insight/ops/fft.h"
 #include "insight/ops/indexing.h"
 #include "insight/ops/random.h"
 #include "insight/ops/reduction.h"
 #include "insight/ops/signal.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -265,26 +267,39 @@ static FrameResult run_frame(const std::vector<double> &delays,
                              const std::vector<double> &dopplers, Place place,
                              int seed_val, int,
                              const Array *external_noise_r = nullptr,
-                             const Array *external_noise_i = nullptr) {
+                             const Array *external_noise_i = nullptr,
+                             ins::Profiler *prof = nullptr) {
   seed(seed_val);
 
   auto t0 = std::chrono::high_resolution_clock::now();
 
   // [1] Echo simulation
+  if (prof)
+    prof->begin_event("echo_simulation");
   Array pulses = simulate_echoes(delays, dopplers, place, external_noise_r,
                                  external_noise_i);
+  if (prof)
+    prof->end_event();
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // [2] Pulse compression
+  if (prof)
+    prof->begin_event("pulse_compression");
   Array pc = signal::pulse_compression(pulses, _TEMPLATE);
+  if (prof)
+    prof->end_event();
   auto t2 = std::chrono::high_resolution_clock::now();
 
   // [3] Doppler processing
+  if (prof)
+    prof->begin_event("doppler");
   Array mean_pc = mean(pc, {0}, true);
   Array pc_ac = sub(pc, mean_pc);
   Array spec = signal::pulse_doppler(mul(pc_ac, _HAMMING), "", 0);
   Array doppler_shifted = div(
       spec, full(spec.shape(), (double)N_PULSES, spec.dtype(), spec.place()));
+  if (prof)
+    prof->end_event();
   auto t3 = std::chrono::high_resolution_clock::now();
 
   // [4] Energy
@@ -292,12 +307,20 @@ static FrameResult run_frame(const std::vector<double> &delays,
       add(square(real(doppler_shifted)), square(imag(doppler_shifted)));
 
   // [5] CA-CFAR
+  if (prof)
+    prof->begin_event("ca_cfar");
   auto [threshold, detections] =
       signal::ca_cfar(energy, {4, 4}, {12, 12}, 1e-6);
+  if (prof)
+    prof->end_event();
   auto t4 = std::chrono::high_resolution_clock::now();
 
   // [6] Target extraction
+  if (prof)
+    prof->begin_event("target_extraction");
   ExtractResult ext = extract_targets(energy, detections);
+  if (prof)
+    prof->end_event();
   auto t5 = std::chrono::high_resolution_clock::now();
 
   // [7] Range validation
@@ -334,6 +357,7 @@ struct Args {
   int iterations = 0;
   bool timer = false;
   bool info = false;
+  bool profiler = false;
 };
 
 static Args parse_args(int argc, char **argv) {
@@ -349,6 +373,8 @@ static Args parse_args(int argc, char **argv) {
       args.timer = true;
     else if (strcmp(argv[i], "--info") == 0)
       args.info = true;
+    else if (strcmp(argv[i], "--profiler") == 0)
+      args.profiler = true;
   }
   return args;
 }
@@ -419,6 +445,11 @@ int main(int argc, char **argv) {
     }
   }
 
+  // Profiler
+  ins::Profiler prof(place);
+  if (args.profiler)
+    prof.start();
+
   // ========================================================
   // --device all: 双设备比较
   // ========================================================
@@ -443,16 +474,18 @@ int main(int argc, char **argv) {
                               full({1}, _NOISE_SIGMA, DType::F64, cpu_place));
 
       // CPU run（用 CPU 噪声）
-      FrameResult cpu_result = run_frame(delays, dopplers, cpu_place, args.seed,
-                                         frame, &cpu_noise_r, &cpu_noise_i);
+      FrameResult cpu_result =
+          run_frame(delays, dopplers, cpu_place, args.seed, frame, &cpu_noise_r,
+                    &cpu_noise_i, args.profiler ? &prof : nullptr);
       cpu_times.push_back(cpu_result.total_ms);
 
       // GPU run（用同一份噪声，传输到 GPU）
       Array gpu_noise_r = cpu_noise_r.to(gpu_place);
       Array gpu_noise_i = cpu_noise_i.to(gpu_place);
       init_cache(gpu_place);
-      FrameResult gpu_result = run_frame(delays, dopplers, gpu_place, args.seed,
-                                         frame, &gpu_noise_r, &gpu_noise_i);
+      FrameResult gpu_result =
+          run_frame(delays, dopplers, gpu_place, args.seed, frame, &gpu_noise_r,
+                    &gpu_noise_i, args.profiler ? &prof : nullptr);
       gpu_times.push_back(gpu_result.total_ms);
 
       // 比较 energy
@@ -500,6 +533,10 @@ int main(int argc, char **argv) {
     printf("  CPU 平均每帧: %.2f ms  FPS: %.2f\n", cpu_avg, 1000.0 / cpu_avg);
     printf("  GPU 平均每帧: %.2f ms  FPS: %.2f\n", gpu_avg, 1000.0 / gpu_avg);
     printf("  加速比: %.2fx\n", cpu_avg / gpu_avg);
+    if (args.profiler) {
+      prof.stop();
+      prof.report();
+    }
     printf("\n完成！\n");
     return 0;
   }
@@ -514,7 +551,9 @@ int main(int argc, char **argv) {
     std::vector<double> delays, dopplers;
     get_target_params(frame, n_frames, delays, dopplers);
 
-    FrameResult result = run_frame(delays, dopplers, place, args.seed, frame);
+    FrameResult result =
+        run_frame(delays, dopplers, place, args.seed, frame, nullptr, nullptr,
+                  args.profiler ? &prof : nullptr);
 
     times.push_back(result.total_ms);
 
@@ -563,6 +602,15 @@ int main(int argc, char **argv) {
   printf("  ==================================================\n");
   printf("  总帧数: %d\n", n_frames);
   printf("  平均每帧: %.2f ms  FPS: %.2f\n", avg_ms, fps);
+
+  if (args.profiler) {
+    prof.stop();
+    prof.report();
+  }
+
+  if (has_device(DeviceKind::GPU) && !use_gpu) {
+    printf("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本");
+  }
   printf("\n完成！\n");
 
   return 0;

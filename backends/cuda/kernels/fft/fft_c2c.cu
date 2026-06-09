@@ -93,6 +93,15 @@ C_Status fft_c2c_kernel_gpu(void **inputs, void **outputs) {
     return C_FAILED;
   }
 
+  // cuFFT is asynchronous — synchronize before returning so callers can read
+  // the result immediately (concat/transpose in fftshift, element-wise in
+  // apply_norm, etc.)
+  cudaError_t sync_err = cudaStreamSynchronize(0);
+  if (sync_err != cudaSuccess) {
+    gpu_set_last_error(cudaGetErrorString(sync_err));
+    return C_FAILED;
+  }
+
   return C_SUCCESS;
 }
 

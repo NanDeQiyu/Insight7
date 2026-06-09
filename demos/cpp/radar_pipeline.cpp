@@ -4,6 +4,7 @@
 // 编译: cmake .. -DINSIGHT_BUILD_DEMOS=ON && make -j24
 // 运行: ./feature_extraction --device gpu --seed 42 --iterations 50
 
+#include "insight/core/profiler.h"
 #include "insight/insight.h"
 #include "insight/ops/fft.h"
 #include "insight/ops/indexing.h"
@@ -75,6 +76,7 @@ struct Args {
   std::string output = ".";
   bool timer = false;
   bool info = false;
+  bool profiler = false;
 };
 
 static Args parse_args(int argc, char *argv[]) {
@@ -94,6 +96,8 @@ static Args parse_args(int argc, char *argv[]) {
       args.timer = true;
     } else if (std::strcmp(argv[i], "--info") == 0) {
       args.info = true;
+    } else if (std::strcmp(argv[i], "--profiler") == 0) {
+      args.profiler = true;
     }
   }
   return args;
@@ -449,6 +453,11 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // Profiler
+  ins::Profiler prof(place);
+  if (args.profiler)
+    prof.start();
+
   // ========================================================
   // --device all: 双设备比较
   // ========================================================
@@ -529,6 +538,10 @@ int main(int argc, char *argv[]) {
     printf("  CPU 平均每帧: %.2f ms  FPS: %.2f\n", cpu_avg, 1000.0 / cpu_avg);
     printf("  GPU 平均每帧: %.2f ms  FPS: %.2f\n", gpu_avg, 1000.0 / gpu_avg);
     printf("  加速比: %.2fx\n", cpu_avg / gpu_avg);
+    if (args.profiler) {
+      prof.stop();
+      prof.report();
+    }
     printf("\n完成！\n");
     return 0;
   }
@@ -580,6 +593,11 @@ int main(int argc, char *argv[]) {
   printf("  ==================================================\n");
   printf("  总帧数: %d\n", n_frames);
   printf("  平均每帧: %.2f ms  FPS: %.2f\n", avg_ms, fps);
+
+  if (args.profiler) {
+    prof.stop();
+    prof.report();
+  }
 
   if (has_device(DeviceKind::GPU) && !use_gpu) {
     printf("\n[提示] GPU 可用, 使用 --device gpu 运行 GPU 版本");

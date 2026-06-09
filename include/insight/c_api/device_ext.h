@@ -112,6 +112,20 @@ typedef struct C_Event_st *C_Event;
 typedef struct C_Profiler_st *C_Profiler;
 
 /**
+ * @brief Profiler event statistics.
+ *
+ * Contains aggregated timing data for a single named event collected
+ * by the profiler.
+ */
+typedef struct C_ProfilerEvent {
+  const char *name; /**< Event name (valid until next get_events call) */
+  size_t calls;     /**< Number of times this event was recorded */
+  float total_ms;   /**< Total accumulated time in milliseconds */
+  float min_ms;     /**< Minimum time for a single call in milliseconds */
+  float max_ms;     /**< Maximum time for a single call in milliseconds */
+} C_ProfilerEvent;
+
+/**
  * @brief Device descriptor structure.
  *
  * Contains the physical device ID. The framework passes this to plugin
@@ -714,6 +728,21 @@ typedef struct C_DeviceInterface {
    * @return C_SUCCESS on success, error code otherwise
    */
   C_Status (*profiler_end_event)(C_Profiler prof);
+
+  /**
+   * @brief Get profiler event statistics.
+   *
+   * Returns an array of C_ProfilerEvent with aggregated stats for all
+   * recorded events. The returned array is valid until the next call to
+   * profiler_get_events or profiler_reset on the same profiler.
+   *
+   * @param prof Profiler handle
+   * @param events Output parameter to receive pointer to event array
+   * @param count Output parameter to receive number of events
+   * @return C_SUCCESS on success, error code otherwise
+   */
+  C_Status (*profiler_get_events)(C_Profiler prof, C_ProfilerEvent **events,
+                                  size_t *count);
 
   /*==========================================================================
    * Error Handling

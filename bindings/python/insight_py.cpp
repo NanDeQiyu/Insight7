@@ -3060,4 +3060,83 @@ PYBIND11_MODULE(_insight, m) {
     insight_timer_elapsed_ms(reinterpret_cast<InsightTimer>(handle), &ms);
     return static_cast<double>(ms);
   });
+
+  // --- Profiler ---
+
+  m.def("profiler_create", [](const std::string &device, int32_t device_id) {
+    DeviceKind kind = (device == "gpu" || device == "cuda") ? DeviceKind::GPU
+                                                            : DeviceKind::CPU;
+    InsightPlace place = {static_cast<int32_t>(kind), device_id};
+    C_Profiler prof = nullptr;
+    C_Status status = insight_profiler_create(&place, nullptr, &prof);
+    if (status != C_SUCCESS) {
+      throw std::runtime_error("profiler_create: failed to create profiler");
+    }
+    return reinterpret_cast<uintptr_t>(prof);
+  });
+
+  m.def("profiler_destroy", [](uintptr_t handle) {
+    insight_profiler_destroy(reinterpret_cast<C_Profiler>(handle));
+  });
+
+  m.def("profiler_start", [](uintptr_t handle) {
+    C_Status status =
+        insight_profiler_start(reinterpret_cast<C_Profiler>(handle));
+    if (status != C_SUCCESS) {
+      throw std::runtime_error("profiler_start: failed");
+    }
+  });
+
+  m.def("profiler_stop", [](uintptr_t handle) {
+    C_Status status =
+        insight_profiler_stop(reinterpret_cast<C_Profiler>(handle));
+    if (status != C_SUCCESS) {
+      throw std::runtime_error("profiler_stop: failed");
+    }
+  });
+
+  m.def("profiler_reset", [](uintptr_t handle) {
+    C_Status status =
+        insight_profiler_reset(reinterpret_cast<C_Profiler>(handle));
+    if (status != C_SUCCESS) {
+      throw std::runtime_error("profiler_reset: failed");
+    }
+  });
+
+  m.def("profiler_begin_event", [](uintptr_t handle, const std::string &name) {
+    C_Status status = insight_profiler_begin_event(
+        reinterpret_cast<C_Profiler>(handle), name.c_str());
+    if (status != C_SUCCESS) {
+      throw std::runtime_error("profiler_begin_event: failed");
+    }
+  });
+
+  m.def("profiler_end_event", [](uintptr_t handle) {
+    C_Status status =
+        insight_profiler_end_event(reinterpret_cast<C_Profiler>(handle));
+    if (status != C_SUCCESS) {
+      throw std::runtime_error("profiler_end_event: failed");
+    }
+  });
+
+  m.def("profiler_get_events", [](uintptr_t handle) {
+    C_ProfilerEvent *events = nullptr;
+    size_t count = 0;
+    C_Status status = insight_profiler_get_events(
+        reinterpret_cast<C_Profiler>(handle), &events, &count);
+    if (status != C_SUCCESS) {
+      throw std::runtime_error("profiler_get_events: failed");
+    }
+    py::list result;
+    for (size_t i = 0; i < count; i++) {
+      py::dict ev;
+      ev["name"] = events[i].name;
+      ev["calls"] = events[i].calls;
+      ev["total_ms"] = static_cast<double>(events[i].total_ms);
+      ev["min_ms"] = static_cast<double>(events[i].min_ms);
+      ev["max_ms"] = static_cast<double>(events[i].max_ms);
+      result.append(ev);
+    }
+    return result;
+  });
 }

@@ -79,6 +79,9 @@ export Array, zeros, ones, full, arange, linspace, eye,
        get_device, set_device,
        # Profiler / Timer
        Timer, timer_start, timer_stop, timer_elapsed_ms, timer_destroy,
+       Profiler, profiler_start, profiler_stop, profiler_destroy,
+       profiler_reset, profiler_begin_event, profiler_end_event,
+       profiler_get_events, profiler_report,
        # Signal submodule
        signal
 
@@ -2230,6 +2233,183 @@ Get the elapsed time in milliseconds between start and stop.
 function timer_elapsed_ms(t::Timer)
     return ccall((:insight_jl_timer_elapsed_ms, LIB_INSIGHT), Float64,
                  (Ptr{Cvoid},), t.handle)
+end
+
+# ============================================================================
+# Profiler
+# ============================================================================
+
+"""
+    Profiler
+
+Multi-event aggregated profiler for recording timing statistics.
+Uses the device's native profiler mechanism to collect and aggregate
+timing data for multiple named events.
+
+# Fields
+- `handle::Ptr{Cvoid}` - Opaque pointer to the native profiler
+
+# Usage
+```julia
+prof = Profiler(0, 0)  # CPU
+profiler_start(prof)
+profiler_begin_event(prof, "fft")
+# ... work ...
+profiler_end_event(prof)
+profiler_stop(prof)
+profiler_report(prof)
+profiler_destroy(prof)
+```
+"""
+mutable struct Profiler
+    handle::Ptr{Cvoid}
+end
+
+"""
+    Profiler(device_type::Integer, device_id::Integer) -> Profiler
+
+Create a profiler for the specified device.
+- `device_type`: 0 for CPU, 1 for GPU
+- `device_id`: Device ID (0 for first device)
+"""
+function Profiler(device_type::Integer, device_id::Integer)
+    handle = ccall((:insight_jl_profiler_create, LIB_INSIGHT), Ptr{Cvoid},
+                   (Cint, Cint, Cstring), Cint(device_type), Cint(device_id), C_NULL)
+    if handle == C_NULL
+        error("Profiler: failed to create profiler (device not available)")
+    end
+    return Profiler(handle)
+end
+
+"""
+    profiler_destroy(prof::Profiler)
+
+Destroy a profiler and release associated resources.
+"""
+function profiler_destroy(prof::Profiler)
+    if prof.handle != C_NULL
+        ccall((:insight_jl_profiler_destroy, LIB_INSIGHT), Cvoid, (Ptr{Cvoid},), prof.handle)
+        prof.handle = C_NULL
+    end
+end
+
+"""
+    profiler_start(prof::Profiler)
+
+Start recording profiler events.
+"""
+function profiler_start(prof::Profiler)
+    ccall((:insight_jl_profiler_start, LIB_INSIGHT), Cvoid, (Ptr{Cvoid},), prof.handle)
+end
+
+"""
+    profiler_stop(prof::Profiler)
+
+Stop recording profiler events.
+"""
+function profiler_stop(prof::Profiler)
+    ccall((:insight_jl_profiler_stop, LIB_INSIGHT), Cvoid, (Ptr{Cvoid},), prof.handle)
+end
+
+"""
+    profiler_reset(prof::Profiler)
+
+Clear all recorded data.
+"""
+function profiler_reset(prof::Profiler)
+    ccall((:insight_jl_profiler_reset, LIB_INSIGHT), Cvoid, (Ptr{Cvoid},), prof.handle)
+end
+
+"""
+    profiler_begin_event(prof::Profiler, name::String)
+
+Begin a named event.
+"""
+function profiler_begin_event(prof::Profiler, name::String)
+    ccall((:insight_jl_profiler_begin_event, LIB_INSIGHT), Cvoid,
+          (Ptr{Cvoid}, Cstring), prof.handle, name)
+end
+
+"""
+    profiler_end_event(prof::Profiler)
+
+End the current event.
+"""
+function profiler_end_event(prof::Profiler)
+    ccall((:insight_jl_profiler_end_event, LIB_INSIGHT), Cvoid, (Ptr{Cvoid},), prof.handle)
+end
+
+"""
+    profiler_get_events(prof::Profiler) -> Vector{Dict}
+
+Get aggregated event statistics as a vector of dicts.
+Each dict has keys: name, calls, total_ms, min_ms, max_ms.
+"""
+function profiler_get_events(prof::Profiler)::Vector{Dict}
+    json_str = ccall((:insight_jl_profiler_get_events, LIB_INSIGHT), Cstring,
+                     (Ptr{Cvoid},), prof.handle)
+    result = Vector{Dict}()
+    if json_str != C_NULL
+        raw = unsafe_string(json_str)
+        ccall((:insight_jl_profiler_free_json, LIB_INSIGHT), Cvoid, (Cstring,), json_str)
+        if length(raw) > 2
+            # Simple JSON array parser for profiler events
+            # Format: [{"name":"...","calls":N,"total_ms":F,"min_ms":F,"max_ms":F},...]
+            s = strip(raw)
+            if startswith(s, '[') && endswith(s, ']')
+                s = s[2:end-1]  # strip [ ]
+                while !isempty(s)
+                    # Find one object { ... }
+                    obj_start = findfirst('{', s)
+                    obj_end = findfirst('}', s)
+                    if obj_start === nothing || obj_end === nothing
+                        break
+                    end
+                    obj_str = s[obj_start:obj_end]
+                    s = s[obj_end+1:end]
+                    # Parse key-value pairs
+                    d = Dict{String,Any}()
+                    # Extract name
+                    m = match(r"\"name\":\"([^\"]*)\"", obj_str)
+                    if m !== nothing; d["name"] = m.captures[1]; end
+                    m = match(r"\"calls\":(\d+)", obj_str)
+                    if m !== nothing; d["calls"] = parse(Int, m.captures[1]); end
+                    m = match(r"\"total_ms\":([0-9.eE+-]+)", obj_str)
+                    if m !== nothing; d["total_ms"] = parse(Float64, m.captures[1]); end
+                    m = match(r"\"min_ms\":([0-9.eE+-]+)", obj_str)
+                    if m !== nothing; d["min_ms"] = parse(Float64, m.captures[1]); end
+                    m = match(r"\"max_ms\":([0-9.eE+-]+)", obj_str)
+                    if m !== nothing; d["max_ms"] = parse(Float64, m.captures[1]); end
+                    push!(result, d)
+                end
+            end
+        end
+    end
+    return result
+end
+
+"""
+    profiler_report(prof::Profiler)
+
+Print a formatted timing report to stdout.
+"""
+function profiler_report(prof::Profiler)
+    events = profiler_get_events(prof)
+    if isempty(events)
+        println("  [Profiler] no events recorded")
+        return
+    end
+    println()
+    println("  Event                Calls   Total(ms)     Avg(ms)     Max(ms)")
+    println("  ", "\u2500"^59)
+    for ev in events
+        avg = ev["total_ms"] / Float64(ev["calls"])
+        println(lpad(ev["name"], 20), lpad(string(ev["calls"]), 8),
+                lpad(Base.round(ev["total_ms"], digits=3), 13),
+                lpad(Base.round(avg, digits=4), 11),
+                lpad(Base.round(ev["max_ms"], digits=4), 11))
+    end
+    println()
 end
 
 end # module Insight

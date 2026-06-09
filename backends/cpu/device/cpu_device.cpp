@@ -20,6 +20,13 @@
 #endif
 
 #include "../registry/cpu_registry.h"
+#include <unordered_map>
+#include <vector>
+
+#ifdef _MSC_VER
+#include <stdlib.h>
+#define strdup _strdup
+#endif
 
 static thread_local std::string cpu_last_error_str;
 
@@ -356,29 +363,139 @@ static C_Status cpu_get_max_grid_dim_size(C_Device device, size_t dims[3]) {
 }
 
 // ========================================================================
-// Profiler (Optional - CPU profiler is a no-op)
+// Profiler (Optional - CPU profiler using std::chrono)
 // ========================================================================
+
+struct CpuProfilerEvent {
+  std::string name;
+  size_t calls = 0;
+  double total_ms = 0.0;
+  double min_ms = 1e18;
+  double max_ms = 0.0;
+};
+
+struct CpuProfiler {
+  std::string name;
+  int device_id;
+  std::chrono::high_resolution_clock::time_point event_start;
+  std::string current_event_name;
+  bool in_event = false;
+  bool running = false;
+  std::unordered_map<std::string, CpuProfilerEvent> events;
+  std::vector<C_ProfilerEvent> report_cache;
+};
 
 static C_Status cpu_profiler_create(C_Profiler *prof, const char *name,
                                     int device_id) {
-  if (prof)
-    *prof = nullptr;
+  if (!prof)
+    return C_FAILED;
+  auto *p = new (std::nothrow) CpuProfiler();
+  if (!p)
+    return C_FAILED;
+  if (name)
+    p->name = name;
+  p->device_id = device_id;
+  *prof = reinterpret_cast<C_Profiler>(p);
   return C_SUCCESS;
 }
 
-static C_Status cpu_profiler_destroy(C_Profiler prof) { return C_SUCCESS; }
+static C_Status cpu_profiler_destroy(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  delete reinterpret_cast<CpuProfiler *>(prof);
+  return C_SUCCESS;
+}
 
-static C_Status cpu_profiler_start(C_Profiler prof) { return C_SUCCESS; }
+static C_Status cpu_profiler_start(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  reinterpret_cast<CpuProfiler *>(prof)->running = true;
+  return C_SUCCESS;
+}
 
-static C_Status cpu_profiler_stop(C_Profiler prof) { return C_SUCCESS; }
+static C_Status cpu_profiler_stop(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  reinterpret_cast<CpuProfiler *>(prof)->running = false;
+  return C_SUCCESS;
+}
 
-static C_Status cpu_profiler_reset(C_Profiler prof) { return C_SUCCESS; }
+static C_Status cpu_profiler_reset(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  auto *p = reinterpret_cast<CpuProfiler *>(prof);
+  p->events.clear();
+  p->report_cache.clear();
+  p->in_event = false;
+  return C_SUCCESS;
+}
 
 static C_Status cpu_profiler_begin_event(C_Profiler prof, const char *name) {
+  if (!prof || !name)
+    return C_FAILED;
+  auto *p = reinterpret_cast<CpuProfiler *>(prof);
+  if (!p->running)
+    return C_SUCCESS;
+  p->current_event_name = name;
+  p->event_start = std::chrono::high_resolution_clock::now();
+  p->in_event = true;
   return C_SUCCESS;
 }
 
-static C_Status cpu_profiler_end_event(C_Profiler prof) { return C_SUCCESS; }
+static C_Status cpu_profiler_end_event(C_Profiler prof) {
+  if (!prof)
+    return C_FAILED;
+  auto *p = reinterpret_cast<CpuProfiler *>(prof);
+  if (!p->running || !p->in_event)
+    return C_SUCCESS;
+  auto end = std::chrono::high_resolution_clock::now();
+  double ms =
+      std::chrono::duration<double, std::milli>(end - p->event_start).count();
+  p->in_event = false;
+
+  auto &ev = p->events[p->current_event_name];
+  ev.name = p->current_event_name;
+  ev.calls++;
+  ev.total_ms += ms;
+  if (ms < ev.min_ms)
+    ev.min_ms = ms;
+  if (ms > ev.max_ms)
+    ev.max_ms = ms;
+  return C_SUCCESS;
+}
+
+static C_Status cpu_profiler_get_events(C_Profiler prof,
+                                        C_ProfilerEvent **events,
+                                        size_t *count) {
+  if (!prof || !events || !count)
+    return C_FAILED;
+  auto *p = reinterpret_cast<CpuProfiler *>(prof);
+
+  // Invalidate old cache
+  for (auto &e : p->report_cache) {
+    if (e.name) {
+      free(const_cast<char *>(e.name));
+      e.name = nullptr;
+    }
+  }
+  p->report_cache.clear();
+
+  // Build report
+  for (auto &kv : p->events) {
+    auto &src = kv.second;
+    C_ProfilerEvent ev;
+    ev.name = strdup(src.name.c_str());
+    ev.calls = src.calls;
+    ev.total_ms = static_cast<float>(src.total_ms);
+    ev.min_ms = static_cast<float>(src.min_ms < 1e17 ? src.min_ms : 0.0f);
+    ev.max_ms = static_cast<float>(src.max_ms);
+    p->report_cache.push_back(ev);
+  }
+
+  *events = p->report_cache.data();
+  *count = p->report_cache.size();
+  return C_SUCCESS;
+}
 
 // ========================================================================
 // Error Handling
@@ -468,6 +585,7 @@ INSIGHT_CPU_API C_Status InitPluginCPU(CustomRuntimeParams *params) {
   iface->profiler_reset = cpu_profiler_reset;
   iface->profiler_begin_event = cpu_profiler_begin_event;
   iface->profiler_end_event = cpu_profiler_end_event;
+  iface->profiler_get_events = cpu_profiler_get_events;
 
   // Error
   iface->get_last_error = cpu_get_last_error;

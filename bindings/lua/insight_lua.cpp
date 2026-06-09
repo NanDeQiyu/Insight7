@@ -1125,11 +1125,17 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     return ins::fft::ifft(x, n.value_or(-1), axis.value_or(-1),
                           norm_mode.value_or("backward"));
   };
-  m["rfft"] = [](const ins::Array &x, sol::optional<int> n,
+  m["rfft"] = [](sol::this_state L, const ins::Array &x, sol::optional<int> n,
                  sol::optional<int> axis,
-                 sol::optional<std::string> norm_mode) {
-    return ins::fft::rfft(x, n.value_or(-1), axis.value_or(-1),
-                          norm_mode.value_or("backward"));
+                 sol::optional<std::string> norm_mode) -> sol::object {
+    try {
+      auto result = ins::fft::rfft(x, n.value_or(-1), axis.value_or(-1),
+                                   norm_mode.value_or("backward"));
+      return sol::make_object(L, std::move(result));
+    } catch (const std::exception &e) {
+      luaL_error(L, "rfft: %s", e.what());
+      return sol::nil;
+    }
   };
   m["irfft"] = [](const ins::Array &x, sol::optional<int> n,
                   sol::optional<int> axis,
@@ -1581,13 +1587,20 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     sig["argrelmin"] = &ins::signal::argrelmin;
 
     // --- Radar ---
-    sig["pulse_compression"] = [](const ins::Array &x, const ins::Array &tpl,
-                                  sol::optional<bool> normalize,
-                                  sol::optional<std::string> window,
-                                  sol::optional<int64_t> nfft) {
-      return ins::signal::pulse_compression(x, tpl, normalize.value_or(false),
-                                            window.value_or(""),
-                                            nfft.value_or(0));
+    sig["pulse_compression"] =
+        [](sol::this_state L, const ins::Array &x, const ins::Array &tpl,
+           sol::optional<bool> normalize, sol::optional<std::string> window,
+           sol::optional<int64_t> nfft) -> sol::object {
+      try {
+        auto result = ins::signal::pulse_compression(
+            x, tpl, normalize.value_or(false), window.value_or(""),
+            nfft.value_or(0));
+        return sol::make_object(L, std::move(result));
+      } catch (const std::exception &e) {
+        sol::state_view lv(L);
+        lv.script("error('pulse_compression: " + std::string(e.what()) + "')");
+        return sol::nil;
+      }
     };
     sig["pulse_doppler"] = [](const ins::Array &x,
                               sol::optional<std::string> window,
@@ -2637,6 +2650,101 @@ extern "C" INSIGHT_LUA_EXPORT int luaopen__insight(lua_State *L) {
     float ms = 0.0f;
     insight_timer_elapsed_ms(reinterpret_cast<InsightTimer>(handle), &ms);
     return static_cast<double>(ms);
+  };
+
+  // ── Profiler bindings ──────────────────────────────────────────────
+
+  m["profiler_create"] = [](int device_type, int device_id,
+                            sol::optional<const char *> name) -> void * {
+    try {
+      InsightPlace place;
+      place.device_type = static_cast<int32_t>(device_type);
+      place.device_id = static_cast<int32_t>(device_id);
+      C_Profiler prof = nullptr;
+      C_Status status =
+          insight_profiler_create(&place, name.value_or(nullptr), &prof);
+      if (status != C_SUCCESS) {
+        return nullptr;
+      }
+      return reinterpret_cast<void *>(prof);
+    } catch (...) {
+      return nullptr;
+    }
+  };
+
+  m["profiler_destroy"] = [](void *handle) {
+    try {
+      if (handle != nullptr) {
+        insight_profiler_destroy(reinterpret_cast<C_Profiler>(handle));
+      }
+    } catch (...) {
+    }
+  };
+
+  m["profiler_start"] = [](void *handle) {
+    try {
+      insight_profiler_start(reinterpret_cast<C_Profiler>(handle));
+    } catch (...) {
+    }
+  };
+
+  m["profiler_stop"] = [](void *handle) {
+    try {
+      insight_profiler_stop(reinterpret_cast<C_Profiler>(handle));
+    } catch (...) {
+    }
+  };
+
+  m["profiler_reset"] = [](void *handle) {
+    try {
+      insight_profiler_reset(reinterpret_cast<C_Profiler>(handle));
+    } catch (...) {
+    }
+  };
+
+  m["profiler_begin_event"] = [](void *handle, const char *name) {
+    try {
+      insight_profiler_begin_event(reinterpret_cast<C_Profiler>(handle), name);
+    } catch (...) {
+    }
+  };
+
+  m["profiler_end_event"] = [](void *handle) {
+    try {
+      insight_profiler_end_event(reinterpret_cast<C_Profiler>(handle));
+    } catch (...) {
+    }
+  };
+
+  m["profiler_get_events"] = [](void *handle,
+                                sol::this_state ts) -> sol::table {
+    try {
+      if (!handle) {
+        sol::state_view lv(ts);
+        return lv.create_table(0);
+      }
+      C_ProfilerEvent *events = nullptr;
+      size_t count = 0;
+      C_Status status = insight_profiler_get_events(
+          reinterpret_cast<C_Profiler>(handle), &events, &count);
+      sol::state_view lv(ts);
+      sol::table result = lv.create_table(static_cast<int>(count));
+      if (status == C_SUCCESS && events != nullptr) {
+        for (size_t i = 0; i < count; i++) {
+          sol::table ev = lv.create_table();
+          ev["name"] = events[i].name ? std::string(events[i].name) : "";
+          ev["calls"] = static_cast<int>(events[i].calls);
+          ev["total_ms"] = events[i].total_ms;
+          ev["min_ms"] = events[i].min_ms;
+          ev["max_ms"] = events[i].max_ms;
+          result[i + 1] = ev;
+        }
+      }
+      return result;
+    } catch (...) {
+      sol::state_view lv(ts);
+      return lv.create_table(0);
+    }
   };
 
   // Push module table onto stack

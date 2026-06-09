@@ -35,12 +35,14 @@ if(INSIGHT_USE_OPENBLAS)
         target_link_libraries(insight_cpu_backend PRIVATE ${OpenBLAS_LIBRARIES})
         
         # Also need LAPACKE (C interface for LAPACK)
-        find_library(LAPACKE_LIB lapacke)
+        # OpenBLAS ships lapacke.h and compiles LAPACKE symbols directly into libopenblas.
+        # A separate lapacke.lib may not exist — the symbols are already in libopenblas.
+        find_library(LAPACKE_LIB NAMES lapacke liblapacke)
         if(LAPACKE_LIB)
             target_link_libraries(insight_cpu_backend PRIVATE ${LAPACKE_LIB})
-            message(STATUS "LAPACKE found and linked")
+            message(STATUS "LAPACKE found and linked: ${LAPACKE_LIB}")
         else()
-            message(WARNING "LAPACKE not found, some LAPACK functions may fail at runtime")
+            message(STATUS "LAPACKE not found as separate lib — using OpenBLAS for LAPACKE")
         endif()
         # LAPACKE headers: check local OpenBLAS if not in system paths
         find_path(LAPACKE_INCLUDE_DIR NAMES lapacke.h

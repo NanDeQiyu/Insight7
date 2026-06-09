@@ -225,7 +225,7 @@ end
 -- ============================================================
 -- 单帧检测
 -- ============================================================
-local function run_frame(delays, dopplers, device, seed, external_noise_r, external_noise_i)
+local function run_frame(delays, dopplers, device, seed, external_noise_r, external_noise_i, prof)
   if device == "gpu" and ins.has_device("gpu") then
     ins.load_backend("cuda")
     ins.set_device(ins.GPUPlace(0))
@@ -237,29 +237,59 @@ local function run_frame(delays, dopplers, device, seed, external_noise_r, exter
   local t0 = os.clock()
 
   -- [1] Echo simulation
+  if prof then
+    prof:begin_event("echo_simulation")
+  end
   local pulses = simulate_echoes(delays, dopplers, external_noise_r, external_noise_i)
+  if prof then
+    prof:end_event()
+  end
   local t1 = os.clock()
 
   -- [2] Pulse compression
+  if prof then
+    prof:begin_event("pulse_compression")
+  end
   local pc = ins.signal.pulse_compression(pulses, _TEMPLATE)
+  if prof then
+    prof:end_event()
+  end
   local t2 = os.clock()
 
   -- [3] Doppler processing
+  if prof then
+    prof:begin_event("doppler")
+  end
   local mean_pc = ins.mean(pc, 0, true)
   local pc_ac = pc - mean_pc
   local spec = ins.signal.pulse_doppler(pc_ac * _HAMMING, "", N_PULSES)
   local shifted = spec / N_PULSES
+  if prof then
+    prof:end_event()
+  end
   local t3 = os.clock()
 
   -- [4] Energy
   local energy = ins.real(shifted) * ins.real(shifted) + ins.imag(shifted) * ins.imag(shifted)
 
   -- [5] CA-CFAR
+  if prof then
+    prof:begin_event("ca_cfar")
+  end
   local det = ins.signal.ca_cfar(energy, { 4, 4 }, { 12, 12 }, 1e-6)
+  if prof then
+    prof:end_event()
+  end
   local t4 = os.clock()
 
   -- [6] Target extraction
+  if prof then
+    prof:begin_event("target_extraction")
+  end
   local targets, raw_count = extract_targets(energy, det[2], 2, 3.0)
+  if prof then
+    prof:end_event()
+  end
   local t5 = os.clock()
 
   -- [7] Range validation
@@ -295,6 +325,7 @@ local args = {
   iterations = 0,
   timer = false,
   info = false,
+  profiler = false,
 }
 
 local i = 1
@@ -312,6 +343,8 @@ while i <= #arg do
     args.timer = true
   elseif arg[i] == "--info" then
     args.info = true
+  elseif arg[i] == "--profiler" then
+    args.profiler = true
   end
   i = i + 1
 end
@@ -364,6 +397,10 @@ if args.info then
       math.floor((cpu_total - cpu_free) / (1024 * 1024))
     )
   )
+  -- Try loading GPU backend for info display (works even with --device cpu)
+  if not ins.has_device("gpu") then
+    pcall(ins.load_backend, "cuda")
+  end
   if ins.has_device("gpu") then
     local gpu_total, gpu_free = ins.device_memory_info(1, 0)
     print(
@@ -374,6 +411,13 @@ if args.info then
       )
     )
   end
+end
+
+-- Profiler
+local prof = nil
+if args.profiler then
+  prof = ins.Profiler(0, 0)
+  prof:start()
 end
 
 -- 帧循环
@@ -393,7 +437,7 @@ if args.device == "all" then
     local cpu_noise_i = ins.randn({ N_PULSES, N }, ins.float64, _PLACE) * _NOISE_SIGMA
 
     -- CPU run
-    local cpu_result = run_frame(delays, dopplers, "cpu", args.seed, cpu_noise_r, cpu_noise_i)
+    local cpu_result = run_frame(delays, dopplers, "cpu", args.seed, cpu_noise_r, cpu_noise_i, prof)
 
     if ins.has_device("gpu") then
       -- GPU run: 复用 CPU 缓存，不重新生成
@@ -405,7 +449,7 @@ if args.device == "all" then
       _HAMMING = _HAMMING:to(gpu_place)
       _SLOW_TIMES = _SLOW_TIMES:to(gpu_place)
       _PLACE = gpu_place
-      local gpu_result = run_frame(delays, dopplers, "gpu", args.seed, gpu_noise_r, gpu_noise_i)
+      local gpu_result = run_frame(delays, dopplers, "gpu", args.seed, gpu_noise_r, gpu_noise_i, prof)
 
       -- Compare raw pulses (before pulse_compression — should be identical CPU vs GPU)
       local cpu_pulses = cpu_result.pulses
@@ -438,7 +482,7 @@ else
   -- Normal single-device mode
   for frame = 0, n_frames - 1 do
     local delays, dopplers = get_target_params(frame, n_frames)
-    local result = run_frame(delays, dopplers, args.device, args.seed)
+    local result = run_frame(delays, dopplers, args.device, args.seed, nil, nil, prof)
 
     times[#times + 1] = result.total_ms
 
@@ -527,4 +571,10 @@ else
   print(string.format("  总帧数: %d", n_frames))
   print(string.format("  平均每帧: %.2f ms  FPS: %.2f", avg_ms, fps))
 end
+
+if args.profiler then
+  prof:stop()
+  prof:report()
+end
+
 print("\n完成！")

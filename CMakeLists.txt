@@ -406,6 +406,11 @@ if(INSIGHT_USE_MATPLOT)
     if(TARGET matplot)
         target_compile_definitions(insight_core PUBLIC INSIGHT_USE_MATPLOT)
         target_link_libraries(insight_core PUBLIC matplot)
+        if(MSVC)
+            # Suppress C4834 (discarding [[nodiscard]] return value) which matplot
+            # triggers in its own source but is treated as error via /WX.
+            target_compile_options(matplot PRIVATE /wd4834)
+        endif()
         message(STATUS "Matplotplusplus enabled")
     else()
         message(WARNING "Matplotplusplus target not found, disabling")
