@@ -23,6 +23,11 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef _MSC_VER
+#include <stdlib.h>
+#define strdup _strdup
+#endif
+
 static thread_local std::string cpu_last_error_str;
 
 // CPU event implementation using std::chrono
