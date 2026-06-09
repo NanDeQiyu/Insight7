@@ -253,8 +253,8 @@ namespace ins {
 
 Timer::Timer(const Place &place) : place_(place), started_(false) {
   InsightPlace p;
-  p.device_type =
-      (place.kind() == DeviceKind::GPU) ? INSIGHT_DEVICE_GPU : INSIGHT_DEVICE_CPU;
+  p.device_type = (place.kind() == DeviceKind::GPU) ? INSIGHT_DEVICE_GPU
+                                                    : INSIGHT_DEVICE_CPU;
   p.device_id = place.device_id();
   if (insight_timer_create(&p, &impl_) != C_SUCCESS) {
     impl_ = nullptr;
